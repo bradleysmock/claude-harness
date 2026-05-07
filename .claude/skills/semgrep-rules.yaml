@@ -1,0 +1,100 @@
+rules:
+  # ── Custom pipeline security rules ────────────────────────────
+
+  - id: pipeline-no-hardcoded-env
+    patterns:
+      - pattern: $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '(?i)(password|secret|token|key|credential|api_key)'
+    message: >
+      Hardcoded credential detected in variable '$VAR'.
+      Use environment variables or a secrets manager.
+    severity: ERROR
+    languages: [python, javascript, typescript]
+
+  - id: pipeline-no-print-sensitive
+    patterns:
+      - pattern: print(..., $SENSITIVE, ...)
+      - metavariable-regex:
+          metavariable: $SENSITIVE
+          regex: '(?i)(password|token|secret|key|credential)'
+    message: >
+      Printing potentially sensitive variable '$SENSITIVE'.
+      Remove or replace with a redacted log entry.
+    severity: WARNING
+    languages: [python]
+
+  - id: pipeline-sql-fstring
+    pattern: |
+      cursor.execute(f"... {$VAR} ...")
+    message: >
+      f-string in SQL query is vulnerable to SQL injection.
+      Use parameterised queries: cursor.execute("... %s ...", (value,))
+    severity: ERROR
+    languages: [python]
+
+  - id: pipeline-sql-format
+    pattern: |
+      cursor.execute("..." % $VAR)
+    message: >
+      % string formatting in SQL query is vulnerable to SQL injection.
+      Use parameterised queries.
+    severity: ERROR
+    languages: [python]
+
+  - id: pipeline-shell-true-dynamic
+    pattern: |
+      subprocess.run($CMD, shell=True, ...)
+    message: >
+      subprocess.run with shell=True and dynamic command is vulnerable to
+      command injection. Use a list of arguments instead: subprocess.run(['cmd', arg], ...)
+    severity: WARNING
+    languages: [python]
+
+  - id: pipeline-yaml-unsafe-load
+    pattern: |
+      yaml.load($DATA)
+    message: >
+      yaml.load() without Loader is unsafe and can execute arbitrary code.
+      Use yaml.safe_load() instead.
+    severity: ERROR
+    languages: [python]
+
+  - id: pipeline-pickle-loads
+    pattern: |
+      pickle.loads($DATA)
+    message: >
+      pickle.loads() is unsafe when deserialising untrusted data.
+      Consider using json, msgpack, or a validated schema.
+    severity: WARNING
+    languages: [python]
+
+  - id: pipeline-no-assert-in-production
+    pattern: assert $COND, ...
+    message: >
+      assert statements are disabled in optimised Python (-O flag) and
+      must not be used for input validation or security checks.
+      Use explicit if/raise instead.
+    severity: INFO
+    languages: [python]
+
+  - id: pipeline-broad-exception
+    pattern: |
+      except Exception:
+          pass
+    message: >
+      Swallowing exceptions silently hides errors.
+      Log the exception and/or re-raise, or catch a specific exception type.
+    severity: WARNING
+    languages: [python]
+
+  - id: pipeline-eval-dynamic
+    patterns:
+      - pattern: eval($X)
+      - pattern-not: eval("...")
+    message: >
+      eval() with a dynamic argument is a code injection vector.
+      Avoid eval() entirely; use ast.literal_eval() for safe value parsing.
+    severity: ERROR
+    languages: [python, javascript, typescript]
