@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "claude-harness",
+  "version": "1.0.0",
+  "description": "Structured two-checkpoint SDLC harness: slash commands, polyglot validation hooks, expert review panels, and a working agreement.",
+  "author": {
+    "name": "Bradley Smock"
+  },
+  "license": "MIT",
+  "keywords": ["sdlc", "tdd", "hooks", "polyglot"]
+}
