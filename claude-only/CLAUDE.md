@@ -111,6 +111,43 @@ Test types (unit, contract, UI/E2E, integration) are determined during the requi
 
 ---
 
+## Code Generation Rules
+
+These are language-neutral principles every project must follow. Language-specific syntax shapes (e.g. `subprocess.run(shell=True)`, `child_process.exec(string)`, `exec.Command(strings.Join(...))`) live in `.claude/rules/<language>.md` and are loaded per-task.
+
+### Universal principles
+
+| Principle | What it means |
+|---|---|
+| **No dynamic code execution from external input** | No string-as-code interpreters (`eval`, `exec`, `Function()`, `Runtime.exec`, `pickle.loads`) on values you did not author yourself. Use explicit parsers. |
+| **No shell concatenation** | Never assemble shell commands with string interpolation of values you did not author yourself. Pass argument lists or use a vetted runner. |
+| **Parameterize all SQL** | Never interpolate values into SQL. Use the driver's parameter binding (`?`, `$1`, `:name`, etc.). |
+| **Contain user-supplied paths** | Resolve user-supplied paths against an allowed root and verify containment before opening, reading, or writing. |
+| **No hardcoded credentials** | Never write API keys, passwords, tokens, private keys, or connection strings into source. Read from environment or a secrets manager. |
+| **Catch narrowly, re-raise broadly-caught** | Catch the specific exception/error type. If you must catch broadly at a boundary, log with full context and re-raise. Never silently swallow. |
+| **Never silence cancellation** | If the language has cooperative cancellation (`asyncio.CancelledError`, `context.Canceled`, `AbortSignal`, etc.), propagate it — never swallow. |
+| **No unsafe redirects** | Never put user-controlled values into `Location`, `HX-Redirect`, or any redirect header without same-origin or allow-list enforcement. |
+| **No internal-error echo** | HTTP/RPC responses never include stack traces, internal paths, or upstream credentials. |
+| **Suppressions need a reason** | Every linter/type-checker suppression (`# noqa`, `# type: ignore`, `// eslint-disable`, `//nolint`, `@ts-ignore`, etc.) requires a same-line reason. |
+| **Logger, not stdout** | Production code paths use the project's logger, not `print` / `console.log` / `fmt.Println`. |
+| **Observability for LLM calls** | LLM invocations must log inputs, outputs, and tool calls. (See `panels/ai-llm.md` for depth.) |
+
+### Per-language addenda
+
+At the start of work, identify the languages in scope from file extensions or project markers. For each language present, also read its rules file:
+
+| Scope marker                       | Load                            |
+|------------------------------------|---------------------------------|
+| `*.py` / `pyproject.toml`          | `.claude/rules/python.md`       |
+| `*.js` / `*.jsx`                   | `.claude/rules/javascript.md`   |
+| `*.ts` / `*.tsx` / `tsconfig.json` | `.claude/rules/typescript.md`   |
+| `*.go` / `go.mod`                  | `.claude/rules/go.md`           |
+| `*.rs` / `Cargo.toml`              | `.claude/rules/rust.md`         |
+
+If a hook blocks a write because of one of these rules, fix the shape — do not add a suppression comment to silence it.
+
+---
+
 ## Review Tiers
 
 - **Must-fix**: blocks merge — always resolved before checkpoint 2

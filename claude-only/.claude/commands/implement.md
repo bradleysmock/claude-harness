@@ -1,4 +1,7 @@
-Autonomous TDD implementation in a worktree, followed by a critic/review loop. Stops at checkpoint 2 for lead approval to merge.
+Autonomous TDD implementation in a worktree, followed by gate checks and a critic/review loop. Stops at checkpoint 2 for lead approval to merge.
+
+If `.tickets/_learnings.md` exists, load it via @.tickets/_learnings.md.
+If `.tickets/_conventions.md` exists, load it via @.tickets/_conventions.md.
 
 ## Ticket Resolution
 
@@ -57,7 +60,7 @@ Repeat A → B → C for each requirement.
 
 ---
 
-## Critic/Review Loop
+## Gate / Critic / Review Loop
 
 When all requirements have passing tests:
 
@@ -72,52 +75,36 @@ When all requirements have passing tests:
 
 3. Update `status.md` to `status: review-ready`.
 
-4. Verify that all artifact files and the implementation exist and are non-empty before spawning the critic:
+4. **Run `/gate XXXX`** to execute lint, type-check, SAST, and the full pytest suite against the worktree. Results are written to `.tickets/XXXX-<slug>/gate-findings.md`. Address any failures, commit fixes, and re-run `/gate XXXX` until the report is clean. The critic should not see issues the gates can already catch.
+
+5. UI smoke (conditional). If `git -C .worktrees/XXXX-<slug> diff --name-only main | grep -E 'templates/|routes/|static/'` is non-empty, start the dev server in the worktree, exercise the changed flow end-to-end in a browser, and capture a one-paragraph observation (URL hit, expected response, any errors) for the Checkpoint 2 summary. If you cannot run a browser, say so explicitly — do not silently skip.
+
+6. Verify that all artifact files and the implementation exist and are non-empty before spawning the critic:
    - `.tickets/XXXX-<slug>/problem.md`
    - `.tickets/XXXX-<slug>/requirements.md`
    - `.tickets/XXXX-<slug>/solution.md`
+   - `.tickets/XXXX-<slug>/gate-findings.md`
    - Source and test files in `.worktrees/XXXX-<slug>/`
 
-5. Spawn a **critic agent** (isolated full Agent invocation) with this brief:
+7. Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
 
-   > You are a senior engineer conducting a code review. You are **read-only** — do not create, modify, or delete any files.
+   > Phase: **code**
+   > Ticket: **XXXX-<slug>**
+   > Round: **1** (max 2)
    >
-   > ## Step 1: Determine and load active panels
-   >
-   > Examine the files in `.worktrees/XXXX-<slug>/`. Always read `.claude/panels/core.md`. Then load additional panels based on what's in scope:
-   > - `*.py` files or test files → `.claude/panels/python.md`
-   > - Route handlers → `.claude/panels/http-api.md`
-   > - Templates or static assets → `.claude/panels/ui.md`
-   > - LLM client code → `.claude/panels/ai-llm.md`
-   >
-   > Announce which panels are active.
-   >
-   > ## Step 2: Read all files
-   >
-   > - `.tickets/XXXX-<slug>/problem.md`
-   > - `.tickets/XXXX-<slug>/requirements.md`
-   > - `.tickets/XXXX-<slug>/solution.md`
-   > - All source and test files in `.worktrees/XXXX-<slug>/`
-   >
-   > ## Step 3: Produce findings
-   >
-   > Read all files before writing a single finding. Apply every dimension from the loaded panel files. Use these severity tiers:
-   > - **Must-fix** (blocks merge): correctness bugs, security vulnerabilities, requirements not covered by tests
-   > - **Should-fix** (fix now unless large effort): test quality gaps, clarity issues, unnecessary complexity
-   > - **Suggestion** (optional, future): architectural improvements, nice-to-haves
-   >
-   > Include file paths and line numbers for all findings. Return findings as structured text.
+   > Follow `@.claude/critic-brief.md`. Read `.tickets/XXXX-<slug>/gate-findings.md` before reviewing — do not re-flag what the gates already covered. Focus on dimensions gates cannot cover: abstraction, naming, domain modeling, McGraw design-level flaws, panel-specific issues. Read all source and test files in `.worktrees/XXXX-<slug>/` before producing any finding.
 
-6. For each finding from the critic:
+8. For each finding from the critic:
    - **Must-fix**: fix it, re-run the full test suite, confirm passing.
    - **Should-fix**: fix it if the effort is contained. If it is a large effort, open a new ticket using the standard NEXT_TICKET lock mechanism in `.tickets/`, and note it as deferred.
    - **Suggestion**: log it in the checkpoint 2 summary only — do not act on it.
 
-7. If any fixes were made, commit again:
+9. If any fixes were made, commit again, then re-run `/gate XXXX` to confirm gates still pass:
    ```
    git -C .worktrees/XXXX-<slug> add .
    git -C .worktrees/XXXX-<slug> commit -m "fix: address review findings"
    ```
+   If the critic produced any Must-fix items in Round 1, spawn a second critic round (`Round: 2`) to review the fixes. **Maximum 2 rounds.**
 
 ---
 

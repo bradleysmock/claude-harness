@@ -1,5 +1,8 @@
 Entry point for new work. Runs the full pre-implementation pipeline autonomously and stops at checkpoint 1 for lead approval.
 
+If `.tickets/_learnings.md` exists, load it via @.tickets/_learnings.md as context — past must-fix patterns inform this round.
+If `.tickets/_conventions.md` exists, load it via @.tickets/_conventions.md as context — project conventions to respect.
+
 ---
 
 ## Phase 0 — Clarity Check
@@ -179,44 +182,33 @@ Before spawning the critic, verify that all three artifact files exist and are n
 
 If any file is missing or empty, fix the write before proceeding.
 
-Spawn a **critic agent** (isolated full Agent invocation) with this brief:
+Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
 
-> You are a senior engineer reviewing a proposed solution before implementation begins. You are **read-only** — do not create, modify, or delete any files.
+> Phase: **design**
+> Ticket: **XXXX-<slug>**
+> Round: **1** (max 2)
 >
-> ## Step 1: Load expert panels
->
-> Always read `.claude/panels/core.md`. Then read `solution.md` to identify the tech stack and scope, and load additional panels for any that apply:
-> - Solution involves Python → `.claude/panels/python.md`
-> - Solution involves HTTP routes or HTMX → `.claude/panels/http-api.md`
-> - Solution involves templates or frontend → `.claude/panels/ui.md`
-> - Solution involves LLM integration → `.claude/panels/ai-llm.md`
->
-> ## Step 2: Read ticket artifacts
+> Follow `@.claude/critic-brief.md`. The artifact files to review are:
 >
 > - `.tickets/XXXX-<slug>/problem.md`
 > - `.tickets/XXXX-<slug>/requirements.md`
 > - `.tickets/XXXX-<slug>/solution.md`
 >
-> ## Step 3: Challenge the solution
+> You are reviewing documents, not code — apply expert lenses at the design level. Add these design-specific evaluations on top of the standard brief:
 >
-> You are reviewing documents, not code — apply expert lenses at the design level. For each loaded panel, apply the experts' positions to the proposed approach, components, tech choices, and test plan.
->
-> Evaluate:
 > 1. **Requirements coverage** — does the solution address every FR and success criterion? Are acceptance criteria testable as designed?
-> 2. **Test plan gaps** — what scenarios are missing that the loaded panels' experts would flag?
-> 3. **Tech choices** — are there better-fit alternatives given the constraints? Apply relevant expert positions.
-> 4. **Design quality** — apply Core panel experts to the proposed abstractions, decomposition, and domain modeling.
-> 5. **Security design** — apply McGraw's lens: are trust boundaries correct? Does the design fail closed?
-> 6. **Implementation order risks** — dependencies or sequencing that could cause rework.
->
-> Be specific. Reference requirement numbers and solution sections. Use these severity tiers:
-> - **Must-fix**: blocks implementation — requirements gap, security design flaw, fundamental approach problem
-> - **Should-fix**: significant improvement needed — test plan gap, poor tech choice, design quality issue
-> - **Suggestion**: worth noting but not blocking
->
-> Don't praise — only flag problems worth fixing. Return findings as structured text.
+> 2. **Test plan gaps** — what scenarios would the loaded panels' experts flag as missing?
+> 3. **Tech choices** — are there better-fit alternatives given the constraints?
+> 4. **Security design** — apply McGraw: are trust boundaries correct? Does the design fail closed?
+> 5. **Implementation order risks** — dependencies or sequencing that could cause rework.
 
-Revise `solution.md` based on the critic's findings. If significant issues were raised, verify the revised file is fully written, then spawn a second critic round. **Maximum 2 rounds.**
+Revise `solution.md` based on the critic's findings. If significant issues were raised, verify the revised file is fully written, then spawn a second critic round with `Round: 2`. **Maximum 2 rounds.**
+
+---
+
+## Phase 6 — Spec Score Check
+
+Before presenting Checkpoint 1, run `/score-spec XXXX`. If the verdict is BLOCK, include the failed checks in the checkpoint summary under "Spec issues" and flag that the lead should reject or request rework. If WARN, list the warnings but proceed.
 
 ---
 

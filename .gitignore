@@ -13,3 +13,7 @@
 # Analysis output — generated artefacts at project root (not the command template)
 /CRITIQUE.md
 /pipeline/
+
+# Python bytecode from hook scripts
+__pycache__/
+*.pyc

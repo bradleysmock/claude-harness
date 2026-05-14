@@ -54,6 +54,18 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 8. **Update ticket status.**
    Set `status.md` to `status: done` and update the `updated` date.
 
+8a. **Append must-fix items to learnings memory.**
+
+    If `.tickets/XXXX-<slug>/` contains a record of must-fix items the critic caught during `/implement` (look in the Checkpoint 2 summary or in commits with `fix: address review findings`), append one line per item to `.tickets/_learnings.md`:
+
+    ```
+    YYYY-MM-DD | XXXX | <dimension> | <one-line pattern>
+    ```
+
+    Create `.tickets/_learnings.md` if it doesn't exist. If the file exceeds 200 lines after appending, drop the oldest lines back down to 200. This file is loaded as context by future `/problem` and `/implement` runs.
+
+    If there were no must-fix items, skip this step.
+
 9a. **Rebase in-flight worktrees onto the updated main.**
 
     Scan `.tickets/` for every ticket whose `status` is not `done` and whose ticket number is not XXXX (the ticket just merged). For each:
