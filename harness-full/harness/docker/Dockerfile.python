@@ -1,0 +1,14 @@
+FROM python:3.12-slim
+
+# Install gate tools
+RUN pip install --no-cache-dir \
+    mypy==1.8.0 \
+    ruff==0.3.0 \
+    bandit==1.7.0 \
+    pytest==8.0.0 \
+    pydantic==2.0.0
+
+# Create non-root user for execution
+RUN useradd -m -u 1000 harness
+USER harness
+WORKDIR /work

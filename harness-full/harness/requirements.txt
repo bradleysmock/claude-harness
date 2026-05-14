@@ -1,0 +1,12 @@
+# Core
+anthropic>=0.40.0
+pydantic>=2.0.0
+
+# Gate tools — Python adapter
+mypy>=1.8.0
+ruff>=0.3.0
+bandit>=1.7.0
+pytest>=8.0.0
+
+# Optional: semantic chunking (falls back to regex without this)
+# tree-sitter-languages>=1.10.0
