@@ -1,94 +1,64 @@
-# Review
+Conduct a code review for a ticket. Manual path — the automated `/implement` flow runs review via a critic agent. When run manually, findings are reported directly without a critic loop.
 
-Launch a fresh review context to adversarially evaluate the implementation against the design.
+## Ticket Resolution
 
-## Instructions
+If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/` for tickets with `status: review-ready`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
 
-### Step 1: Verify Build is Complete
+## Steps
 
-Read `.claude/state/state.json`. If `phase` is not `build` or `phase_status` is not `pass`, stop and run `/build` first.
+1. Read `problem.md`, `requirements.md`, and `solution.md` as the review baseline.
 
-### Step 2: Launch Fresh Review Context
+2. Read all implementation code and tests in the worktree (`../claude-dev-ticket-XXXX/`).
 
-The review runs in a separate context with no implementation history — this eliminates anchoring bias.
+3. Evaluate the implementation across these dimensions:
 
-**Option A — Subagent (faster):**
+   **Requirements coverage**
+   - Does each functional requirement have a corresponding test and passing implementation?
+   - Are all acceptance criteria met?
 
-Spawn a review subagent with the following context and instructions:
+   **Test quality**
+   - Are tests testing behavior, not implementation details?
+   - Are edge cases and failure modes covered?
+   - Are tests isolated and deterministic?
+   - Is coverage meaningful (not just line coverage theater)?
 
-> You are conducting an adversarial code review. You have no prior knowledge of implementation decisions. Your job is to find problems, not validate choices.
->
-> Read these files:
-> - `pipeline/design.md` — the approved design (source of truth)
-> - All changed files in `src/` and `tests/`
-> - Test results (run `bash .claude/hooks/run-tests.sh` if not available)
->
-> Evaluate against seven dimensions:
-> 1. **Correctness** — does it satisfy every acceptance criterion? unhandled inputs? off-by-one errors?
-> 2. **Robustness** — input validation at boundaries? all failures explicit? no null dereferences? resource cleanup?
-> 3. **Security** — access control? mass assignment? insecure defaults? error info leakage?
-> 4. **Performance** — O(n²) operations? N+1 queries? synchronous blocking? unbounded loops?
-> 5. **Maintainability** — single responsibility? self-documenting? duplication? magic numbers?
-> 6. **Test quality** — tests verify behavior, not implementation? mocks at boundaries only? deterministic?
-> 7. **UI consistency** — *only when the diff touches `app/templates/**` or class strings in `app/static/js/**`.* Read `.claude/docs/ui-style-guide.md` first. Verify: (a) USWDS components carry only `.usa-*` classes — no Tailwind utilities mixed onto `usa-button`, `usa-input`, `usa-tag`, `usa-alert`, `usa-modal`, `usa-accordion`, etc.; (b) no USWDS utility classes in our templates (`margin-y-*`, `padding-*`, `width-tablet-*`, `display-flex`, `flex-align-*`, `font-sans-*`, `text-bold`, `radius-*`, USWDS `text-primary` / `bg-base-*` utility classes — Tailwind equivalents exist via `tailwind.config.js`); (c) no inline `style="..."` attributes; (d) no Tailwind clones of existing USWDS components (custom cards that duplicate `usa-summary-box`, `usa-alert`, `usa-tag`, etc.); (e) any USWDS component delivered via HTMX swap that DOM-transforms (combo-box, file-input, date-picker, time-picker, character-counter) has a corresponding re-init branch in `app/static/js/htmx-uswds-bridge.js`. Read the output of `.claude/hooks/analyze/ui-consistency.sh` (in the build's analysis report) — each warning line names a file:line and a violation; cite them as findings.
->
-> Produce `pipeline/review-report.md` with:
-> - A finding table (severity: CRITICAL / HIGH / MEDIUM / LOW)
-> - For each CRITICAL or HIGH finding: file, line, what's wrong, why it matters, suggested fix
-> - A recommendation: APPROVE / APPROVE_WITH_CHANGES / REJECT
->
-> CRITICAL findings block shipping. HIGH findings require acknowledgment. MEDIUM/LOW are advisory.
+   **Security**
+   - Are there injection vulnerabilities (SQL, command, template)?
+   - Is user input validated at boundaries?
+   - Are secrets handled safely (not hardcoded, not logged)?
+   - Are dependencies pinned or from trusted sources?
 
-**Option B — Fresh session:**
+   **Correctness**
+   - Are there off-by-one errors, race conditions, or unhandled nulls?
+   - Are errors surfaced and handled appropriately?
 
-Open a new Claude Code session in this project directory. Paste the review instructions above as the first message.
+   **Clarity and maintainability**
+   - Is the code understandable without excessive comments?
+   - Are names accurate and descriptive?
+   - Is there dead code or unnecessary complexity?
 
-### Step 3: Resolve Findings
+   **Alignment with solution**
+   - Does the implementation match the agreed architecture and tech choices?
+   - Were any significant deviations made? If so, are they justified?
 
-- **CRITICAL**: must be fixed before `/ship`
-- **HIGH**: must be acknowledged; fix or document accepted risk
-- **MEDIUM / LOW**: advisory; address at discretion
+4. Present structured findings using these tiers:
 
-After resolving CRITICAL/HIGH findings, re-run `bash .claude/hooks/analyze/run-all.sh` to confirm fixes don't introduce new issues.
+   **Must-fix** (blocks merge)
+   - <item>: <file path:line and description>
 
-### Step 4: Update State
+   **Should-fix** (fix now unless large effort — if large, open a ticket)
+   - <item>: <file path:line and description>
 
-On approval:
-```bash
-python3 - << 'PYEOF'
-import json
-from datetime import datetime, timezone
+   **Suggestion** (optional, future consideration — not actioned)
+   - <item>: <brief note>
 
-state_file = '.claude/state/state.json'
-with open(state_file) as f:
-    state = json.load(f)
-state['phase'] = 'review'
-state['phase_status'] = 'pass'
-state['last_checkpoint'] = datetime.now(timezone.utc).isoformat()
-with open(state_file, 'w') as f:
-    json.dump(state, f, indent=2)
-print('State updated: review/pass')
-PYEOF
-```
+   Omit a tier if it has no items.
 
-On escalation (CRITICAL findings unresolved):
-```bash
-python3 - << 'PYEOF'
-import json
-from datetime import datetime, timezone
+5. **If approved** (no must-fix items):
+   - Update `status.md` to `status: review-ready`
+   - Tell the lead the ticket is approved and they can run `/merge XXXX`.
 
-state_file = '.claude/state/state.json'
-with open(state_file) as f:
-    state = json.load(f)
-state['phase'] = 'review'
-state['phase_status'] = 'escalated'
-state['last_checkpoint'] = datetime.now(timezone.utc).isoformat()
-with open(state_file, 'w') as f:
-    json.dump(state, f, indent=2)
-print('State updated: review/escalated — resolve CRITICAL findings before /ship')
-PYEOF
-```
-
-### Step 5: Proceed to Critique
-
-Once state is `review/pass`, run `/critique`.
+6. **If changes required** (must-fix items exist):
+   - Update `status.md` to `status: changes-requested`
+   - Note which items need to be addressed
+   - Lead can invoke `/implement XXXX` to continue work in the existing worktree

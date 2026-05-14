@@ -1,30 +1,80 @@
 # claude-harness
 
-A reusable Claude Code configuration harness: hooks, commands, analysis scripts, and templates for a structured TDD pipeline.
+A Claude Code configuration harness for a structured, two-checkpoint SDLC pipeline: slash commands, expert review panels, and a working agreement that keeps Claude autonomous between human decisions.
 
 ## What's included
 
-- **6-stage pipeline**: Design → Build → Analyze → Review → Critique → Ship
-- **Pre/post hooks**: safety filter before Bash, gate checks after every file write
-- **11 analysis scripts**: syntax, types, secrets, injection, dependencies, SAST, coverage, complexity, style, and UI consistency
-- **Slash commands**: `/design`, `/build`, `/review`, `/critique`, `/ship`, `/task-status`
-- **Templates**: design doc, ADR, review report, spec
+- **Working agreement** (`CLAUDE.md`): roles, workflow, artifact constraints, TDD rules, and communication norms
+- **8 slash commands**: the full pipeline from problem statement to merged branch
+- **6 expert review panels**: loaded dynamically based on file scope — Core, Python, HTTP/API, UI, AI/LLM, Secondary
 
 ## Setup
 
-Copy the `.claude/` directory into your project root, or use it as a Claude Code plugin reference.
+Copy the `.claude/` directory and `CLAUDE.md` into your project root.
 
 ```bash
-# Option A — copy into project
 cp -r .claude /path/to/your/project/
-
-# Option B — reference in settings.json as a plugin (Claude Code plugin format)
+cp CLAUDE.md /path/to/your/project/
 ```
 
-Commit `.claude/` to your project repository. The files in `.claude/state/` are runtime-only and gitignored.
+Commit both to your repository. The `.claude/state/` directory is runtime-only and gitignored.
 
-See `.claude/docs/getting-started.md` for full setup instructions.
+## Workflow
 
-## Customising post-write gates
+Work runs autonomously between two human checkpoints.
 
-`hooks/post-write.sh` is pre-configured for a Python/FastAPI + Jinja project using `uv`. Adjust the path patterns and test runner for your stack. See `.claude/docs/configuration-reference.md` for all configurable environment variables.
+```
+/problem  →  [autonomous: problem → requirements → solution → critic loop]
+                                                                    ↓
+                                                       CHECKPOINT 1: approve to implement
+                                                                    ↓ approved
+/implement  →  [autonomous: worktree → TDD → critic/review loop]
+                                                          ↓
+                                             CHECKPOINT 2: approve to merge
+                                                          ↓ approved
+/merge
+```
+
+## Slash commands
+
+| Command | Purpose |
+|---------|---------|
+| `/problem` | Entry point: clarity check → problem → requirements → solution → critic loop → Checkpoint 1 |
+| `/implement` | TDD implementation in a worktree, critic/review loop, Checkpoint 2 |
+| `/merge` | Merge approved branch into main, remove worktree, rebase in-flight branches |
+| `/requirements` | Manual requirements pass (escape hatch if `/problem` was not used) |
+| `/solution` | Manual solution pass with lead discussion before writing |
+| `/refine` | Iterate on an existing solution before implementation |
+| `/review` | Manual code review — reports findings directly without a critic loop |
+| `/critique` | Expert panel code review — loads panels based on file scope, produces a structured report |
+
+## Expert panels
+
+Panels are loaded on demand by `/critique` and by the critic agents in `/problem` and `/implement`. Only the panels relevant to the files in scope are read.
+
+| Panel | Loaded when | Experts |
+|-------|-------------|---------|
+| Core | Always | Martin, Ousterhout, Fowler, Beck, McGraw, Evans |
+| Python | `*.py` files in scope | Hettinger, Beazley |
+| HTTP/API | Route handlers in scope | Gross, Nottingham |
+| UI | Templates or static assets in scope | Keith, Pickering, Wathan, Frost |
+| AI/LLM | LLM client code in scope | Willison |
+| Secondary | On demand (primary panel impasse only) | Ramalho, Soueidan |
+
+## Ticket tracking
+
+All work is tracked under `.tickets/`. Ticket numbers are assigned atomically via a lock file and a `NEXT_TICKET` counter.
+
+```
+.tickets/
+  NEXT_TICKET            # next available number
+  XXXX-<slug>/
+    problem.md           # 40-line hard limit
+    requirements.md      # 60-line hard limit
+    solution.md          # 80-line hard limit
+    status.md            # current stage + metadata
+```
+
+## Worktrees
+
+Implementation happens in a git worktree at `.worktrees/XXXX-<slug>` on branch `ticket/XXXX-<slug>`. The `.worktrees/` directory is gitignored globally and never committed.
