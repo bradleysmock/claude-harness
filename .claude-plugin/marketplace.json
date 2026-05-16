@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace-manifest.json",
+  "name": "bradleysmock-plugins",
+  "description": "Claude Code plugins by Bradley Smock",
+  "owner": {
+    "name": "Bradley Smock"
+  },
+  "plugins": [
+    {
+      "name": "claude-harness",
+      "source": "./claude-plugin",
+      "description": "Structured two-checkpoint SDLC harness: slash commands, polyglot validation hooks, expert review panels, and a working agreement.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Bradley Smock"
+      },
+      "license": "MIT",
+      "keywords": ["sdlc", "tdd", "hooks", "polyglot"],
+      "category": "development"
+    }
+  ]
+}
