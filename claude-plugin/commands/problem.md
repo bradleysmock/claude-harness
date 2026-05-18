@@ -22,7 +22,7 @@ If the request is sufficiently clear, proceed without asking. Do not ask questio
 
 Ticket number assignment must be atomic to prevent two concurrent agents from claiming the same number.
 
-1. Check for a lock file at `.tickets/.ticket.lock`. If it exists, wait 2 seconds and check again. Retry up to 5 times. If still locked after 5 retries, stop and report the conflict to the lead.
+1. Check for a lock file at `.tickets/.ticket.lock`. If it exists, run `sleep 2` via a bash tool call and check again. Retry up to 5 times. If still locked after 5 retries, stop and report the conflict to the lead — a persistent lock likely means a prior session crashed; the lead must manually delete `.tickets/.ticket.lock` to recover.
 
 2. Write `.tickets/.ticket.lock` with a timestamp to claim the lock.
 

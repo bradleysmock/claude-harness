@@ -10,7 +10,7 @@ Read `.tickets/XXXX-<slug>/requirements.md` and `.tickets/XXXX-<slug>/solution.m
 
 1. **FR count** — `requirements.md` has at least 3 numbered functional requirements (lines matching `^\s*\d+\.\s`).
 2. **Imperative language** — every FR uses "must" or "shall", not "should" / "may" / "could".
-3. **Test-plan coverage** — every FR number referenced in `requirements.md` appears in `solution.md`'s Test Plan table.
+3. **Test-plan coverage** — every FR number in `requirements.md` appears as a row in `solution.md`'s Test Plan table, and every FR number in the Test Plan exists in `requirements.md` (no phantom references).
 4. **Implementation Order present** — `solution.md` has a non-empty `## Implementation Order` section with at least one ordered item.
 5. **No placeholders** — neither file contains `<TODO>`, `<placeholder>`, `<fill in>`, or `TBD`.
 6. **Acceptance criteria** — `requirements.md` has at least 2 binary acceptance criteria.

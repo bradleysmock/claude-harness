@@ -10,9 +10,7 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 
 2. Draft the solution covering: approach, components, tech choices with rationale, test plan, tradeoffs, risks, and implementation order.
 
-3. Present the proposal to the lead. Do not write `solution.md` yet — this is a discussion. Expect feedback and revise.
-
-4. Once the lead approves, write `solution.md`:
+3. Write `solution.md` directly:
 
 ```markdown
 # Solution
@@ -55,6 +53,6 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 <Ordered list of steps for /implement to follow directly.>
 ```
 
-5. Update `status.md` to `status: solution`.
+4. Update `status.md` to `status: solution`.
 
-6. Offer `/refine` if further iteration is needed, or suggest `/implement` when ready.
+5. Offer `/refine` if further iteration is needed, or suggest `/implement` when ready.

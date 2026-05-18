@@ -8,15 +8,17 @@ You are conducting a structured expert critique. Read every file in scope before
 
 Based on the files in scope, determine which panels apply. Announce the active panels before reading any code or panel files.
 
+`${CLAUDE_PLUGIN_ROOT}` is the root directory of the installed plugin. It is injected by the harness at invocation time. If it is not set, resolve it as the directory containing this command file.
+
 | Files in scope | Panel | File |
 |----------------|-------|------|
 | Any file | **Core** | `${CLAUDE_PLUGIN_ROOT}/context/panels/core.md` |
-| `app/**/*.py`, `tests/**/*.py` | **Python** | `${CLAUDE_PLUGIN_ROOT}/context/panels/python.md` |
-| `app/routes/**` | **HTTP/API** | `${CLAUDE_PLUGIN_ROOT}/context/panels/http-api.md` |
-| `app/templates/**`, `app/static/**` | **UI** | `${CLAUDE_PLUGIN_ROOT}/context/panels/ui.md` |
-| `app/clients/**` or any LLM invocation | **AI/LLM** | `${CLAUDE_PLUGIN_ROOT}/context/panels/ai-llm.md` |
+| `**/*.py`, or `pyproject.toml` / `setup.py` / `setup.cfg` / `requirements.txt` present | **Python** | `${CLAUDE_PLUGIN_ROOT}/context/panels/python.md` |
+| Files whose path contains `route`, `handler`, `controller`, `endpoint`, `view`, or `api`; or `**/*.go` with HTTP patterns; or `app/routes/**` | **HTTP/API** | `${CLAUDE_PLUGIN_ROOT}/context/panels/http-api.md` |
+| `**/*.html`, `**/*.css`, `**/*.jsx`, `**/*.tsx`, or files under `static/`, `public/`, or `templates/` | **UI** | `${CLAUDE_PLUGIN_ROOT}/context/panels/ui.md` |
+| Any file containing LLM client imports or calls (`anthropic`, `openai`, `langchain`, etc.) | **AI/LLM** | `${CLAUDE_PLUGIN_ROOT}/context/panels/ai-llm.md` |
 
-Panels are additive. A route file (`app/routes/sessions.py`) activates Core + Python + HTTP/API. A template file activates Core + UI. A service file activates Core + Python.
+Panels are additive. A route handler activates Core + Python (or Go/TS) + HTTP/API. A template file activates Core + UI. A service calling an LLM activates Core + Python + AI/LLM.
 
 ---
 

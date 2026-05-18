@@ -5,7 +5,7 @@ If `.tickets/_conventions.md` exists, load it via @.tickets/_conventions.md.
 
 ## Ticket Resolution
 
-A ticket number argument is required. If none is provided, scan `.tickets/` for tickets with `status: solution`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
+A ticket number argument is required. If none is provided, scan `.tickets/` for tickets with `status: solution` or `status: changes-requested`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
 
 ---
 
@@ -33,6 +33,12 @@ All main-repo git operations must complete before any subagent is spawned. Do no
 4. Confirm the worktree directory exists at `.worktrees/XXXX-<slug>`. If either git command failed (e.g. index lock contention), stop and report the error — do not attempt to continue with a broken worktree.
 
 5. Update `status.md` to `status: implementing`.
+
+6. Write the active-ticket sentinel so the stop hook gates only this session's worktree:
+   ```
+   echo 'XXXX-<slug>' > .tickets/.active
+   ```
+   This prevents the stop hook from running gates on other review-ready tickets that belong to a different session.
 
 ---
 
@@ -66,10 +72,10 @@ When all requirements have passing tests:
 
 1. Run the full test suite and confirm everything passes.
 
-2. Commit all work in the worktree:
+2. Commit all work in the worktree using the appropriate conventional commit type (`feat:`, `fix:`, `refactor:`, `test:`, `chore:`, etc.):
    ```
    git -C .worktrees/XXXX-<slug> add .
-   git -C .worktrees/XXXX-<slug> commit -m "feat: <short description>"
+   git -C .worktrees/XXXX-<slug> commit -m "<type>: <short description>"
    ```
    Confirm the commit succeeds and `git status` shows a clean tree before continuing.
 
@@ -102,7 +108,7 @@ When all requirements have passing tests:
 9. If any fixes were made, commit again, then re-run `/gate XXXX` to confirm gates still pass:
    ```
    git -C .worktrees/XXXX-<slug> add .
-   git -C .worktrees/XXXX-<slug> commit -m "fix: address review findings"
+   git -C .worktrees/XXXX-<slug> commit -m "fix: address critic findings"
    ```
    If the critic produced any Must-fix items in Round 1, spawn a second critic round (`Round: 2`) to review the fixes. **Maximum 2 rounds.**
 

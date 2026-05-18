@@ -6,9 +6,11 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 
 ## Steps
 
+0. **Guard against concurrent automated sessions.** Check whether `.tickets/.active` exists and contains this ticket's slug. If it does, warn the lead that an automated `/implement` session appears to be in progress for this ticket and recommend waiting for it to finish before running a manual review. Do not stop — proceed if the lead confirms.
+
 1. Read `problem.md`, `requirements.md`, and `solution.md` as the review baseline.
 
-2. Read all implementation code and tests in the worktree (`../claude-dev-ticket-XXXX/`).
+2. Derive the worktree path from `status.md`: read the `branch` field (e.g. `ticket/XXXX-<slug>`), strip the `ticket/` prefix, and resolve `.worktrees/XXXX-<slug>` relative to the project root. Read all implementation code and tests in that directory.
 
 3. Evaluate the implementation across these dimensions:
 

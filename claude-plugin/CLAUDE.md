@@ -72,6 +72,19 @@ All work is tracked as a ticket under `.tickets/`.
   updated: YYYY-MM-DD
   ```
 
+- Valid `status` values and their transitions:
+
+  | Status | Set by | Transitions to |
+  |--------|--------|----------------|
+  | `problem` | `/problem` Phase 2 | `requirements` |
+  | `requirements` | `/problem` Phase 3 / `/requirements` | `solution` |
+  | `solution` | `/problem` Phase 4 / `/solution` | `implementing` |
+  | `implementing` | `/implement` setup | `review-ready` |
+  | `review-ready` | `/implement` after critic loop | `done` (via `/merge`) or `implementing` (if gates invalidated by rebase) |
+  | `changes-requested` | `/review` when must-fix items exist | `implementing` (re-run `/implement`) |
+  | `done` | `/merge` | — (terminal) |
+  | `cancelled` | `/cancel` | — (terminal) |
+
 ---
 
 ## Worktrees
@@ -172,6 +185,44 @@ If a hook blocks a write because of one of these rules, fix the shape — do not
 
 ---
 
+## Plugin Variables
+
+Commands in this plugin reference `${CLAUDE_PLUGIN_ROOT}`, which must resolve to the root directory of the installed plugin (the directory containing `commands/`, `context/`, `hooks/`, etc.).
+
+- **In Claude Code with the harness**: the harness injects `CLAUDE_PLUGIN_ROOT` automatically via the plugin manifest.
+- **Manual / fallback**: set it in your shell before running: `export CLAUDE_PLUGIN_ROOT="$(claude plugin path claude-harness)"`. If it is unset and no shell variable is available, resolve it as the directory containing the active command file.
+
+---
+
+## Hooks
+
+This plugin ships a stop hook that runs automatically at the end of each Claude Code turn.
+
+### `hooks/stop_full_gate.py`
+
+**Trigger:** Claude Code's `stop` event (after every AI turn).
+
+**What it does:** Runs the full gate suite (lint, type-check, SAST, tests) on any worktree that is `review-ready`.
+
+**Session scoping via `.tickets/.active`:**
+- When `/implement` starts, it writes the current ticket slug to `.tickets/.active`.
+- The hook reads this file and gates **only that ticket's worktree**, preventing cross-session collisions when multiple tickets are in-flight simultaneously.
+- When `.tickets/.active` is absent (no session is running), the hook gates **all** `review-ready` worktrees.
+- `/merge` deletes `.tickets/.active` as part of cleanup (step 10).
+
+**Failure behavior:** If any gate fails, the hook exits with code 2 and prints failures to stderr. Claude Code surfaces this as a block — the session cannot complete until gates pass. The error message ends with: *"Fix the failures before presenting Checkpoint 2."*
+
+**Installation:** Register in your project's `.claude/settings.json`:
+```json
+{
+  "hooks": {
+    "stop": [{ "command": "python ${CLAUDE_PLUGIN_ROOT}/hooks/stop_full_gate.py" }]
+  }
+}
+```
+
+---
+
 ## Slash Commands
 
 | Command        | Purpose                                                                  |
@@ -184,3 +235,4 @@ If a hook blocks a write because of one of these rules, fix the shape — do not
 | `/refine`      | Manual refinement pass on an existing solution                           |
 | `/review`      | Manual review (bypasses critic loop, reports findings directly)          |
 | `/critique`    | Expert panel code review — loads panels by file scope, structured report |
+| `/cancel`      | Abandon a ticket: removes worktree, deletes branch, sets status to cancelled |

@@ -8,13 +8,15 @@ A ticket number argument is required. If none is provided, scan `.tickets/` for 
 
 Inspect the worktree root for these markers and run gates for every stack that matches. A worktree may have multiple stacks.
 
-| Marker(s) present                                  | Stack       |
-|----------------------------------------------------|-------------|
-| `pyproject.toml`, `setup.py`, `setup.cfg`, `*.py` | Python      |
-| `package.json` + `tsconfig.json` (or `*.ts`)       | TypeScript  |
-| `package.json` (without TS markers)                | JavaScript  |
-| `go.mod`                                            | Go          |
-| `Cargo.toml`                                        | Rust        |
+| Marker(s) present                                                  | Stack       |
+|--------------------------------------------------------------------|-------------|
+| `pyproject.toml`, `setup.py`, `setup.cfg`, or `requirements.txt` (at least one must be present; `*.py` files alone do not trigger this gate) | Python      |
+| `package.json` + `tsconfig.json` (or `*.ts`)                       | TypeScript  |
+| `package.json` (without TS markers)                                | JavaScript  |
+| `go.mod`                                                            | Go          |
+| `Cargo.toml`                                                        | Rust        |
+
+If only `*.py` files are present but none of the project-descriptor markers above exist, note "no Python project descriptor found — Python gate skipped" and do not run the Python gate set.
 
 ## Gates per stack
 

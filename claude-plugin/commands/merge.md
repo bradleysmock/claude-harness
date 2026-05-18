@@ -54,9 +54,9 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 8. **Update ticket status.**
    Set `status.md` to `status: done` and update the `updated` date.
 
-8a. **Append must-fix items to learnings memory.**
+9. **Append must-fix items to learnings memory.**
 
-    If `.tickets/XXXX-<slug>/` contains a record of must-fix items the critic caught during `/implement` (look in the Checkpoint 2 summary or in commits with `fix: address review findings`), append one line per item to `.tickets/_learnings.md`:
+    If `.tickets/XXXX-<slug>/` contains a record of must-fix items the critic caught during `/implement` (look in the Checkpoint 2 summary or in commits with `fix: address critic findings`), append one line per item to `.tickets/_learnings.md`:
 
     ```
     YYYY-MM-DD | XXXX | <dimension> | <one-line pattern>
@@ -66,33 +66,36 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 
     If there were no must-fix items, skip this step.
 
-9a. **Rebase in-flight worktrees onto the updated main.**
+10. **Clear the active-ticket sentinel.**
+    Delete `.tickets/.active` if it exists: `rm -f .tickets/.active`
+
+11. **Rebase in-flight worktrees onto the updated main.**
 
     Scan `.tickets/` for every ticket whose `status` is not `done` and whose ticket number is not XXXX (the ticket just merged). For each:
 
     1. Read its `status.md` to get `branch` (e.g. `ticket/YYYY-<slug>`).
-    2. If `branch` is empty or stripping the `ticket/` prefix yields an empty slug, skip the entry silently (guards against malformed `status.md` files that could otherwise cause a rebase to run against the main repo, violating NFR-2).
+    2. If `branch` is empty or stripping the `ticket/` prefix yields an empty slug, skip the entry silently (guards against malformed `status.md` files that could otherwise cause a rebase to run against the main repo).
     3. Derive the worktree path: strip the `ticket/` prefix → `.worktrees/YYYY-<slug>`.
-    4. If the directory does not exist, skip it silently (FR-6).
+    4. If the directory does not exist, skip it silently.
     5. Check for a mid-rebase state using `git -C <worktree-path> rev-parse --git-dir` to locate the real gitdir, then test whether `<gitdir>/rebase-merge/` exists or `<gitdir>/REBASE_HEAD` exists.
        - If mid-rebase: record a warning — "YYYY (branch): already in a conflicted/mid-rebase state — skipped. To abort: `git -C <worktree-path> rebase --abort`" — and continue to the next ticket.
     6. Attempt: `git -C <worktree-path> rebase main`
-       - **Success**: record "YYYY (branch): rebased OK".
+       - **Success**: record "YYYY (branch): rebased OK". If the ticket's status was `review-ready`, downgrade it to `implementing` and record an additional warning: "gates invalidated by rebase — run `/gate YYYY` before merging."
        - **Failure**: run `git -C <worktree-path> rebase --abort` to leave the worktree clean, then record:
          ```
          YYYY (branch): REBASE FAILED — resolve conflicts manually
            Abort:  git -C <worktree-path> rebase --abort
            Retry:  git -C <worktree-path> rebase main
          ```
-       - Always continue to the next ticket regardless of outcome (NFR-1).
+       - Always continue to the next ticket regardless of outcome.
 
-    If no in-flight worktrees were found or all were skipped, produce no output for this step (FR-7).
+    If no in-flight worktrees were found or all were skipped, produce no output for this step.
 
-9. **Report completion.**
-   Summarize what was done. Note any warnings from earlier steps.
+12. **Report completion.**
+    Summarize what was done. Note any warnings from earlier steps.
 
-   If step 9a produced any rebase results, append a **Worktree rebase summary** section:
-   ```
-   ## Worktree rebase summary
-   <one line per in-flight worktree: "YYYY (branch): rebased OK" or failure/warning text>
-   ```
+    If step 11 produced any rebase results, append a **Worktree rebase summary** section:
+    ```
+    ## Worktree rebase summary
+    <one line per in-flight worktree: "YYYY (branch): rebased OK" or failure/warning text>
+    ```

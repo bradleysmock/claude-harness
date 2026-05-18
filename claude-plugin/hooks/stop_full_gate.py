@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Stop hook: full gate suite on any worktree in 'review-ready' state.
+"""Stop hook: full gate suite on review-ready worktrees.
+
+Session-bound: if `.tickets/.active` exists, gates only that ticket's worktree
+(avoids cross-session collisions when multiple tickets are in-flight). If no
+`.active` file exists, gates ALL review-ready worktrees.
 
 Polyglot — detects stacks present in the worktree by project-root markers and
 runs the corresponding gate set. Multiple stacks per worktree are supported;
@@ -27,22 +31,53 @@ class TicketContext:
     worktree_dir: Path
 
 
-def discover_review_ready_ticket(project_root: Path) -> TicketContext | None:
+def read_active_slug(tickets_root: Path) -> str | None:
+    active_file = tickets_root / ".active"
+    if not active_file.is_file():
+        return None
+    slug = active_file.read_text(encoding="utf-8", errors="replace").strip()
+    return slug if slug else None
+
+
+def discover_tickets_to_gate(project_root: Path) -> list[TicketContext]:
+    """Return the ticket(s) to gate this turn.
+
+    If .tickets/.active names a slug, return only that ticket (if review-ready).
+    Otherwise return every review-ready ticket that has a matching worktree.
+    """
     tickets_root = project_root / ".tickets"
     worktrees_root = project_root / ".worktrees"
     if not tickets_root.is_dir() or not worktrees_root.is_dir():
-        return None
+        return []
 
-    for status_file in tickets_root.glob("*/status.md"):
+    active_slug = read_active_slug(tickets_root)
+
+    if active_slug is not None:
+        ticket_dir = tickets_root / active_slug
+        if not ticket_dir.is_dir():
+            return []
+        status_file = ticket_dir / "status.md"
+        if not status_file.is_file():
+            return []
+        text = status_file.read_text(encoding="utf-8", errors="replace")
+        if "status: review-ready" not in text:
+            return []
+        worktree_dir = worktrees_root / active_slug
+        if not worktree_dir.is_dir():
+            return []
+        return [TicketContext(ticket_dir=ticket_dir, worktree_dir=worktree_dir)]
+
+    # No active session file: gate all review-ready worktrees.
+    results: list[TicketContext] = []
+    for status_file in sorted(tickets_root.glob("*/status.md")):
         text = status_file.read_text(encoding="utf-8", errors="replace")
         if "status: review-ready" not in text:
             continue
         ticket_slug = status_file.parent.name
         worktree_dir = worktrees_root / ticket_slug
         if worktree_dir.is_dir():
-            return TicketContext(ticket_dir=status_file.parent, worktree_dir=worktree_dir)
-
-    return None
+            results.append(TicketContext(ticket_dir=status_file.parent, worktree_dir=worktree_dir))
+    return results
 
 
 def detect_stacks(worktree_dir: Path) -> list[str]:
@@ -150,8 +185,49 @@ def gates_javascript_typescript(worktree_dir: Path) -> list[str]:
     return failures
 
 
+def check_migration_conflicts(worktree_dir: Path) -> list[str]:
+    """Detect duplicate numeric prefixes in migrations/. Fast, no compiler needed.
+
+    .up.sql and .down.sql are two halves of the same migration — strip the
+    direction suffix before comparing so they don't false-positive against each
+    other. A real conflict is two different slugs sharing the same number.
+    """
+    migrations_dir = worktree_dir / "migrations"
+    if not migrations_dir.is_dir():
+        return []
+    seen: dict[str, str] = {}  # prefix → canonical name (no direction suffix)
+    conflicts: list[str] = []
+    for f in sorted(migrations_dir.glob("*.sql")):
+        name = f.name
+        for suffix in (".up.sql", ".down.sql"):
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+        parts = name.split("_", 1)
+        if len(parts) < 2:
+            continue
+        prefix = parts[0]
+        if prefix in seen:
+            if seen[prefix] != name:
+                entry = f"  {seen[prefix]}  ←→  {name}"
+                if entry not in conflicts:
+                    conflicts.append(entry)
+        else:
+            seen[prefix] = name
+    if not conflicts:
+        return []
+    return ["migration number conflicts (renumber before merging):\n" + "\n".join(conflicts)]
+
+
 def gates_go(worktree_dir: Path) -> list[str]:
     failures: list[str] = []
+
+    # Fast pre-check: migration conflicts break the migrator at test startup,
+    # so skip the compiler gates if any are found.
+    migration_failures = check_migration_conflicts(worktree_dir)
+    if migration_failures:
+        return migration_failures
+
     code, out = run_gate("gofmt", ["-l", "."], worktree_dir)
     if out.strip():
         failures.append(f"gofmt (unformatted files):\n{out.strip()}")
@@ -220,17 +296,26 @@ def main() -> int:
     project_root_str = payload.get("cwd") or ""
     project_root = Path(project_root_str) if project_root_str else Path.cwd()
 
-    ticket = discover_review_ready_ticket(project_root)
-    if ticket is None:
+    tickets = discover_tickets_to_gate(project_root)
+    if not tickets:
         return 0
 
-    failures = collect_failures(ticket.worktree_dir)
-    if not failures:
+    all_failures: list[tuple[str, list[str]]] = []
+    for ticket in tickets:
+        failures = collect_failures(ticket.worktree_dir)
+        if failures:
+            all_failures.append((ticket.worktree_dir.name, failures))
+
+    if not all_failures:
         return 0
+
+    sections: list[str] = []
+    for worktree_name, failures in all_failures:
+        sections.append(f"--- {worktree_name} ---\n\n" + "\n\n".join(failures))
 
     sys.stderr.write(
-        f"stop_full_gate blocked completion — gates failed on {ticket.worktree_dir.name}:\n\n"
-        + "\n\n".join(failures)
+        "stop_full_gate blocked completion — gate failures detected:\n\n"
+        + "\n\n".join(sections)
         + "\n\nFix the failures before presenting Checkpoint 2.\n"
     )
     return 2
