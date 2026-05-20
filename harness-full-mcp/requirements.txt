@@ -1,0 +1,4 @@
+# Run setup.sh instead of installing this directly.
+# setup.sh creates a local venv and installs both packages into it.
+mcp>=1.0
+harness-full  # installed as -e ../harness-full by setup.sh
