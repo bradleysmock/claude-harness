@@ -44,6 +44,39 @@ class AnthropicLLMClient:
     def repair(self, artifact: GeneratedArtifact, context: RepairContext) -> GeneratedArtifact:
         return self._call_with_retry(self._prompts.repair(artifact, context), context="repair")
 
+    def complete_json(self, system: str, user: str) -> dict:
+        """
+        Generic JSON-completion endpoint for LLM-as-judge components
+        (verifier, spec hardening, alignment gate, etc).
+
+        Uses the same retry-on-parse-failure logic as generate/repair,
+        but does not couple to the GeneratedArtifact schema.
+        Returns the parsed JSON dict.
+        """
+        last_error: Exception | None = None
+        prompt = user
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                raw = self._call_api_with_system(system, prompt)
+                cleaned = self._strip_fences(raw)
+                return json.loads(cleaned)
+            except json.JSONDecodeError as e:
+                last_error = e
+                prompt = self._append_parse_correction(prompt, str(e))
+        raise LLMOutputParseError(
+            f"Failed to parse JSON output after {self._max_retries} attempts: {last_error}"
+        ) from last_error
+
+    def _call_api_with_system(self, system: str, user_prompt: str) -> str:
+        response = self._client.messages.create(
+            model=self._model,
+            max_tokens=MAX_TOKENS,
+            temperature=self._temperature,
+            system=system,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        return response.content[0].text
+
     # ── Private ───────────────────────────────────────────────────────────────
 
     def _call_with_retry(

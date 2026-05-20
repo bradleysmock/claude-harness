@@ -343,6 +343,34 @@ def cmd_sandbox_status(args):
     print()
 
 
+def cmd_harden(args):
+    """Preview spec hardening without running generation. Useful for review."""
+    if not args:
+        print("Usage: python -m harness harden <spec-name>")
+        sys.exit(1)
+
+    spec_path = _resolve(".harness/specs", args[0], ".py")
+    config = _load_config()
+    spec = _load_object(spec_path, "spec")
+
+    from harness import build_harness
+    from harness.hardener import SpecHardener
+    from harness.llm.client import AnthropicLLMClient
+
+    llm = AnthropicLLMClient(
+        api_key=config.llm.api_key, model=config.llm.model,
+        temperature=config.llm.temperature, max_retries=config.llm.prompt_retries,
+    )
+    hardener = SpecHardener(llm_client=llm)
+    _, report = hardener.harden(spec)
+    print(report.formatted())
+
+    if report.open_ambiguities:
+        print("\nNote: open ambiguities exist. Resolve them in the spec before submitting.")
+        sys.exit(1)
+    sys.exit(0)
+
+
 # ── Utility commands ──────────────────────────────────────────────────────────
 
 def cmd_status(args):
@@ -521,6 +549,7 @@ COMMANDS = {
     "init":               cmd_init,
     "forge":              cmd_forge,
     "score":              cmd_score,
+    "harden":             cmd_harden,
     "submit":             cmd_submit,
     "review":             cmd_review,
     "finish":             cmd_finish,

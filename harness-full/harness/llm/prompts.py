@@ -21,6 +21,35 @@ Given a specification, produce a complete, correct implementation and its test s
 4. Tests must be self-contained and runnable without modification.
 5. Follow every constraint in the spec exactly. If you cannot, state it in assumptions.
 
+## Structured confidence
+You must complete a calibration of your own confidence BEFORE producing code.
+This is not optional — it is the mechanism by which uncertainty becomes visible
+to downstream verification.
+
+The fields confident_about, uncertain_about, falsification, and risk_assessment
+appear before implementation in the schema. Generate them in order. Do not
+fill them retroactively after writing the code.
+
+- confident_about: aspects you are drawing from canonical patterns you have
+  seen many times. Be specific. "Standard Flask error handler structure" is
+  useful; "the function logic" is not.
+
+- uncertain_about: aspects where you are extrapolating, guessing about API
+  behaviour, or in domain territory you have less exposure to. Default to
+  listing rather than claiming full confidence. An empty list should only
+  appear for truly canonical tasks.
+
+- falsification: ONE specific scenario that, if it fails, would prove your
+  approach is fundamentally wrong (not merely buggy). The scenario must be
+  specific enough to write a test for it. Vague falsifications like "if the
+  tests fail" do not satisfy this requirement.
+
+- risk_assessment: low / medium / high. Calibrate honestly. A high rating
+  on a novel task is more useful than a low rating that gets contradicted
+  by reality.
+
+Include at least one test that exercises your falsification scenario directly.
+
 ## Output format
 Respond with a single JSON object matching this schema exactly.
 Do not include markdown fences, preamble, or any text outside the JSON object.
@@ -70,6 +99,39 @@ Produce a complete corrected version — not a diff.
 """
 
 
+VERIFIER_REPAIR_PROMPT = """\
+## Your previous attempt was rejected by an adversarial verifier.
+
+The deterministic gates (type, lint, test) all passed. The verifier reviewed
+your implementation against the specification independently and found that
+the code does not actually satisfy the spec — it satisfies the gates but
+misses requirements.
+
+## Verifier findings
+$findings
+
+## Your previous reasoning
+$previous_reasoning
+
+## Your previous implementation
+```
+$previous_code
+```
+
+## Similar failures seen before
+$similar_failures
+
+## Instruction
+$instruction
+
+Critical: do not interpret the verifier's findings as suggestions. Each
+finding identifies a specific failure of the implementation to satisfy the
+specification. Address every finding directly.
+
+Produce a complete corrected version — not a diff.
+"""
+
+
 class PromptBuilder:
     def __init__(self):
         self._schema = json.dumps(GeneratedArtifact.model_json_schema(), indent=2)
@@ -88,6 +150,14 @@ class PromptBuilder:
         )
 
     def repair(self, artifact: GeneratedArtifact, ctx: RepairContext) -> str:
+        if ctx.source == "verifier":
+            return Template(VERIFIER_REPAIR_PROMPT).substitute(
+                findings=self._bullet(ctx.verifier_findings) or "No findings provided.",
+                previous_reasoning=artifact.reasoning,
+                previous_code=artifact.implementation,
+                similar_failures=self._bullet(ctx.similar_past_failures) or "None recorded.",
+                instruction=ctx.instruction,
+            )
         return Template(REPAIR_PROMPT).substitute(
             failed_gate=ctx.failed_gate,
             errors=self._format_errors(ctx.errors),

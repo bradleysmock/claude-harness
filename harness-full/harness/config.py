@@ -29,6 +29,55 @@ class IndexConfig:
 
 
 @dataclass
+class ConsistencyConfig:
+    """Identifier consistency check configuration."""
+    enabled: bool = True
+    # AST-based check that pinned identifiers from the hardener actually
+    # appear in the generated implementation. Catches reference drift
+    # that compiles cleanly but violates explicit naming constraints.
+
+
+@dataclass
+class AlignmentConfig:
+    """Spec-implementation alignment gate configuration."""
+    enabled: bool = True
+    threshold: float = 0.75
+    # Verdict required for acceptance:
+    #   - >= 0.85 always passes (verdict: aligned)
+    #   - threshold <= score < 0.85 passes only if verdict != misaligned
+    #   - < threshold always fails
+
+
+@dataclass
+class NoveltyConfig:
+    """Novelty-calibrated verification configuration."""
+    enabled: bool = True
+    # When True, novelty classification can extend the retry budget and
+    # trigger the human review flag on novel tasks. When False, all tasks
+    # use the baseline configuration.
+
+
+@dataclass
+class HardenerConfig:
+    """Spec hardening configuration."""
+    enabled: bool = True
+    block_on_open_ambiguities: bool = False
+    # If True, the harness halts when the hardener finds unresolvable
+    # ambiguities and requires human review. If False, generation proceeds
+    # and the ambiguities are logged for post-hoc review.
+
+
+@dataclass
+class VerifierConfig:
+    """Adversarial verifier configuration."""
+    enabled: bool = True
+    strict: bool = True              # reject if any criterion unverifiable
+    # When False, verifier only runs on first attempt (cheaper, less rigorous).
+    # When True, verifier runs every attempt that passes gates.
+    run_every_attempt: bool = True
+
+
+@dataclass
 class HarnessConfig:
     llm: LLMConfig
     index: IndexConfig
@@ -38,6 +87,11 @@ class HarnessConfig:
     log_level: Literal["DEBUG", "INFO", "WARNING"] = "INFO"
     language: str = "python"          # python | typescript | go | rust
     sandbox: "SandboxConfig | None" = None  # None = unsandboxed (native)
+    verifier: VerifierConfig = field(default_factory=VerifierConfig)
+    hardener: HardenerConfig = field(default_factory=HardenerConfig)
+    novelty: NoveltyConfig = field(default_factory=NoveltyConfig)
+    alignment: AlignmentConfig = field(default_factory=AlignmentConfig)
+    consistency: ConsistencyConfig = field(default_factory=ConsistencyConfig)
 
 
 # Import here to avoid circular; users can also import directly from harness.sandbox

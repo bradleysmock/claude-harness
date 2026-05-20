@@ -39,6 +39,10 @@ score:
 	@test -n "$(SPEC)" || (echo "Usage: make score SPEC=name"; exit 1)
 	$(PYTHON) score $(SPEC)
 
+harden:
+	@test -n "$(SPEC)" || (echo "Usage: make harden SPEC=name"; exit 1)
+	$(PYTHON) harden $(SPEC)
+
 review:
 	@test -n "$(SPEC)" || (echo "Usage: make review SPEC=name"; exit 1)
 	$(PYTHON) review $(SPEC)

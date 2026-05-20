@@ -72,6 +72,43 @@ def build_harness(config: HarnessConfig) -> InstrumentedOrchestrator:
             f"network={config.sandbox.network})"
         )
 
+    # ── Adversarial verifier (Refinement 1) ───────────────────────────────────
+    verifier = None
+    if config.verifier.enabled:
+        from .verifier import AdversarialVerifier
+        verifier = AdversarialVerifier(llm_client=llm, strict=config.verifier.strict)
+        print(f"Verifier: enabled (strict={config.verifier.strict})")
+
+    # ── Spec hardener (Refinement 2) ──────────────────────────────────────────
+    hardener = None
+    if config.hardener.enabled:
+        from .hardener import SpecHardener
+        hardener = SpecHardener(llm_client=llm)
+        print(f"Hardener: enabled (block_on_open_ambiguities={config.hardener.block_on_open_ambiguities})")
+
+    # ── Novelty classifier (Refinement 4) ─────────────────────────────────────
+    classifier = None
+    if config.novelty.enabled:
+        from .novelty import NoveltyClassifier
+        classifier = NoveltyClassifier(base_retries=config.max_retries)
+        print("Novelty classifier: enabled")
+
+    # ── Alignment gate (Refinement 5) ─────────────────────────────────────────
+    alignment_gate = None
+    if config.alignment.enabled:
+        from .alignment import AlignmentGate
+        alignment_gate = AlignmentGate(
+            llm_client=llm, threshold=config.alignment.threshold,
+        )
+        print(f"Alignment gate: enabled (threshold={config.alignment.threshold})")
+
+    # ── Identifier consistency check (Refinement 6) ───────────────────────────
+    consistency_check = None
+    if config.consistency.enabled:
+        from .consistency import IdentifierConsistencyCheck
+        consistency_check = IdentifierConsistencyCheck(language=config.language)
+        print(f"Consistency check: enabled ({config.language})")
+
     return InstrumentedOrchestrator(
         context_provider=context_provider,
         llm=llm,
@@ -80,6 +117,12 @@ def build_harness(config: HarnessConfig) -> InstrumentedOrchestrator:
         project_root=config.index.project_root,
         language=config.language,
         sandbox=config.sandbox,
+        verifier=verifier,
+        hardener=hardener,
+        novelty_classifier=classifier,
+        alignment_gate=alignment_gate,
+        consistency_check=consistency_check,
+        block_on_open_ambiguities=config.hardener.block_on_open_ambiguities,
         max_retries=config.max_retries,
         bus=bus,
     )
