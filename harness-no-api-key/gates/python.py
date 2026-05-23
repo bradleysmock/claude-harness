@@ -222,7 +222,7 @@ def _security_gate(env: ExecutionEnvironment) -> GateResult:
         result = _exec([
             sys.executable, "-m", "bandit",
             str(env.implementation_file),
-            "-f", "json", "-l", "--severity-level", "medium",
+            "-f", "json", "--severity-level", "medium",
         ], env)
     except subprocess.TimeoutExpired:
         return _timeout_error("security")

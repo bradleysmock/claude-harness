@@ -5,7 +5,10 @@ Provides mechanical tools — gates, files, memory, DAG — for Claude to use as
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import sys
+import tempfile
 import types
 from datetime import datetime, UTC
 from pathlib import Path
@@ -37,6 +40,33 @@ def _memory(project_root: str) -> SQLiteFailureMemory:
     db = _db_path(project_root)
     Path(db).parent.mkdir(parents=True, exist_ok=True)
     return SQLiteFailureMemory(db)
+
+
+def _find_artifact(run_id: str, project_root: str) -> Path | None:
+    results_dir = _harness_dir(project_root) / "results"
+    exact = results_dir / f"{run_id}.json"
+    if exact.exists():
+        return exact
+    matches = sorted(results_dir.glob(f"*{run_id}*.json"),
+                     key=lambda p: p.stat().st_mtime, reverse=True)
+    return matches[0] if matches else None
+
+
+def _apply_patch(implementation: str, diff: str) -> tuple[str, str | None]:
+    """Apply a unified diff via `patch`. Returns (patched_text, error_or_None)."""
+    tmpdir = Path(tempfile.mkdtemp(prefix="harness_patch_"))
+    try:
+        target = tmpdir / "implementation"
+        target.write_text(implementation, encoding="utf-8")
+        result = subprocess.run(
+            ["patch", "--no-backup-if-mismatch", str(target)],
+            input=diff, capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            return implementation, result.stderr.strip() or result.stdout.strip()
+        return target.read_text(encoding="utf-8"), None
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def _load_spec_module(path: Path) -> dict:
@@ -84,7 +114,13 @@ def gate_run(implementation: str, tests: str, language: str, project_root: str) 
     """
     try:
         results = run_suite_for(language, implementation, tests, project_root)
-        return json.dumps([r.to_dict() for r in results], indent=2)
+        if all(r.passed for r in results):
+            return json.dumps({
+                "passed": True,
+                "duration_ms": sum(r.duration_ms for r in results),
+            })
+        failed = next(r for r in results if not r.passed)
+        return json.dumps(failed.to_dict(), indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)})
     except Exception as e:
@@ -162,7 +198,7 @@ def artifact_save(
     """
     Save a completed run to .harness/results/<spec_id>-<timestamp>.json.
     Returns the run_id for use with artifact_load and /harness:finish.
-    outcome must be 'passed' or 'escalated'.
+    outcome: 'in_progress' | 'passed' | 'escalated'.
     """
     ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     run_id = f"{spec_id}-{ts}"
@@ -319,6 +355,58 @@ def harness_status(project_root: str) -> str:
             lines.append(f"? {f.name} [unreadable]")
 
     return "\n".join(lines)
+
+
+@mcp.tool()
+def repair_run(run_id: str, diff: str, language: str, project_root: str) -> str:
+    """
+    Apply a unified diff to the stored implementation, run gates, and update the artifact.
+
+    The implementation stays server-side — only the diff and gate results travel through
+    the context window. On full pass returns {"passed": true, "run_id": ...}.
+    On failure returns the failing gate results. On patch error returns {"error": ...,
+    "fallback": "rewrite"} so the caller can fall back to a full rewrite for this attempt.
+    """
+    artifact_file = _find_artifact(run_id, project_root)
+    if not artifact_file:
+        return json.dumps({"error": f"Artifact not found: {run_id}"})
+
+    artifact = json.loads(artifact_file.read_text())
+    patched, patch_err = _apply_patch(artifact["implementation"], diff)
+    if patch_err:
+        return json.dumps({"error": patch_err, "fallback": "rewrite"})
+
+    try:
+        results = run_suite_for(language, patched, artifact["tests"], project_root)
+    except Exception as e:
+        return json.dumps({"error": f"Gate execution failed: {e}"})
+
+    artifact["implementation"] = patched
+    artifact["attempts"] = artifact.get("attempts", 1) + 1
+    artifact["gate_results"] = [r.to_dict() for r in results]
+
+    all_passed = all(r.passed for r in results)
+    if all_passed:
+        artifact["outcome"] = "passed"
+    artifact_file.write_text(json.dumps(artifact, indent=2))
+
+    if all_passed:
+        return json.dumps({"passed": True, "run_id": run_id})
+
+    failed = next(r for r in results if not r.passed)
+    return json.dumps(failed.to_dict(), indent=2)
+
+
+@mcp.tool()
+def artifact_escalate(run_id: str, project_root: str) -> str:
+    """Mark an in-progress artifact as escalated after all repair attempts are exhausted."""
+    artifact_file = _find_artifact(run_id, project_root)
+    if not artifact_file:
+        return json.dumps({"error": f"Artifact not found: {run_id}"})
+    artifact = json.loads(artifact_file.read_text())
+    artifact["outcome"] = "escalated"
+    artifact_file.write_text(json.dumps(artifact, indent=2))
+    return "escalated"
 
 
 if __name__ == "__main__":
