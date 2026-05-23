@@ -1,0 +1,7 @@
+{
+  "name": "harness",
+  "version": "1.0.0",
+  "description": "No-API-key harness: Claude IS the orchestrator. Python provides gates, files, and memory via MCP.",
+  "author": "Bradley Smock",
+  "license": "MIT"
+}
