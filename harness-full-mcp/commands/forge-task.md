@@ -1,49 +1,31 @@
-# /forge-task
+Explore the codebase and write a multi-spec task DAG for: $ARGUMENTS
 
-Explore the codebase and produce a multi-spec task for the automated harness.
+## Decomposition — do this before writing anything
 
-You will be given a feature description. Decompose it into the minimal set of
-independently implementable specs with explicit dependencies, then write a task
-file the harness can execute as a DAG.
-
-## Decomposition protocol
-
-1. **Identify components.** What distinct units does this feature require?
-   A component is distinct if it can be implemented and tested in isolation.
-
-2. **Draw the dependency graph explicitly** before writing anything:
+1. Identify components. What distinct units does this feature require? A component is distinct if it can be implemented and tested in isolation.
+2. Draw the dependency graph before writing:
    ```
    component-a ──┐
                  ├──► component-c ──► component-d
    component-b ──┘
    ```
-
-3. **Validate independence.** A spec is truly independent if you could hand it
-   to a developer who knows nothing about the other specs and they could
-   implement it correctly. Hidden dependency = explicit depends_on.
-
-4. **Size each spec.** Each spec should produce ~50–150 lines of implementation.
-   Too large = split it. Too small = merge it.
-
-5. **Maximise parallelism.** Specs with no interdependency run concurrently.
-   Fewer layers = faster total execution.
+3. Validate independence. Could a developer implement each spec knowing nothing about the others? If not, add a `depends_on`.
+4. Size each spec. Each should produce ~50–150 lines. Too large → split. Too small → merge.
+5. Maximise parallelism. Specs with no interdependency run concurrently — fewer layers is faster.
 
 ## Dependency rules
 
-- `depends_on` lists only *direct* dependencies, not transitive ones
-- The harness resolves transitive dependencies and propagates context automatically
-- If C depends on B which depends on A:
-  - C's depends_on is `["b-spec-id"]` — not `["a-spec-id", "b-spec-id"]`
+- `depends_on` lists only direct dependencies, not transitive ones
+- The harness propagates public API from upstream specs to downstream specs automatically
 
-## Output
+## Write the task file
 
-Write `.harness/tasks/{kebab-case-feature-name}.py`:
+Write `.harness/tasks/{kebab-case-id}.py`:
 
 ```python
 # Dependency graph:
-#
 #   spec-a ──┐
-#            ├──► spec-c ──► spec-d
+#            ├──► spec-c
 #   spec-b ──┘
 
 from harness import Spec
@@ -51,7 +33,7 @@ from harness.task_models import Task, TaskSpec
 
 task = Task(
     id="feature-name",
-    description="One sentence: what feature this delivers.",
+    description="One sentence: what this delivers.",
     specs=[
         TaskSpec(
             spec=Spec(
@@ -71,12 +53,5 @@ task = Task(
 )
 ```
 
-## Quality check
-
-Before finishing:
-- Every `depends_on` references a real spec id in this task
-- No spec assumes knowledge from a spec it doesn't declare as a dependency
-- Each spec's acceptance criteria are testable without the other specs
-- Target file paths match the existing codebase structure
-
-Do not write any implementations. Only the task file.
+Then tell the user:
+  Task written to `.harness/tasks/<id>.py`. Run `/harness:task <id>` to generate code.

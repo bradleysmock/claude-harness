@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "harness-full-mcp",
+  "name": "harness",
   "version": "1.0.0",
   "description": "MCP server wrapping the harness-full LLM coding harness: spec generation, polyglot gates, failure memory, and multi-spec task orchestration.",
   "author": {

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# MCP server entry point. Creates the venv on first launch if it doesn't exist.
+set -euo pipefail
+
+PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VENV="$PLUGIN_DIR/.venv"
+
+if [[ ! -f "$VENV/bin/python" ]]; then
+    echo "harness: bootstrapping venv..." >&2
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install --quiet --upgrade pip
+    "$VENV/bin/pip" install --quiet "mcp>=1.0"
+
+    # harness-full: prefer local sibling (dev), fall back to installed package
+    HARNESS_DIR="$PLUGIN_DIR/../harness-full"
+    if [[ -f "$HARNESS_DIR/pyproject.toml" ]]; then
+        "$VENV/bin/pip" install --quiet -e "$HARNESS_DIR"
+    else
+        "$VENV/bin/pip" install --quiet harness-full 2>/dev/null \
+            || { echo "harness: cannot find harness-full package" >&2; exit 1; }
+    fi
+fi
+
+exec "$VENV/bin/python" "$PLUGIN_DIR/server.py" "$@"

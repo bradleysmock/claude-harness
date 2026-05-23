@@ -18,3 +18,9 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# MCP plugin venv — created by harness-full-mcp/setup.sh
+harness-full-mcp/.venv/
+
+# harness-full build artifacts
+harness-full/*.egg-info/

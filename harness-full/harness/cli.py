@@ -543,42 +543,8 @@ config = HarnessConfig(
 '''
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ── Score command ─────────────────────────────────────────────────────────────
 
-COMMANDS = {
-    "init":               cmd_init,
-    "forge":              cmd_forge,
-    "score":              cmd_score,
-    "harden":             cmd_harden,
-    "submit":             cmd_submit,
-    "review":             cmd_review,
-    "finish":             cmd_finish,
-    "debug":              cmd_debug,
-    "forge-task":         cmd_forge_task,
-    "task":               cmd_task,
-    "task-reset":         cmd_task_reset,
-    "checkpoint-status":  cmd_checkpoint_status,
-    "finish-task":        cmd_finish_task,
-    "debug-task":         cmd_debug_task,
-    "index-status":       cmd_index_status,
-    "index-rebuild":      cmd_index_rebuild,
-    "sandbox-build":      cmd_sandbox_build,
-    "sandbox-status":     cmd_sandbox_status,
-    "status":             cmd_status,
-    "stats":              cmd_stats,
-}
-
-def main():
-    args = sys.argv[1:]
-    if not args or args[0] not in COMMANDS:
-        print(__doc__)
-        sys.exit(0)
-    COMMANDS[args[0]](args[1:])
-
-if __name__ == "__main__":
-    main()
-
-# (appended by improvement #1)
 def cmd_score(args):
     """Score a spec or all specs in a task without submitting."""
     if not args:
@@ -613,3 +579,39 @@ def cmd_score(args):
     else:
         print(f"Not found as spec or task: {args[0]}")
         sys.exit(1)
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+COMMANDS = {
+    "init":               cmd_init,
+    "forge":              cmd_forge,
+    "score":              cmd_score,
+    "harden":             cmd_harden,
+    "submit":             cmd_submit,
+    "review":             cmd_review,
+    "finish":             cmd_finish,
+    "debug":              cmd_debug,
+    "forge-task":         cmd_forge_task,
+    "task":               cmd_task,
+    "task-reset":         cmd_task_reset,
+    "checkpoint-status":  cmd_checkpoint_status,
+    "finish-task":        cmd_finish_task,
+    "debug-task":         cmd_debug_task,
+    "index-status":       cmd_index_status,
+    "index-rebuild":      cmd_index_rebuild,
+    "sandbox-build":      cmd_sandbox_build,
+    "sandbox-status":     cmd_sandbox_status,
+    "status":             cmd_status,
+    "stats":              cmd_stats,
+}
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] not in COMMANDS:
+        print(__doc__)
+        sys.exit(0)
+    COMMANDS[args[0]](args[1:])
+
+if __name__ == "__main__":
+    main()
