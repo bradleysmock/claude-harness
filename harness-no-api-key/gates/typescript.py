@@ -7,6 +7,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from models import GateError, GateResult
 from gates import ProcessResult
@@ -164,7 +165,8 @@ def _lint_gate(env: TypeScriptEnv) -> GateResult:
         return _timeout_error("lint")
     errors = []
     try:
-        for file_result in json.loads(result.stdout or "[]"):
+        lint_results: list[Any] = json.loads(result.stdout or "[]")
+        for file_result in lint_results:
             for msg in file_result.get("messages", []):
                 sev = "error" if msg.get("severity", 1) == 2 else "warning"
                 errors.append(GateError(

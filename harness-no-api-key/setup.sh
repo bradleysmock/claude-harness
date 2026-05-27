@@ -42,5 +42,9 @@ EOF
     echo "  ✓ .mcp.json created"
 fi
 
+# ── README ────────────────────────────────────────────────────────────────────
+cp "$HARNESS_DIR/README.md" "$PROJECT_DIR/HARNESS_README.md"
+echo "  ✓ README.md → HARNESS_README.md"
+
 echo ""
 echo "Done. Open Claude Code in $PROJECT_DIR and run /harness:init"

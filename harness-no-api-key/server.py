@@ -12,6 +12,7 @@ import tempfile
 import types
 from datetime import datetime, UTC
 from pathlib import Path
+from typing import Any
 
 # Ensure this directory is on the path so local modules resolve.
 sys.path.insert(0, str(Path(__file__).parent))
@@ -69,13 +70,13 @@ def _apply_patch(implementation: str, diff: str) -> tuple[str, str | None]:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def _load_spec_module(path: Path) -> dict:
+def _load_spec_module(path: Path) -> dict[str, Any]:
     """Exec a spec file with a fake harness module injected."""
     harness_mod = types.ModuleType("harness")
     harness_mod.Spec = Spec  # type: ignore[attr-defined]
     sys.modules["harness"] = harness_mod
     try:
-        namespace: dict = {}
+        namespace: dict[str, Any] = {}
         exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), namespace)
         spec = namespace.get("spec")
         if not isinstance(spec, Spec):
@@ -92,7 +93,7 @@ def _load_task_module(path: Path) -> Task:
     harness_mod.TaskSpec = TaskSpec  # type: ignore[attr-defined]
     sys.modules["harness"] = harness_mod
     try:
-        namespace: dict = {}
+        namespace: dict[str, Any] = {}
         exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), namespace)
         task = namespace.get("task")
         if not isinstance(task, Task):
@@ -191,7 +192,7 @@ def artifact_save(
     tests: str,
     outcome: str,
     attempts: int,
-    gate_results: list[dict],
+    gate_results: list[dict[str, Any]],
     project_root: str,
     notes: str = "",
 ) -> str:
@@ -340,7 +341,7 @@ def harness_status(project_root: str) -> str:
     lines = []
     for f in files[:20]:
         try:
-            data = json.loads(f.read_text())
+            data: dict[str, Any] = json.loads(f.read_text())
             outcome = data.get("outcome", "?")
             spec_id = data.get("spec_id", "?")
             ts = data.get("timestamp", "?")[:19].replace("T", " ")
@@ -371,7 +372,7 @@ def repair_run(run_id: str, diff: str, language: str, project_root: str) -> str:
     if not artifact_file:
         return json.dumps({"error": f"Artifact not found: {run_id}"})
 
-    artifact = json.loads(artifact_file.read_text())
+    artifact: dict[str, Any] = json.loads(artifact_file.read_text())
     patched, patch_err = _apply_patch(artifact["implementation"], diff)
     if patch_err:
         return json.dumps({"error": patch_err, "fallback": "rewrite"})
@@ -403,7 +404,7 @@ def artifact_escalate(run_id: str, project_root: str) -> str:
     artifact_file = _find_artifact(run_id, project_root)
     if not artifact_file:
         return json.dumps({"error": f"Artifact not found: {run_id}"})
-    artifact = json.loads(artifact_file.read_text())
+    artifact: dict[str, Any] = json.loads(artifact_file.read_text())
     artifact["outcome"] = "escalated"
     artifact_file.write_text(json.dumps(artifact, indent=2))
     return "escalated"

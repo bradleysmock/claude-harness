@@ -9,4 +9,4 @@ Format:
 - ⚠ escalated runs — spec-id, failing gate, timestamp
 
 If there are escalated runs, remind the user: run `/harness:debug` to investigate.
-If there are passed runs awaiting write-out, remind the user: run `/harness:finish <run-id>`.
+If there are passed runs awaiting write-out, remind the user: run `/harness:deliver <run-id>`.

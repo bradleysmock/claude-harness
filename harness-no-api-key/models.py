@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -11,7 +12,7 @@ class GateError:
     code: str | None
     severity: str
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "message": self.message,
             "file": self.file,
@@ -29,7 +30,7 @@ class GateResult:
     errors: list[GateError]
     duration_ms: int
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "gate": self.gate,
             "passed": self.passed,
@@ -47,9 +48,9 @@ class Spec:
     target_file: str = ""
     reference_files: list[str] = field(default_factory=list)
     language: str = "python"
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "description": self.description,

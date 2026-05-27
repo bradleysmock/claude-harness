@@ -9,8 +9,10 @@ import json
 import math
 import re
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, UTC
+from typing import Any
 
 
 _SCHEMA = """
@@ -47,7 +49,7 @@ class BM25Index:
     K1 = 1.5
     B  = 0.75
 
-    def __init__(self, documents: list[tuple[str, list[str]]]):
+    def __init__(self, documents: list[tuple[str, list[str]]]) -> None:
         self._ids   = [d[0] for d in documents]
         self._toks  = {d[0]: d[1] for d in documents}
         self._n     = len(documents)
@@ -93,7 +95,7 @@ class BM25Index:
 
 class SQLiteFailureMemory:
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._init_db()
 
@@ -124,7 +126,7 @@ class SQLiteFailureMemory:
     ) -> list[str]:
         query_tokens = _tokenise(f"gate:{gate} {errors_text}")
         with self._connect() as conn:
-            rows = conn.execute(
+            rows: list[Any] = conn.execute(
                 """SELECT id, spec_id, gate, errors_text, tokens_json, outcome
                    FROM failure_records WHERE gate = ?
                    ORDER BY timestamp DESC LIMIT 300""",
@@ -136,9 +138,9 @@ class SQLiteFailureMemory:
         docs = [(row[0], json.loads(row[4])) for row in rows]
         idx = BM25Index(docs)
         ranked = idx.rank(query_tokens, limit=limit)
-        row_by_id = {row[0]: row for row in rows}
+        row_by_id: dict[str, Any] = {row[0]: row for row in rows}
 
-        narratives = []
+        narratives: list[str] = []
         for rid, _ in ranked:
             row = row_by_id.get(rid)
             if not row:
@@ -157,7 +159,7 @@ class SQLiteFailureMemory:
             conn.executescript(_SCHEMA)
 
     @contextmanager
-    def _connect(self):
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(self._db_path)
         try:
             yield conn

@@ -6,6 +6,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from models import GateError, GateResult
 from gates import ProcessResult
@@ -70,16 +71,16 @@ def _parse_cargo_json(stdout: str) -> list[GateError]:
         if not line:
             continue
         try:
-            obj = json.loads(line)
+            obj: dict[str, Any] = json.loads(line)
         except json.JSONDecodeError:
             continue
         if obj.get("reason") != "compiler-message":
             continue
-        msg = obj.get("message", {})
+        msg: dict[str, Any] = obj.get("message", {})
         level = msg.get("level", "")
         if level not in ("error", "warning"):
             continue
-        spans = msg.get("spans", [])
+        spans: list[Any] = msg.get("spans", [])
         primary = next((s for s in spans if s.get("is_primary")), spans[0] if spans else None)
         errors.append(GateError(
             message=msg.get("message", ""),
@@ -161,7 +162,7 @@ def _audit_gate(env: RustEnv) -> GateResult:
         return _timeout_error("audit")
     errors = []
     try:
-        report = json.loads(result.stdout)
+        report: dict[str, Any] = json.loads(result.stdout)
         for vuln in report.get("vulnerabilities", {}).get("list", []):
             adv = vuln.get("advisory", {})
             pkg = vuln.get("package", {})

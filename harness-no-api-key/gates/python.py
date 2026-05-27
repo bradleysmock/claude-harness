@@ -10,6 +10,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from models import GateError, GateResult
 from gates import ProcessResult
@@ -148,7 +149,8 @@ def _lint_gate(env: ExecutionEnvironment) -> GateResult:
     errors = []
     if result.stdout.strip():
         try:
-            for f in json.loads(result.stdout):
+            lint_results: list[Any] = json.loads(result.stdout)
+            for f in lint_results:
                 errors.append(GateError(
                     message=f["message"],
                     file=_rel(f["filename"], env),
@@ -229,7 +231,8 @@ def _security_gate(env: ExecutionEnvironment) -> GateResult:
     errors = []
     if result.stdout.strip():
         try:
-            for r in json.loads(result.stdout).get("results", []):
+            bandit_out: dict[str, Any] = json.loads(result.stdout)
+            for r in bandit_out.get("results", []):
                 errors.append(GateError(
                     message=f"{r['test_name']}: {r['issue_text']}",
                     file=_rel(r["filename"], env),
