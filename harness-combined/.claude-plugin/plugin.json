@@ -1,0 +1,14 @@
+{
+  "name": "harness-combined",
+  "version": "1.0.0",
+  "description": "Unified Claude Code harness: structured gate pipeline + SDLC workflow. No API key required.",
+  "mcp_server": {
+    "command": "python3",
+    "args": ["${CLAUDE_PLUGIN_ROOT}/server.py"]
+  },
+  "commands_dir": "${CLAUDE_PLUGIN_ROOT}/commands",
+  "hooks": "${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json",
+  "env": {
+    "CLAUDE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}"
+  }
+}
