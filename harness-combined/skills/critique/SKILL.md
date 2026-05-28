@@ -1,6 +1,11 @@
+---
+name: critique
+description: Apply domain-specialist panels to the current diff or specified files — Python idioms, HTTP/API design, UI patterns, AI/LLM security — each with a distinct mental model, not just a harder general scan. Also produces a Codebase Patterns section that looks beyond the changed files to surface systemic habits. TRIGGER when the user wants a specific expert lens applied to a change, names a domain ("security review", "Python idioms", "what would an API designer say"), or asks for panel review (e.g. "critique the auth route", "panel review of the new handler", "what's wrong with this from an API design perspective"). SKIP for ticket-scoped post-build reviews (use the review skill, which reads problem/requirements/solution as baseline), for general correctness or style checks (use /code-review), and when the user only wants lint output (use /gate).
+---
+
 # Expert Code Critique
 
-You are conducting a structured expert critique. Read every file in scope before writing a single finding. The output covers two scopes: **this change** (findings specific to the changed files) and **codebase patterns** (what this change reveals about systemic habits, good or bad, across the broader codebase).
+Conduct a structured expert critique. Read every file in scope before writing a single finding. The output covers two scopes: **this change** (findings specific to the changed files) and **codebase patterns** (what this change reveals about systemic habits across the broader codebase).
 
 ---
 
@@ -8,7 +13,7 @@ You are conducting a structured expert critique. Read every file in scope before
 
 Based on the files in scope, determine which panels apply. Announce the active panels before reading any code or panel files.
 
-`${CLAUDE_PLUGIN_ROOT}` is the root directory of the installed plugin. It is injected by the harness at invocation time. If it is not set, resolve it as the directory containing this command file.
+`${CLAUDE_PLUGIN_ROOT}` is the root of the installed plugin and is injected at invocation time. If unset, resolve it as the directory containing this skill file.
 
 | Files in scope | Panel | File |
 |----------------|-------|------|
@@ -26,7 +31,7 @@ Panels are additive. A route handler activates Core + Python (or Go/TS) + HTTP/A
 
 Read only the panel files for active panels. Core is always active. Do not read panel files for inactive panels.
 
-The Secondary panel (`${CLAUDE_PLUGIN_ROOT}/context/panels/secondary.md`) is loaded on demand — only when the primary panels reach a genuine impasse that synthesis cannot resolve.
+The Secondary panel (`${CLAUDE_PLUGIN_ROOT}/context/panels/secondary.md`) is loaded on demand — only when the primary panels reach a genuine impasse synthesis cannot resolve.
 
 ---
 
@@ -36,7 +41,7 @@ The Secondary panel (`${CLAUDE_PLUGIN_ROOT}/context/panels/secondary.md`) is loa
 $ARGUMENTS
 ```
 
-If `$ARGUMENTS` is empty, review all changed files (per `git diff --name-only`). If a specific file or glob is given, review those files. Read every file in scope before writing a single finding.
+If `$ARGUMENTS` is empty, review all changed files (`git diff --name-only`). If a specific file or glob is given, review those files. Read every file in scope before writing a single finding.
 
 ---
 
@@ -65,7 +70,7 @@ Write the critique as a structured report. Do not write anything until you have 
 ## Finding Table
 
 | ID | Severity | Dimension | Panel | Location | Finding |
-|----|----------|-----------|-------|----------|---------| 
+|----|----------|-----------|-------|----------|---------|
 | C-01 | BLOCKER/MAJOR/MINOR/OBS | [dimension] | [panel] | file:line | [one-line description] |
 
 Severity guide:

@@ -1,7 +1,9 @@
 Entry point for new work. Runs the full pre-implementation pipeline autonomously and stops at checkpoint 1 for lead approval.
 
-If `.tickets/_learnings.md` exists, load it via @.tickets/_learnings.md as context — past must-fix patterns inform this round.
-If `.tickets/_conventions.md` exists, load it via @.tickets/_conventions.md as context — project conventions to respect.
+If `.tickets/_standards.md` exists, load it via @.tickets/_standards.md as context — project engineering standards.
+If `.tickets/_learnings.md` exists, load it via @.tickets/_learnings.md as context — past must-fix patterns the lead has captured.
+
+Both files are lead-curated. The machine's separate BM25 failure trail at `.harness/memory.db` is opaque and consulted only by `memory(action="retrieve", ...)` during gate repair — do not surface its contents here.
 
 ---
 
@@ -22,9 +24,9 @@ If the request is sufficiently clear, proceed without asking. Do not ask questio
 
 Ticket number assignment must be atomic to prevent two concurrent agents from claiming the same number.
 
-1. Check for a lock file at `.tickets/.ticket.lock`. If it exists, run `sleep 2` via a bash tool call and check again. Retry up to 5 times. If still locked after 5 retries, stop and report the conflict to the lead — a persistent lock likely means a prior session crashed; the lead must manually delete `.tickets/.ticket.lock` to recover.
+1. Check for a lock file at `.tickets/.ticket.lock`. If it exists, read its contents (format: `pid:timestamp_epoch`). If the timestamp is more than 60 seconds old, or if the pid is no longer running (`kill -0 <pid>` exits non-zero), treat the lock as stale and delete it automatically before proceeding. If the lock is fresh and the pid is alive, run `sleep 2` and check again — retry up to 5 times. If still held by a live process after 5 retries, stop and report the conflict to the lead.
 
-2. Write `.tickets/.ticket.lock` with a timestamp to claim the lock.
+2. Write `.tickets/.ticket.lock` with content `$$:$(date +%s)` (current pid and epoch timestamp) to claim the lock.
 
 3. Read `.tickets/NEXT_TICKET` if it exists — this is the next available number. If the file does not exist, scan `.tickets/` for all existing ticket directories, find the highest number, and compute the next one. Start at `0001` if no tickets exist.
 
@@ -208,7 +210,7 @@ Revise `solution.md` based on the critic's findings. If significant issues were 
 
 ## Phase 6 — Spec Score Check
 
-Before presenting Checkpoint 1, run `/score-spec XXXX`. If the verdict is BLOCK, include the failed checks in the checkpoint summary under "Spec issues" and flag that the lead should reject or request rework. If WARN, list the warnings but proceed.
+Present Checkpoint 1 once the critic loop is complete.
 
 ---
 

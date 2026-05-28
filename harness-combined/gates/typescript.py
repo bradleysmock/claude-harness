@@ -24,6 +24,7 @@ _TSCONFIG = json.dumps({
         "outDir": "./dist",
         "rootDir": ".",
         "baseUrl": ".",
+        "ignoreDeprecations": "5.0",
     },
     "include": ["./*.ts"],
     "exclude": ["node_modules", "dist"],

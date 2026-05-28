@@ -31,22 +31,17 @@ All work follows the same four-stage pipeline. The design stages are skippable f
 /deliver <run-id>           → write artifact to target file
 ```
 
-In both paths, gate failures return structured `GateError` objects (`file:line:column:message`). `memory_retrieve` surfaces similar past failures before each repair attempt. In the full pipeline, code is written to an actual worktree and validated against real project context via `gate_run_on_dir`. In standalone mode, code is validated in a temp dir via `gate_run` and only written to disk by `/deliver`.
+In both paths, gate failures return structured `GateError` objects (`file:line:column:message`). `memory(action="retrieve", ...)` surfaces similar past failures before each repair attempt. In the full pipeline, code is written to an actual worktree and validated against real project context via `gate_run_on_dir`. In standalone mode, code is validated in a temp dir via `gate_run` and only written to disk by `/deliver`.
 
 ---
 
 ## Setup
 
-```bash
-bash /path/to/harness-combined/setup.sh [project-dir]
-```
+Install as a plugin — the manifest at `.claude-plugin/plugin.json` declares the MCP server and hooks, and Claude Code auto-discovers `commands/`, `skills/`, and `agents/`:
 
-This:
-1. Installs slash commands under `.claude/commands/`
-2. Registers the MCP server in `.mcp.json`
-3. Registers the three hooks in `.claude/settings.json`
-4. Copies `CLAUDE.md` to the project root (if not already present)
-5. Checks Python tool dependencies
+```
+claude /plugin install /path/to/harness-combined
+```
 
 Then open Claude Code in the project and run:
 
@@ -79,11 +74,19 @@ All three hooks import from the `gates/` module — one canonical gate implement
 
 ---
 
-## Failure memory
+## Memory contract
 
-Gate failures are recorded in `.harness/memory.db` (SQLite + BM25 keyword index). Before every repair attempt, `memory_retrieve` searches for similar past failures by error text. This is cross-session — the model accumulates a project-level library of what went wrong and how it was fixed.
+Two layers, no overlap:
 
-`_learnings.md` (in `.tickets/`) captures higher-level must-fix patterns from critic reviews in human-readable form, trimmed to 200 lines. Both layers are loaded as context at the start of relevant phases.
+| Layer | Audience | Written by | Read by |
+|---|---|---|---|
+| `.harness/memory.db` | machine only (opaque) | `memory(action="record", ...)` after each gate cycle | `memory(action="retrieve", ...)` before each repair attempt |
+| `.tickets/_learnings.md` | lead only | the lead, by hand | loaded as context at `/problem` and `/build` |
+| `.tickets/_standards.md` | lead only | the lead, by hand | loaded as context at `/problem` and `/build` |
+
+The machine maintains its own BM25-searchable failure trail in `memory.db` and consults it during repair. The lead curates `_learnings.md` (must-fix patterns) and `_standards.md` (engineering standards) by hand — the harness never writes to either. `/deliver` may *suggest* candidate learnings in its final report; the lead decides what lands in the file.
+
+`/init` creates `_standards.md` and `_learnings.md` as stubs so the harness finds the files it expects from the first session. Edit the standards file before your first `/problem`.
 
 ---
 
@@ -94,19 +97,14 @@ The harness server exposes these tools to Claude:
 | Tool | Workflow | Description |
 |------|----------|-------------|
 | `gate_run` | Spec/build | Run gates on generated code (text mode, temp dir) |
-| `gate_run_on_dir` | Ticket/SDLC | Run gates on actual worktree files (fail-fast) |
-| `gate_run_on_dir_full` | Ticket/SDLC | Run all gates on worktree files (no fail-fast, for gate-findings.md) |
+| `gate_run_on_dir` | Ticket/SDLC | Run gates on a worktree; `fail_fast=True` (default) for repair loop, `fail_fast=False` for gate-findings.md |
 | `repair_run` | Spec/build | Apply a unified diff server-side and re-run gates |
-| `memory_retrieve` | Both | BM25 search over past gate failures for the same gate |
-| `memory_record` | Both | Record a gate failure/resolution for future retrieval |
+| `memory` | Both | `action="record"` saves a failure/resolution; `action="retrieve"` BM25-searches past failures |
 | `spec_load` | Spec/build | Load a `.harness/specs/<id>.py` as structured JSON |
 | `context_fetch` | Spec/build | Read reference files + adjacent directory listing |
-| `artifact_save` | Spec/build | Save run artifact (supports custom `artifact_dir`) |
-| `artifact_load` | Spec/build | Load a run artifact by run_id |
-| `artifact_escalate` | Spec/build | Mark an artifact as escalated |
+| `artifact` | Spec/build | `action="save"` persists a run; `action="load"` reads by run_id; `action="escalate"` marks exhausted |
 | `dag_load` | Spec/build | Load and validate a task DAG, return execution layers |
-| `checkpoint_read` | Spec/build | Read task resume checkpoint |
-| `checkpoint_write` | Spec/build | Write task resume checkpoint |
+| `checkpoint` | Spec/build | `action="read"` returns completed spec IDs; `action="write"` saves progress |
 | `harness_status` | Spec/build | List recent spec/build runs |
 
 ---
@@ -120,30 +118,38 @@ The harness server exposes these tools to Claude:
 | `/requirements` | Manual requirements phase (escape hatch) |
 | `/solution` | Manual solution phase |
 | `/refine` | Solution refinement |
-| `/score-spec` | Pre-build spec quality gate |
 
 ### Build phase
 | Command | Purpose |
 |---|---|
-| `/write-spec XXXX` | Ticket mode: formalize approved solution into specs. Standalone: explore codebase → spec |
-| `/build XXXX` | Ticket mode: worktree → spec engine → write target files → diff. Standalone: temp dir → artifact |
-| `/deliver XXXX` | Ticket mode: merge + clean up. Standalone: write artifact to target file |
-| `/debug` | Classify and explain an escalated standalone build |
+| `/write-spec <arg>` | Single entry point for spec authoring. Routes to ticket flow (digit-prefixed arg) or spec flow (free-form description). |
+| `/build <arg>` | Single entry point for implementation. Routes to ticket flow (worktree + diff) or spec flow (temp dir + artifact). |
+| `/deliver <arg>` | Single entry point for shipping. Routes to ticket flow (merge + cleanup) or spec flow (write artifact to target). |
 
-### Review & maintenance
+Each of these three commands is a **thin controller** in `commands/`. It inspects the argument, decides which mode applies, and reads the corresponding flow file from `context/flows/<command>-<mode>.md`. Only one flow file is loaded per invocation — keeps context lean and keeps the user-facing surface to one command per concept.
+
+### Maintenance
 | Command | Purpose |
 |---|---|
-| `/review XXXX` | Structured code review (optional, between `/build` and `/deliver`) |
-| `/critique` | Expert panel review of current diff |
-| `/gate XXXX` | Manual structured gate run → gate-findings.md |
+| `/gate XXXX` | Manual structured gate run → `gate-findings.md` |
 | `/cancel XXXX` | Abandon ticket: remove worktree, delete branch |
 | `/ticket-status` | Open tickets with implementation order |
-
-### Shared
-| Command | Purpose |
-|---|---|
 | `/init` | Initialize the pipeline in the current project |
-| `/status` | Combined view: open tickets + recent standalone runs |
+
+---
+
+## Skills (intent-triggered)
+
+These four behaviors are skills rather than commands. Invoke them explicitly with `/<name>` or just describe the intent — the model will pick the right skill from the description.
+
+| Skill | Triggers on | Purpose |
+|---|---|---|
+| `review` | "review ticket 0003", "is 0007 ready to merge?" | Ticket-scoped post-build review against problem / requirements / solution. Sets `changes-requested` if must-fix found. |
+| `critique` | "critique my changes", "expert panel review of the auth route" | Free-form expert-panel critique of the current diff or specified files. Writes `CRITIQUE.md`. |
+| `status` | "what's open?", "where are we?" | Combined view of tickets + standalone runs + failure-memory presence. |
+| `debug` | "why did the build escalate?", "the run gave up — what now?" | Classify and explain an escalated standalone run; propose targeted fix. |
+
+The post-build critic is **manual** in this harness: nothing runs automatically between `/build` and `/deliver`. The lead chooses whether to invoke `review` (ticket-scoped) or `critique` (free-form) before approving the merge.
 
 ---
 
@@ -177,33 +183,32 @@ harness-combined/
 ├── hooks/
 │   ├── pre_write_guard.py ← PreToolUse: block forbidden code patterns
 │   ├── post_write_gate.py ← PostToolUse: per-file lint/SAST with structured output
-│   ├── stop_full_gate.py  ← Stop: full suite on review-ready worktrees
-│   └── hooks.json         ← Hook registration manifest
+│   └── stop_full_gate.py  ← Stop: full suite on review-ready worktrees
 ├── commands/
 │   ├── problem.md         ← SDLC entry point
 │   ├── write-spec.md      ← Write spec or task DAG
 │   ├── build.md           ← Spec/build + worktree workflow
 │   ├── deliver.md         ← Merge + worktree cleanup (or write artifact)
 │   ├── gate.md            ← Manual gate runner
-│   ├── review.md          ← Manual code review
-│   ├── critique.md        ← Expert panel review
 │   ├── requirements.md    ← Manual requirements phase
 │   ├── solution.md        ← Manual solution phase
 │   ├── refine.md          ← Solution refinement
-│   ├── score-spec.md      ← Spec quality gate
 │   ├── cancel.md          ← Cancel ticket
 │   ├── ticket-status.md   ← Ticket summary
-│   ├── debug.md           ← Debug escalated runs
-│   ├── status.md          ← Combined status view
 │   └── init.md            ← Initialize both workflows
+├── skills/
+│   ├── review/SKILL.md    ← Ticket-scoped post-build review
+│   ├── critique/SKILL.md  ← Expert-panel critique of a diff
+│   ├── status/SKILL.md    ← Combined tickets + spec/build view
+│   └── debug/SKILL.md     ← Postmortem for escalated runs
 ├── context/
 │   ├── critic-brief.md    ← Critic agent shared instructions
+│   ├── flows/             ← Mode-specific procedures loaded by /build, /write-spec, /deliver
 │   ├── panels/            ← Expert review panels (Core, Python, HTTP-API, UI, AI-LLM)
 │   └── rules/             ← Per-language code generation rules
 ├── agents/
 │   └── critic.md          ← Critic subagent definition
 ├── CLAUDE.md              ← Working agreement (copy to project root)
-├── setup.sh               ← Installation script
 └── .claude-plugin/
     └── plugin.json        ← Plugin manifest
 ```

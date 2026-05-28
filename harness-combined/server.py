@@ -150,42 +150,28 @@ def gate_run(implementation: str, tests: str, language: str, project_root: str) 
 
 
 @mcp.tool()
-def gate_run_on_dir(directory: str, language: str, project_root: str) -> str:
+def gate_run_on_dir(directory: str, language: str, project_root: str, fail_fast: bool = True) -> str:
     """
-    Run gates against an actual project directory (worktree or project root).
-    Fail-fast: stops at the first failing gate.
+    Run gates against a project directory (worktree or project root).
     language: "auto" to detect from marker files, or "python"/"typescript"/"go"/"rust".
+    fail_fast=True (default): stop at first failure — use during /build repair loop.
+    fail_fast=False: run all gates regardless — use for /gate to write gate-findings.md.
 
-    Returns JSON. On full pass: {"passed": true}. On failure: failing gate result.
-    Use this for integration validation after writing files to a worktree.
+    Returns JSON. Pass: {"passed": true, "language": ...}.
+    Fail+fast: the failing gate result. Fail+full: {"passed": false, "language": ..., "gates": [...]}.
     """
     try:
         lang = _detect_language(directory) if language == "auto" else language
-        results = run_suite_on_dir(lang, directory, fail_fast=True)
+        results = run_suite_on_dir(lang, directory, fail_fast=fail_fast)
         if all(r.passed for r in results):
             return json.dumps({"passed": True, "language": lang})
-        failed = next(r for r in results if not r.passed)
-        return json.dumps(failed.to_dict(), indent=2)
-    except ValueError as e:
-        return json.dumps({"error": str(e)})
-    except Exception as e:
-        return json.dumps({"error": f"Gate execution failed: {e}"})
-
-
-@mcp.tool()
-def gate_run_on_dir_full(directory: str, language: str, project_root: str) -> str:
-    """
-    Run ALL gates against a project directory without stopping on first failure.
-    Returns JSON array of all gate results (passed and failed).
-    Use this for /gate command to write gate-findings.md — captures the complete picture.
-    """
-    try:
-        lang = _detect_language(directory) if language == "auto" else language
-        results = run_suite_on_dir(lang, directory, fail_fast=False)
+        if fail_fast:
+            failed = next(r for r in results if not r.passed)
+            return json.dumps(failed.to_dict(), indent=2)
         return json.dumps({
             "language": lang,
             "gates": [r.to_dict() for r in results],
-            "passed": all(r.passed for r in results),
+            "passed": False,
         }, indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)})
@@ -251,63 +237,62 @@ def context_fetch(reference_files: list[str], target_file: str, project_root: st
 
 
 @mcp.tool()
-def artifact_save(
-    spec_id: str,
-    implementation: str,
-    tests: str,
-    outcome: str,
-    attempts: int,
-    gate_results: list[dict[str, Any]],
+def artifact(
+    action: str,
     project_root: str,
+    run_id: str = "",
+    spec_id: str = "",
+    implementation: str = "",
+    tests: str = "",
+    outcome: str = "",
+    attempts: int = 0,
+    gate_results: list[dict[str, Any]] | None = None,
     notes: str = "",
 ) -> str:
     """
-    Save a completed run to .harness/results/<spec_id>-<timestamp>.json.
-    Returns the run_id for use with artifact_load and /deliver.
-    outcome: 'in_progress' | 'passed' | 'escalated'.
+    CRUD for run artifacts in .harness/results/.
+
+    action="save": persist a run. Required: spec_id, implementation, tests, outcome, attempts, gate_results. Returns run_id.
+    action="load": read artifact by run_id. Returns full artifact JSON.
+    action="escalate": mark a run as escalated. Required: run_id. Returns "escalated".
+
+    outcome values: 'in_progress' | 'passed' | 'escalated'.
     """
-    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    run_id = f"{spec_id}-{ts}"
-    results_dir = _harness_dir(project_root) / "results"
-    results_dir.mkdir(parents=True, exist_ok=True)
-
-    artifact = {
-        "run_id": run_id,
-        "spec_id": spec_id,
-        "outcome": outcome,
-        "attempts": attempts,
-        "gate_results": gate_results,
-        "implementation": implementation,
-        "tests": tests,
-        "notes": notes,
-        "timestamp": datetime.now(UTC).isoformat(),
-    }
-    (results_dir / f"{run_id}.json").write_text(json.dumps(artifact, indent=2))
-    return run_id
-
-
-@mcp.tool()
-def artifact_load(run_id: str, project_root: str) -> str:
-    """Load a result file by run_id. Returns the full artifact as JSON."""
-    results_dir = _harness_dir(project_root) / "results"
-    exact = results_dir / f"{run_id}.json"
-    if exact.exists():
-        return exact.read_text()
-    for f in sorted(results_dir.glob(f"*{run_id}*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-        return f.read_text()
-    return json.dumps({"error": f"Run not found: {run_id}"})
-
-
-@mcp.tool()
-def artifact_escalate(run_id: str, project_root: str) -> str:
-    """Mark an in-progress artifact as escalated after all repair attempts are exhausted."""
-    artifact_file = _find_artifact(run_id, project_root)
-    if not artifact_file:
-        return json.dumps({"error": f"Artifact not found: {run_id}"})
-    artifact: dict[str, Any] = json.loads(artifact_file.read_text())
-    artifact["outcome"] = "escalated"
-    artifact_file.write_text(json.dumps(artifact, indent=2))
-    return "escalated"
+    if action == "save":
+        ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        new_run_id = f"{spec_id}-{ts}"
+        results_dir = _harness_dir(project_root) / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+        data: dict[str, Any] = {
+            "run_id": new_run_id,
+            "spec_id": spec_id,
+            "outcome": outcome,
+            "attempts": attempts,
+            "gate_results": gate_results or [],
+            "implementation": implementation,
+            "tests": tests,
+            "notes": notes,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        (results_dir / f"{new_run_id}.json").write_text(json.dumps(data, indent=2))
+        return new_run_id
+    if action == "load":
+        results_dir = _harness_dir(project_root) / "results"
+        exact = results_dir / f"{run_id}.json"
+        if exact.exists():
+            return exact.read_text()
+        for f in sorted(results_dir.glob(f"*{run_id}*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            return f.read_text()
+        return json.dumps({"error": f"Run not found: {run_id}"})
+    if action == "escalate":
+        artifact_file = _find_artifact(run_id, project_root)
+        if not artifact_file:
+            return json.dumps({"error": f"Artifact not found: {run_id}"})
+        data = json.loads(artifact_file.read_text())
+        data["outcome"] = "escalated"
+        artifact_file.write_text(json.dumps(data, indent=2))
+        return "escalated"
+    return json.dumps({"error": f"Unknown action: {action}. Use save|load|escalate."})
 
 
 @mcp.tool()
@@ -351,40 +336,34 @@ def repair_run(run_id: str, diff: str, language: str, project_root: str) -> str:
 
 
 @mcp.tool()
-def memory_record(
-    spec_id: str,
-    gate: str,
-    errors_text: str,
-    attempt: int,
-    outcome: str,
+def memory(
+    action: str,
     project_root: str,
+    errors_text: str = "",
+    gate: str = "",
+    spec_id: str = "",
+    attempt: int = 0,
+    outcome: str = "",
+    limit: int = 3,
 ) -> str:
     """
-    Record a gate failure or resolution to the failure memory database.
-    errors_text: concatenated error messages from the failing gate.
-    outcome: 'passed' | 'escalated'.
+    Gate failure memory.
+
+    action="record": save a failure/resolution. Required: spec_id, gate, errors_text, attempt, outcome ('passed'|'escalated').
+    action="retrieve": BM25 search for similar past failures. Required: errors_text, gate. Optional: limit (default 3).
+
+    Returns "recorded" or formatted failure narratives.
     """
     try:
-        _memory(project_root).record(spec_id, gate, errors_text, attempt, outcome)
-        return "recorded"
+        if action == "record":
+            _memory(project_root).record(spec_id, gate, errors_text, attempt, outcome)
+            return "recorded"
+        if action == "retrieve":
+            narratives = _memory(project_root).retrieve_similar(errors_text, gate, limit)
+            return "\n---\n".join(narratives) if narratives else "No similar past failures found."
+        return json.dumps({"error": f"Unknown action: {action}. Use record|retrieve."})
     except Exception as e:
-        return f"memory_record failed: {e}"
-
-
-@mcp.tool()
-def memory_retrieve(errors_text: str, gate: str, project_root: str, limit: int = 3) -> str:
-    """
-    BM25 keyword search over past failures matching the same gate.
-    Returns formatted narratives of similar failures, or a message if none found.
-    Call this before each repair attempt to surface what fixed similar errors before.
-    """
-    try:
-        narratives = _memory(project_root).retrieve_similar(errors_text, gate, limit)
-        if not narratives:
-            return "No similar past failures found."
-        return "\n---\n".join(narratives)
-    except Exception as e:
-        return f"memory_retrieve failed: {e}"
+        return f"memory failed: {e}"
 
 
 @mcp.tool()
@@ -414,32 +393,34 @@ def dag_load(task_id: str, project_root: str) -> str:
 
 
 @mcp.tool()
-def checkpoint_read(task_id: str, project_root: str) -> str:
+def checkpoint(
+    action: str,
+    task_id: str,
+    project_root: str,
+    completed: list[str] | None = None,
+) -> str:
     """
-    Read the checkpoint for a task. Returns JSON with 'completed' list of spec IDs
-    that have already passed, so /build can skip them on resume.
-    """
-    checkpoint_file = _harness_dir(project_root) / "checkpoints" / f"{task_id}.json"
-    if not checkpoint_file.exists():
-        return json.dumps({"task_id": task_id, "completed": []})
-    return checkpoint_file.read_text()
+    Task resume checkpoints.
 
-
-@mcp.tool()
-def checkpoint_write(task_id: str, completed: list[str], project_root: str) -> str:
-    """
-    Write a checkpoint for a task. completed is the list of spec IDs that have passed.
-    Call after each spec passes so the task can resume after interruption.
+    action="read": return completed spec IDs for a task. Returns {"task_id": ..., "completed": [...]}.
+    action="write": save completed spec IDs. Required: completed list. Returns "checkpoint saved".
     """
     checkpoint_dir = _harness_dir(project_root) / "checkpoints"
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    data = {
-        "task_id": task_id,
-        "completed": completed,
-        "updated": datetime.now(UTC).isoformat(),
-    }
-    (checkpoint_dir / f"{task_id}.json").write_text(json.dumps(data, indent=2))
-    return "checkpoint saved"
+    checkpoint_file = checkpoint_dir / f"{task_id}.json"
+    if action == "read":
+        if not checkpoint_file.exists():
+            return json.dumps({"task_id": task_id, "completed": []})
+        return checkpoint_file.read_text()
+    if action == "write":
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        data = {
+            "task_id": task_id,
+            "completed": completed or [],
+            "updated": datetime.now(UTC).isoformat(),
+        }
+        checkpoint_file.write_text(json.dumps(data, indent=2))
+        return "checkpoint saved"
+    return json.dumps({"error": f"Unknown action: {action}. Use read|write."})
 
 
 @mcp.tool()

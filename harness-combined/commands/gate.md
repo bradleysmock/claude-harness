@@ -10,7 +10,7 @@ A ticket number argument is required. If none is provided, scan `.tickets/` for 
 
 2. **Run structured gates** via the MCP tool:
    ```
-   gate_run_on_dir_full(".worktrees/XXXX-<slug>", "auto", project_root)
+   gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root, fail_fast=False)
    ```
    This runs all gates (no fail-fast) and returns the complete picture including passed gates.
 

@@ -1,14 +1,49 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "harness-combined",
+  "displayName": "Harness Combined",
   "version": "1.0.0",
   "description": "Unified Claude Code harness: structured gate pipeline + SDLC workflow. No API key required.",
-  "mcp_server": {
-    "command": "python3",
-    "args": ["${CLAUDE_PLUGIN_ROOT}/server.py"]
+  "license": "MIT",
+  "keywords": ["sdlc", "gates", "ticket", "spec", "harness"],
+  "mcpServers": {
+    "harness": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server.py"]
+    }
   },
-  "commands_dir": "${CLAUDE_PLUGIN_ROOT}/commands",
-  "hooks": "${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json",
-  "env": {
-    "CLAUDE_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}"
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_write_guard.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post_write_gate.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/stop_full_gate.py\""
+          }
+        ]
+      }
+    ]
   }
 }

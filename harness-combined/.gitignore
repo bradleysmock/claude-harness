@@ -1,0 +1,15 @@
+# Python bytecode caches generated when the MCP server imports modules
+__pycache__/
+*.pyc
+*.pyo
+
+# Tool caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Local venvs
+.venv/
+
+# macOS
+.DS_Store
