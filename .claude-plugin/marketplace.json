@@ -31,6 +31,18 @@
       "category": "development"
     },
     {
+      "name": "harness-combined",
+      "source": "./harness-combined",
+      "description": "Unified Claude Code harness: polyglot gate pipeline (lint/type-check/tests/security with diff-based repair loop and BM25 failure memory) + two-checkpoint SDLC workflow (problem → design critic → spec → build → post-build critic → deliver). Twenty-nine expert review panels covering languages, frontend frameworks, security (identity + cryptography), data/ML engineering, and operations. No API key required.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Bradley Smock"
+      },
+      "license": "MIT",
+      "keywords": ["sdlc", "gates", "ticket", "spec", "harness", "no-api-key", "review-panels", "tdd", "mcp"],
+      "category": "development"
+    },
+    {
       "name": "harness-no-api-key",
       "source": "./harness-no-api-key",
       "description": "Harness without an API key: Claude Code is the orchestrator, Python provides gates, memory, and DAG tools via MCP. Requires only a Claude Code subscription.",
