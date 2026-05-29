@@ -3,13 +3,14 @@
 *Always active.*
 
 - **Robert C. Martin** — *Clean Code*, *The Clean Coder*
+- **David Parnas** — *On the Criteria To Be Used in Decomposing Systems into Modules* (1972); the canonical source on information hiding and module decomposition
 - **John Ousterhout** — *A Philosophy of Software Design*
 - **Martin Fowler** — *Refactoring*, *Patterns of Enterprise Application Architecture*
 - **Kent Beck** — *Test-Driven Development*, *Implementation Patterns*
 - **Gary McGraw** — *Software Security: Building Security In*
 - **Eric Evans** — *Domain-Driven Design*
 
-Martin, Ousterhout, Fowler, and Beck disagree on design questions. Where they diverge, weigh the merits and deliver a synthesized verdict. Do not dogmatically apply any single expert's rules. McGraw and Evans apply orthogonal lenses that do not compete — apply them in addition to the design review. A finding from McGraw or Evans is a BLOCKER if it is a design-level flaw.
+Martin, Ousterhout, Fowler, and Beck disagree on design questions. Where they diverge, weigh the merits and deliver a synthesized verdict. Do not dogmatically apply any single expert's rules. Parnas's information-hiding principle is the foundation Ousterhout's "deep modules" argument rests on — cite Parnas where the question is *what* should be hidden, Ousterhout where the question is *how the interface should be shaped*. McGraw and Evans apply orthogonal lenses that do not compete — apply them in addition to the design review. A finding from McGraw or Evans is a BLOCKER if it is a design-level flaw.
 
 ---
 
@@ -55,11 +56,17 @@ Martin, Ousterhout, Fowler, and Beck disagree on design questions. Where they di
 
 | McGraw's Position | What it means in practice |
 |-------------------|-----------------------------|
-| **Bugs vs. flaws** | Security *bugs* are implementation errors; security *flaws* are design errors (wrong trust boundary, authorization at the wrong layer). Flaws are BLOCKERs. |
-| **Think like an attacker** | For every external input: what can a malicious actor supply, and what does the code do with it? |
-| **Minimize attack surface** | Every public route, every accepted parameter, every trusted header is a potential attack vector. |
-| **Fail closed** | A failed security check should deny access by default. |
-| **Defense in depth** | Validation at the route layer is good; validation at the service layer as well is better. |
+| **Bugs vs. flaws** | Security *bugs* are implementation errors; security *flaws* are design errors (wrong trust boundary, authorization at the wrong layer). Flaws are BLOCKERs — you cannot patch your way out of a wrong trust boundary. |
+| **Think like an attacker** | For every external input: what can a malicious actor supply, and what does the code do with it? Walk the threat model, not just the happy path. |
+| **Minimize attack surface** | Every public route, every accepted parameter, every trusted header is a potential attack vector. The thing not exposed cannot be exploited. |
+| **Fail closed** | A failed security check, a missing config value, an unhandled exception in an authz code path — should all deny access. The default for ambiguity is "no." |
+| **Defense in depth** | Validation at the route layer is good; validation at the service layer as well is better; database constraints as a third layer make exploitation require breaking three things in sequence. |
+| **Trust no input across a boundary** | Every value crossing a trust boundary needs validation — structure, type, length, value, and *meaning*. Trust boundaries: external user → process, network → process, file → process, model → process, process → process across a privilege gap. Validation at the consumer is necessary, not sufficient — validate at the boundary itself. |
+| **Validate semantics, not just syntax** | A path that parses cleanly may still escape your sandbox. A URL that parses may resolve to an internal address (SSRF). A username that's valid UTF-8 may exploit Unicode normalization. Syntax checks catch the obviously-malformed; semantic checks catch the well-formed-but-malicious. |
+| **Logs are a security perimeter** | Telemetry destinations have their own access model, retention, and breach surface. PII, secrets, session tokens, full request bodies in logs multiply the surface where a single log-store breach is consequential. The log destination is not "internal" — treat it as another consumer with its own trust level. |
+| **The error response is part of the response** | Stack traces, library versions, file paths, internal hostnames, ORM details in production error responses are free reconnaissance. The operator-facing diagnostic and the user-facing message should be different artifacts produced by different code paths. |
+| **Time and timing carry information** | Comparison short-circuits on `==`, password-verification loops that exit on first byte mismatch, response-time differences across "does this user exist" probes all leak through side channels. Use constant-time comparison for any secret-vs-input check; equalize response time for endpoints whose existence leaks should be prevented. |
+| **Trust decay over time** | A capability granted today (an API key, a session, a cached authorization decision, a privileged container) accumulates exposure with every day it remains valid. Expire, rotate, and reauthorize on a schedule. Long-lived credentials and "temporary" sudoes that became permanent are the recurring incident pattern. |
 
 ---
 
@@ -83,6 +90,34 @@ Martin, Ousterhout, Fowler, and Beck disagree on design questions. Where they di
 | **Fowler** | Identify and eliminate code smells: Feature Envy, Inappropriate Intimacy, Shotgun Surgery, Divergent Change. |
 
 **Synthesis:** Decompose along boundaries that *reduce* information load. A good decomposition means a reader can understand module A without reading module B.
+
+---
+
+### On Information Hiding (Parnas, Ousterhout)
+
+Parnas's 1972 question — *what should be hidden inside a module so that callers do not depend on it* — predates and underwrites most modern design advice on this topic. Ousterhout's "deep modules" argument is a restatement: a deep module hides a lot of complexity behind a small interface, which is only achievable if you correctly identified *what to hide*.
+
+| Question | Test |
+|---|---|
+| **What is likely to change?** | Encapsulate the changing part. The most stable interface hides the least stable implementation. If a design decision could plausibly be revisited, hide it behind an interface that won't have to. |
+| **Could a caller reasonably depend on this?** | If yes, it is API — even if the keyword says `private`, even if the docs say "internal." See Hyrum's Law below. The mitigation is to narrow the *observable* surface, not to wish callers behaved better. |
+| **Does the interface leak implementation choices?** | Returning ORM model instances, framework-specific exception types, connection-pool objects, library-specific iterators — each makes the underlying choice part of the contract. Wrap or translate at the boundary. |
+| **Could two competent implementations satisfy this interface?** | If the answer is no, the interface is over-specified — it has encoded one implementation's shape as part of its contract. |
+
+---
+
+### On Public APIs & Hyrum's Law (Wright)
+
+**Hyrum's Law (Hyrum Wright, Google):** *With a sufficient number of users of an API, it does not matter what you promise in the contract: all observable behaviors of your system will be depended on by somebody.*
+
+This is not a moral failing of users — it is a statistical property of large systems. Defensive implications:
+
+- **"Internal" behaviors leaked through public surfaces become contracts** whether you intended them to or not. Error message strings, the order of results in a "set," timing characteristics, JSON field ordering, default value choices, log format — all are observable and therefore depended upon.
+- **Refactors that change observable behavior are breaking changes** even when the documented contract is unchanged. "We didn't promise that" is true and irrelevant when monitoring dashboards, downstream consumers, and tests start failing.
+- **The mitigation is narrowing observable surface, not stricter docs.** Hide what shouldn't be depended on (Parnas above). For surface you can't narrow, treat changes to it as semver-significant.
+- **Progressive deprecation when reducing surface.** Add the new shape; instrument calls to the old shape; communicate; sunset only when usage reaches zero or an acceptable floor.
+
+Hyrum's Law applies most strongly to: public library APIs, public HTTP APIs (overlap with HTTP/API panel), exported type definitions, error types and messages, and any function whose return-value structure, ordering, or side-effect timing is observable across a process or team boundary.
 
 ---
 
@@ -166,14 +201,15 @@ Flag only where there is actual evidence:
 ---
 
 ### Dimension 6: Design Principles
-*Martin (SOLID), Ousterhout*
+*Martin (SOLID), Parnas, Ousterhout, Wright (Hyrum's Law)*
 
 Apply only where clearly evidenced:
 
 - **SRP**: one reason to change?
 - **OCP**: new behaviors without modifying existing code?
 - **DIP**: higher-level modules depend on abstractions, not concretions?
-- **Information Hiding**: would a change to the implementation require changes to callers?
+- **Information Hiding (Parnas)**: would a change to the implementation require changes to callers? If yes, the boundary is in the wrong place — the implementation choice is part of the interface.
+- **Hyrum's Law surface**: for any public-ish API in this change, what observable behaviors beyond the documented contract are callers able to depend on? Error message strings, ordering, timing, side-effect order, log format. Each is a future-breaking-change waiting to happen if not deliberately narrowed.
 
 ---
 
@@ -193,16 +229,30 @@ Apply only where clearly evidenced:
 
 | Class | What to look for |
 |-------|-----------------|
-| Path traversal | User input in file path construction without `.resolve()` + `relative_to()` |
-| Command injection | User input to `subprocess`, especially `shell=True` or string interpolation |
-| Input validation gaps | Untrusted data reaching filesystem, subprocess, or data store without validation |
-| Information leakage | Stack traces, internal paths, or secrets in HTTP responses |
-| Hardcoded secrets | API keys, passwords, tokens in source or config |
-| Authentication/authorization bypass | Routes missing auth; authorization delegated to client-supplied values |
-| TOCTOU races | Check-then-use with resource that can change between check and use |
-| Open redirect | User-controlled values in `HX-Redirect` or `Location` headers without same-origin restriction |
+| Path traversal | User input in file path construction without `.resolve()` + `relative_to()` containment check against an allowed root. |
+| Command injection | User input to `subprocess`, especially `shell=True` or string interpolation. Pass argument lists; never assemble shell strings. |
+| SQL injection | String-interpolated SQL with any value not authored by you. Use parameter binding without exception, including for table names (via allow-list) and `ORDER BY` columns. |
+| Server-side template injection | User input rendered through a template engine (Jinja2, Handlebars, Liquid) as *template source*, not as *template data*. The two are different APIs; mixing them is RCE. |
+| Insecure deserialization | `pickle.loads`, `yaml.load` without `SafeLoader`, Java `ObjectInputStream`, PHP `unserialize`, JS `node-serialize` on any value you did not author yourself. Each is RCE. |
+| XML External Entity (XXE) | XML parsing with external entity resolution enabled — `lxml`, `xml.etree`, `DocumentBuilderFactory` defaults. Disable DTD/entity processing on every parser. |
+| SSRF | Server fetching a user-supplied URL without an allow-list of destinations. Beware metadata endpoints (`169.254.169.254`), `localhost`, RFC1918 ranges, DNS rebinding. |
+| Input validation gaps | Untrusted data reaching filesystem, subprocess, data store, network, or model context without structure / type / length / value / semantic validation at the boundary. |
+| Mass assignment / IDOR | Object-level identifiers from request body accepted without an authorization check that the caller may operate on that object. Framework "model.update(request_body)" idioms are the canonical foothold. |
+| ReDoS | Regex with catastrophic backtracking (`(a+)+`, `(.*)*`, nested quantifiers over user input). Either constrain input length pre-match or use a non-backtracking engine (Go `regexp`, Rust `regex`). |
+| Timing attack on secrets | Plain `==` comparison of tokens, password hashes, HMACs. Use `hmac.compare_digest`, `crypto.timingSafeEqual`, equivalent. |
+| Information leakage | Stack traces, internal paths, library versions, hostnames, or secrets in HTTP/RPC error responses. Operator and user diagnostics are different artifacts. |
+| Hardcoded secrets | API keys, passwords, tokens in source, config, fixtures, test data, or commit history. |
+| Secrets / PII in logs | Authorization headers, session tokens, API keys, user PII flowing into telemetry via wholesale request/response dumps or naive `logger.info(obj)`. |
+| Authentication / authorization bypass | Routes missing auth; authorization delegated to client-supplied values (`X-User-Id`, JWT `sub` accepted without signature verification); permission checks at the wrong layer. |
+| Missing CSRF protection | State-mutating endpoint accepting cookie-authenticated requests without a CSRF token, SameSite cookie discipline, or proof-of-intent header check. |
+| Cookie flags missing | Session / auth cookies without `HttpOnly`, `Secure`, `SameSite=Lax` (or stricter). Each missing flag is a class of exploit reopened. |
+| Session fixation | Login flow that does not regenerate the session identifier on authentication. Attacker-supplied session ID persists post-login. |
+| TOCTOU races | Check-then-use with a resource that can change between check and use (file existence then open, user-quota check then write). Capture state once or use atomic operations. |
+| Open redirect | User-controlled values in `Location`, `HX-Redirect`, or framework redirect helpers without same-origin or allow-list enforcement. |
+| Prototype pollution (JS) | `Object.assign(target, untrusted)`, recursive merge of user JSON, lodash `_.set` with user-controlled key path. Reaches `__proto__` and corrupts cross-application state. |
+| Long-lived credentials | API keys, service-account tokens, signed URLs with no rotation schedule, no expiry, no audit trail. Trust decays; credentials that don't decay accumulate exposure. |
 
-Design-level questions: are trust boundaries correct? Is authorization server-side for every state-mutating action? Does the code fail closed?
+Design-level questions: are trust boundaries correct and minimal? Is authorization enforced server-side for every state-mutating action, at every layer that can be entered? Does the code fail closed on every error path in security-relevant code? For every secret in this codebase, what is its rotation policy and where is it actually stored?
 
 ---
 
