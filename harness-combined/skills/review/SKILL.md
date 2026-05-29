@@ -1,11 +1,13 @@
 ---
 name: review
-description: Review a ticket's implementation against its problem/requirements/solution before merge. TRIGGER when the user asks to review a ticket, check a worktree's diff before /deliver, assess whether a ticket is merge-ready, or invoke the post-build critic on a specific ticket (e.g. "review ticket 0003", "look at the diff on 0007 before I deliver", "is ticket 0012 ready to merge?"). SKIP for general code review of arbitrary diffs unrelated to a ticket (use the critique skill instead), for ad-hoc style/lint checks (use /gate), and during active /build sessions on the same ticket (wait for /build to finish).
+description: Interactive panel-aware review of a ticket's implementation against its problem / requirements / solution baseline. TRIGGER when the user asks to review a ticket, check a worktree's diff before /deliver, assess whether a ticket is merge-ready, or invoke an interactive post-build review on a specific ticket (e.g. "review ticket 0003", "look at the diff on 0007 before I deliver", "is ticket 0012 ready to merge?"). SKIP for general code review of arbitrary diffs unrelated to a ticket (use the `critique` skill instead — same panel machinery, free-form scope), for ad-hoc style/lint checks (use /gate), and during active /build sessions on the same ticket (wait for /build to finish). Note: /build automatically spawns the critic subagent in code-mode as its final step — this skill is the *interactive* alternative when the lead wants to walk the review conversationally with follow-up questions.
 ---
 
-# Review skill — ticket-scoped post-build review
+# Review skill — interactive panel-aware ticket review
 
-Conduct a code review for a ticket whose `/build` has completed. The lead invokes this between `/build` and `/deliver`. Findings are reported directly without a critic loop; the lead decides what to act on.
+Conduct a code review for a ticket whose `/build` has completed. This skill runs the same panel-aware review process as the critic subagent's `Phase: code` mode (see `${CLAUDE_PLUGIN_ROOT}/context/critic-brief.md`), but **interactively** — the lead sees findings as they're produced and can ask follow-up questions, request deeper dives, or skip ahead to the verdict.
+
+The non-interactive equivalent runs automatically at the end of `/build` as the post-build critic. Invoke this skill when the lead wants to either (a) re-review after fixing earlier BLOCKERs, (b) drive the review conversationally rather than as a one-shot report, or (c) review a ticket whose `/build` happened in a previous session.
 
 ## Ticket resolution
 
@@ -13,61 +15,79 @@ If the user named a ticket number, use it. Otherwise scan `.tickets/` for ticket
 
 ## Steps
 
-0. **Guard against concurrent automated sessions.** If `.tickets/.active` exists and contains this ticket's slug, an automated `/build` session may be in progress. Warn the lead and recommend waiting before proceeding. Do not stop — proceed if the lead confirms.
+### Step 0 — Guard against concurrent automated sessions
 
-1. Read `problem.md`, `requirements.md`, and `solution.md` as the review baseline.
+If `.tickets/.active` exists and contains this ticket's slug, an automated `/build` session may be in progress. Warn the lead and recommend waiting before proceeding. Do not stop — proceed if the lead confirms.
 
-2. Derive the worktree path from `status.md` (read the `branch` field, strip the `ticket/` prefix, resolve `.worktrees/XXXX-<slug>` relative to project root). Read all implementation code and tests in that directory.
+### Step 1 — Read the ticket baseline
 
-3. Evaluate the implementation across these dimensions:
+Read `problem.md`, `requirements.md`, and `solution.md`. Derive the worktree path from `status.md` (read the `branch` field, strip the `ticket/` prefix, resolve `.worktrees/XXXX-<slug>` relative to project root). Note the path; you'll read it in Step 4.
 
-   **Requirements coverage**
-   - Does each functional requirement have a corresponding test and passing implementation?
-   - Are all acceptance criteria met?
+### Step 2 — Determine active panels
 
-   **Test quality**
-   - Are tests testing behavior, not implementation details?
-   - Are edge cases and failure modes covered?
-   - Are tests isolated and deterministic?
-   - Is coverage meaningful (not line-coverage theater)?
+Apply the trigger table in `${CLAUDE_PLUGIN_ROOT}/skills/critique/SKILL.md` (Step 1 — Determine Active Panels) against the worktree's files. Announce the active panels and any deferred panels (per the considered-and-deferred rule) before reading code. Core is always active.
 
-   **Security**
-   - Are there injection vulnerabilities (SQL, command, template)?
-   - Is user input validated at boundaries?
-   - Are secrets handled safely (not hardcoded, not logged)?
-   - Are dependencies pinned or from trusted sources?
+### Step 3 — Load panel definitions
 
-   **Correctness**
-   - Off-by-one errors, race conditions, unhandled nulls?
-   - Are errors surfaced and handled appropriately?
+Read only the panel files for active panels. Do not read inactive panels.
 
-   **Clarity and maintainability**
-   - Is the code understandable without excessive comments?
-   - Are names accurate and descriptive?
-   - Is there dead code or unnecessary complexity?
+### Step 4 — Read worktree + gate findings
 
-   **Alignment with solution**
-   - Does the implementation match the agreed architecture and tech choices?
-   - Were significant deviations made? If so, are they justified?
+Read all implementation and test files in the worktree (`.worktrees/XXXX-<slug>/`).
 
-4. Present structured findings using these tiers:
+If `.tickets/XXXX-<slug>/gate-findings.md` exists, read it. **Do not re-flag what the gates already caught** — your value is the panel-level lens gates can't apply.
 
-   **Must-fix** (blocks merge)
-   - `<file:line>` — `<description>`
+Read everything before producing any findings.
 
-   **Should-fix** (fix now unless effort is large)
-   - `<file:line>` — `<description>`
+### Step 5 — Conduct the review
 
-   **Suggestion** (optional, future consideration)
-   - `<brief note>`
+Produce findings across two axes, applied together (not sequentially):
 
-   Omit a tier if it has no items.
+**Axis A — Ticket-baseline checks** (the two ticket-specific dimensions no panel covers; see `critic-brief.md` Step 2.5 for the canonical definitions):
 
-5. **If approved** (no must-fix items):
-   - Keep `status.md` at `review-ready`.
-   - Tell the lead the ticket is approved and they can run `/deliver XXXX`.
+- **Requirements coverage** — Does each functional requirement in `requirements.md` have a corresponding implementation in the worktree AND a passing test that exercises it? Missing implementations or missing tests for stated requirements are **BLOCKER**.
+- **Alignment with `solution.md`** — Did the implementation follow the agreed architecture, tech choices, library selections, and overall approach? Significant unjustified deviations are **MAJOR**. Deviations explained in comments / commit messages / added docs are **OBS**.
 
-6. **If changes required** (must-fix items exist):
-   - Update `status.md` to `status: changes-requested`.
-   - List which items need addressing.
-   - Tell the lead to invoke `/build XXXX` to continue work in the existing worktree.
+**Axis B — Panel findings** (the expert-lens hazards from every loaded panel's review dimensions). Apply every relevant dimension. Use the canonical 4-tier vocabulary: **BLOCKER / MAJOR / MINOR / OBS** (see `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`).
+
+### Step 6 — Present findings interactively
+
+Output structured findings inline in the conversation using the same format as `critique`'s output (see `${CLAUDE_PLUGIN_ROOT}/skills/critique/SKILL.md` Output Format) — Verdict at the top, Finding Table, BLOCKER & MAJOR Detail in the compact 2-section format (prose + Fix), MINOR & OBS in tabular form. Apply the same size discipline (≤ 3× source line count) and the same split-bundled-findings rule (rule 11).
+
+Because this is the *interactive* mode (not the subagent one-shot), present in stages:
+
+1. Announce active panels and deferred panels.
+2. Output the Verdict and Counts immediately.
+3. Stream the Finding Table.
+4. Stream the BLOCKER & MAJOR Detail.
+5. Stream MINOR & OBS.
+6. Offer the lead the chance to ask follow-up questions, request a deeper look at any finding, or proceed to the status transition.
+
+Unlike `critique`, do **not** write the report to `CRITIQUE.md` — the interactive conversation is the deliverable.
+
+### Step 7 — Status transition
+
+**If approved** (no BLOCKER items):
+- Keep `status.md` at `review-ready`.
+- Tell the lead the ticket is approved and they can run `/deliver XXXX`.
+
+**If changes required** (BLOCKER items exist):
+- Update `status.md` to `status: changes-requested`.
+- List which BLOCKER items need addressing.
+- Tell the lead to invoke `/build XXXX` to continue work in the existing worktree.
+
+---
+
+## Differences from the post-build critic subagent
+
+| | Post-build critic (automatic) | This skill (manual) |
+|---|---|---|
+| Invoked by | `/build` final step | Lead, with `/review XXXX` |
+| Conversational | No — one-shot subagent report | Yes — findings stream; lead can ask follow-ups |
+| Panels loaded | Yes (via critic-brief Step 1) | Yes (via this skill's Step 2) |
+| Ticket-baseline checks | Yes (critic-brief Step 2.5) | Yes (this skill's Step 5 Axis A) |
+| Status transition | Yes (handled by `/build` flow) | Yes (handled by this skill's Step 7) |
+| Output file | None (returned to parent) | None (inline) |
+| Use when | Default post-build gate | Lead wants to drive the review conversationally, or re-review after fixes |
+
+Both produce the same severity findings against the same panel set and the same ticket-baseline checks. The difference is interaction shape.

@@ -16,10 +16,11 @@ All work follows the same four-stage pipeline. The design stages are skippable f
 ### Full pipeline (feature work with design review)
 
 ```
-/problem XXXX      → problem.md, requirements.md, solution.md, critic → CHECKPOINT 1
+/problem XXXX      → problem.md, requirements.md, solution.md, design critic → CHECKPOINT 1
 /write-spec XXXX   → reads solution.md → .harness/specs/ (no re-exploration needed)
-/build XXXX        → worktree → spec engine → write to target files → diff shown
-                   ← review the diff; optionally run /review XXXX
+/build XXXX        → worktree → spec engine → write target files → diff shown → post-build critic
+                   ← review the critic's report; optionally run /review XXXX (interactive)
+                     or /critique <files> (free-form comprehensive)
 /deliver XXXX      → merge branch → clean up → record learnings
 ```
 
@@ -149,7 +150,55 @@ These four behaviors are skills rather than commands. Invoke them explicitly wit
 | `status` | "what's open?", "where are we?" | Combined view of tickets + standalone runs + failure-memory presence. |
 | `debug` | "why did the build escalate?", "the run gave up — what now?" | Classify and explain an escalated standalone run; propose targeted fix. |
 
-The post-build critic is **manual** in this harness: nothing runs automatically between `/build` and `/deliver`. The lead chooses whether to invoke `review` (ticket-scoped) or `critique` (free-form) before approving the merge.
+**Two review cycles run automatically:**
+
+- **Pre-build (design)** — `/problem` Phase 5 spawns the critic subagent against `problem.md` / `requirements.md` / `solution.md`. Findings revise `solution.md` before Checkpoint 1. Max 2 rounds.
+- **Post-build (code)** — `/build` Step 7 spawns the critic subagent against the worktree, with `problem.md` / `requirements.md` / `solution.md` as the ticket baseline. Findings drive the `review-ready` ↔ `changes-requested` status transition. One-shot subagent report; not conversational.
+
+Two **optional** manual follow-ups are available between `/build` and `/deliver`:
+
+- `/review XXXX` — same panel-aware review as the post-build critic, but **interactive**: findings stream in the conversation, lead can ask follow-up questions, request deeper dives, or skip ahead to verdict. Use when you want to walk the review conversationally rather than read a one-shot report.
+- `/critique <files>` — comprehensive on-demand panel critique against arbitrary files. Works on code (`/critique src/auth/`) or design artifacts (`/critique problem.md solution.md`). Free-form scope; not tied to a ticket; output written to `CRITIQUE.md`.
+
+---
+
+## Expert review panels
+
+The `critique` skill loads domain-specialist panels based on the files in scope. Each panel names 1–3 working experts, captures their key positions, and lists hazards with severity. Panels are additive — a Python route handler returning an HTMX swap activates Core + Python + HTTP/API + Hypermedia + UI simultaneously, each contributing findings from its own lens.
+
+| Category | Panel | Panelists | Trigger |
+|---|---|---|---|
+| **Foundation** | `core` | Martin, Parnas, Ousterhout, Fowler, Beck, McGraw, Evans, Wright (Hyrum's Law) | Always active |
+| **Languages** | `python` | Hettinger, Beazley | `.py` files, Python project markers |
+| | `typescript` | Hejlsberg, Collina | `.ts` / `.tsx` / `.js`, `package.json` |
+| | `go` | Pike, Kennedy | `.go`, `go.mod` |
+| | `rust` | Matsakis, Gjengset | `.rs`, `Cargo.toml` |
+| | `jvm` | Goetz, Bloch | `.java` / `.kt`, Gradle / Maven |
+| | `cpp` | Stroustrup, Sutter | `.c` / `.cpp` / `.h`, `CMakeLists.txt` |
+| | `shell` | Wooledge, Ramey | `.sh` / `.bash`, shell shebangs |
+| **Frontend frameworks** | `angular` | Gechev, Lesh | `@angular/core`, `angular.json` |
+| | `react` | Abramov, Linsley | `react` package, React JSX/TSX |
+| | `vue` | Evan You, Anthony Fu | `vue` package, `.vue` files |
+| | `svelte` | Rich Harris | `svelte` / `@sveltejs/kit`, `.svelte` files |
+| | `solid` | Ryan Carniato | `solid-js` / `@solidjs/start` |
+| **HTTP / Web** | `http-api` | Fielding, Nottingham, Sturgeon | Route handlers, OpenAPI specs |
+| | `hypermedia` | Gross, Nottingham | HTMX detected (deps or markup) |
+| | `ui` | Keith, Pickering, Wathan, Frost | HTML / CSS / JSX, inline markup |
+| | `uswds` | Frost (lens applied to USWDS) | `@uswds/uswds`, `usa-*` classes |
+| **Security** | `identity` | Parecki, Richer | OAuth / OIDC / JWT / session libs |
+| | `cryptography` | Valsorda, Green | Crypto / password-hash / TLS code |
+| **Data** | `database` | Kleppmann, Winand | Migrations, ORM, raw SQL |
+| | `data-engineering` | Beauchemin, Handy, Sculley | Airflow / dbt / Spark / ML pipelines |
+| **AI** | `ai-llm` | Willison, Husain, Yan | LLM clients, RAG, embeddings, evals |
+| **Operations** | `cicd` | Humble & Farley, Rice | `.github/workflows/`, Dockerfile, lockfiles |
+| | `infrastructure` | Morris, Hightower | Terraform, K8s manifests, Helm |
+| | `observability` | Majors, Sridharan | Telemetry, logging, traces |
+| | `performance` | Gregg, Thompson | Hot-path code, benchmarks |
+| | `testing` | Dodds, Feathers | Test suites and runner configs |
+| | `distributed` | Newman, Richardson | Queues, RPC, webhooks, sagas |
+| **Fallback** | `secondary` | Ramalho, Soueidan | Loaded on demand when primary panels reach an impasse |
+
+Panel files live in `context/panels/<name>.md`. The full trigger conditions, hazard tables, and synthesis rules are in `skills/critique/SKILL.md`. When more than five panels activate on a single review, findings are prioritized by severity across all panels rather than enumerated per panel.
 
 ---
 
@@ -204,7 +253,7 @@ harness-combined/
 ├── context/
 │   ├── critic-brief.md    ← Critic agent shared instructions
 │   ├── flows/             ← Mode-specific procedures loaded by /build, /write-spec, /deliver
-│   ├── panels/            ← Expert review panels (Core, Python, HTTP-API, UI, AI-LLM)
+│   ├── panels/            ← 29 expert review panels — see "Expert review panels" section below
 │   └── rules/             ← Per-language code generation rules
 ├── agents/
 │   └── critic.md          ← Critic subagent definition

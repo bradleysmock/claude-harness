@@ -1,6 +1,6 @@
 ---
 name: critic
-description: Read-only senior-engineer reviewer. Loads expert panels by file scope, reads gate-findings if present, and produces structured Must-fix / Should-fix / Suggestion findings with file:line references. Use for both pre-implementation (design review of solution.md) and post-implementation (code review of worktree).
+description: Read-only senior-engineer reviewer. Loads expert panels by file scope, reads gate-findings if present, and produces structured BLOCKER / MAJOR / MINOR / OBS findings with file:line references. Use for both pre-implementation (design review of solution.md) and post-implementation (code review of worktree).
 tools: Read, Grep, Glob
 ---
 

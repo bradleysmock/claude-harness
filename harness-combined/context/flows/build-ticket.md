@@ -105,5 +105,30 @@ Show a summary:
 - Files changed, lines added/removed
 - Which specs passed, which (if any) had integration failures
 
-Then tell the user:
-> Review the diff above. Optionally invoke the **review** skill (ticket-scoped) or the **critique** skill (free-form expert panel) before delivery. When satisfied, run `/deliver XXXX` to merge.
+## Step 7 — Spawn post-build critic (automatic)
+
+After the diff is shown, spawn the critic subagent (`critic`) with the following parameters:
+
+- **Phase**: `code`
+- **Ticket**: `XXXX-<slug>`
+- **Round**: 1
+
+The critic loads expert panels per the trigger table in `${CLAUDE_PLUGIN_ROOT}/skills/critique/SKILL.md` (driven by the worktree's file set), reads `gate-findings.md` if present, reads the worktree implementation + tests, reads `problem.md` / `requirements.md` / `solution.md` as the ticket baseline (for the requirements-coverage and solution-alignment checks in `critic-brief.md` Step 2.5), and produces structured BLOCKER / MAJOR / MINOR / OBS findings.
+
+Display the critic's structured report to the user verbatim.
+
+**If the critic surfaces BLOCKER findings:**
+- Update `status.md` to `status: changes-requested`.
+- Tell the user:
+  > The post-build critic surfaced N BLOCKER findings. Options:
+  > - Address the BLOCKERs and run `/build XXXX` to re-execute the spec engine.
+  > - Run `/review XXXX` for an interactive panel-aware deep-dive on the findings (same panels, conversational delivery, follow-up questions).
+  > - For a comprehensive panel review against arbitrary files in the worktree, run `/critique <files>`.
+
+**If the critic surfaces no BLOCKER findings:**
+- Keep `status.md` at `status: review-ready`.
+- Tell the user:
+  > The post-build critic found no BLOCKERs. Options:
+  > - Proceed to delivery with `/deliver XXXX`.
+  > - For an interactive panel-aware re-review (e.g., to dig into MAJOR / MINOR findings conversationally), run `/review XXXX`.
+  > - For a comprehensive panel review of selected files, run `/critique <files>`.

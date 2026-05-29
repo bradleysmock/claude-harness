@@ -119,13 +119,23 @@ Use bullet points, not prose. Omit sections that don't apply.
 
 ## Multi-Agent Critique
 
-The critic subagent (`critic`) is read-only. It loads expert panels by file scope and produces structured Must-fix / Should-fix / Suggestion findings with `file:line` references.
+The critic subagent (`critic`) is read-only. It loads expert panels by file scope and produces structured BLOCKER / MAJOR / MINOR / OBS findings with `file:line` references — the same 4-tier vocabulary the `critique` and `review` skills use, ensuring one severity model across every review path in the harness.
 
-- **Design phase (automatic)**: `/problem` Phase 5 spawns the critic against the three design artifacts. Max 2 rounds. Findings revise `solution.md` before Checkpoint 1.
-- **Post-implementation (manual)**: After `/build`, the lead invokes the `review` skill (ticket-scoped) or `critique` skill (free-form diff). Nothing runs automatically post-build.
+The critic runs **automatically at both SDLC checkpoints**:
 
-Severity tiers:
+- **Pre-build / design phase**: `/problem` Phase 5 spawns the critic with `Phase: design` against the three design artifacts. Max 2 rounds. Findings revise `solution.md` before Checkpoint 1.
+- **Post-build / code phase**: `/build` Step 7 spawns the critic with `Phase: code` against the worktree, using `problem.md` / `requirements.md` / `solution.md` as the ticket baseline. Findings drive the `review-ready` ↔ `changes-requested` status transition (BLOCKER → `changes-requested`). One round only; the manual `/review` skill is the re-review path.
 
-- **Must-fix** — blocks merge. Resolved before `/deliver`.
-- **Should-fix** — fix now, or open a new ticket if the effort is large.
-- **Suggestion** — logged in the deliver summary only.
+Optional manual review paths after the post-build critic:
+
+- `/review XXXX` — same panel-aware machinery as the critic's `Phase: code` mode, but **interactive** (findings stream in the conversation, lead can ask follow-up questions). Use to re-review after fixing BLOCKERs, drive the review conversationally, or review a ticket whose `/build` happened in a previous session.
+- `/critique <files>` — comprehensive on-demand panel critique against arbitrary files, code or design artifacts. Free-form scope; not tied to a ticket.
+
+Severity tiers (canonical — used by `critique`, `review`, and the critic subagent):
+
+- **BLOCKER** — serious design problem likely to cause bugs, maintenance failure, or security issues. Blocks merge. Resolved before `/deliver`.
+- **MAJOR** — clear violation of a principle with meaningful consequences. Fix now, or open a new ticket if the effort is large.
+- **MINOR** — improvement opportunity. Fix if the code is being touched anyway; otherwise logged.
+- **OBS** — observation worth noting. May reflect a legitimate tradeoff. Logged in the deliver summary only.
+
+The `changes-requested` status transition (review skill, build flow) fires on BLOCKER findings only. MAJOR / MINOR / OBS do not block merge; they appear in the report for the lead to decide on.
