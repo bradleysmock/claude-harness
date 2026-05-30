@@ -50,6 +50,14 @@ Then open Claude Code in the project and run:
 /init
 ```
 
+### Dependencies (auto-bootstrapped)
+
+The MCP server's only third-party dependency is `mcp` (see `requirements.txt`). You do **not** need to install it yourself. The server is launched via `bin/harness-server`, which on first run creates a plugin-local virtualenv at `.venv/` and installs the requirements into it, then execs `server.py` with that interpreter. This keeps the harness working even when the system `python3` is externally managed (PEP 668), and avoids polluting global site-packages. The first launch takes ~30s while the venv builds; subsequent launches are instant.
+
+- The venv is git-ignored and self-heals (it rebuilds if deleted or if `mcp` stops importing).
+- Bootstrapping uses `python3` from `PATH`. To pin a different interpreter, set `HARNESS_PYTHON=/path/to/python3` in the MCP server's environment.
+- The Write/Edit/Stop hooks run on bare `python3` — they import only the standard library and the plugin's own modules, so they need no venv.
+
 ---
 
 ## Gate pipeline

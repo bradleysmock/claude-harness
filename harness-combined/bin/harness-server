@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#
+# harness-combined MCP server launcher.
+#
+# Vendors the server's only third-party dependency (`mcp`) into a plugin-local
+# virtualenv so the harness works out of the box without a system-wide install
+# or an externally-managed-environment override. On first launch it creates
+# <plugin-root>/.venv and installs requirements.txt; subsequent launches just
+# verify the interpreter and exec the server.
+#
+# IMPORTANT: stdout is the MCP stdio protocol channel. Every diagnostic and all
+# pip output is routed to stderr so the JSON-RPC stream is never corrupted.
+#
+# Override the bootstrap interpreter with HARNESS_PYTHON if `python3` on PATH is
+# not the one you want building the venv.
+
+set -euo pipefail
+
+# Resolve the plugin root: this script lives at <root>/bin/harness-server.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+VENV="$ROOT/.venv"
+PY="$VENV/bin/python"
+BOOTSTRAP_PY="${HARNESS_PYTHON:-python3}"
+
+log() { printf 'harness-server: %s\n' "$1" >&2; }
+
+# (Re)bootstrap when the venv interpreter is missing or `mcp` won't import
+# (e.g. a half-built venv, or requirements changed since last run).
+if [ ! -x "$PY" ] || ! "$PY" -c 'import mcp' >/dev/null 2>&1; then
+  log "bootstrapping virtualenv at $VENV (first launch may take ~30s)"
+  if ! command -v "$BOOTSTRAP_PY" >/dev/null 2>&1; then
+    log "ERROR: '$BOOTSTRAP_PY' not found on PATH; set HARNESS_PYTHON to a python3"
+    exit 1
+  fi
+  [ -x "$PY" ] || "$BOOTSTRAP_PY" -m venv "$VENV" 1>&2
+  "$PY" -m pip install --upgrade pip 1>&2
+  "$PY" -m pip install -r "$ROOT/requirements.txt" 1>&2
+  log "bootstrap complete"
+fi
+
+exec "$PY" "$ROOT/server.py" "$@"
