@@ -98,23 +98,18 @@ export function getDeviceInventory(): InventoryItem[] {
 
 export async function syncToServer(): Promise<void> {
   const queue = readQueue();
-  const remaining = [...queue];
 
   for (let i = 0; i < queue.length; i++) {
     const op = queue[i];
-    try {
-      if (op.type === 'mark-sold') {
-        await markItemSold(op.itemId, op.idempotencyKey);
-      } else {
-        await createPreOrder(op.body, op.idempotencyKey);
-      }
-      // Per-item advance: remove this op and persist immediately
-      remaining.shift();
-      writeQueue(remaining);
-    } catch (err) {
-      // Halt-on-first-error: stop and re-throw so the caller knows where we stopped
-      throw err;
+    if (op.type === 'mark-sold') {
+      await markItemSold(op.itemId, op.idempotencyKey);
+    } else {
+      await createPreOrder(op.body, op.idempotencyKey);
     }
+    // Per-item advance: persist everything after this index immediately.
+    // Using slice(i+1) rather than a separate mutable copy avoids index skew
+    // if the halt-on-first-error behaviour is ever relaxed.
+    writeQueue(queue.slice(i + 1));
   }
 }
 

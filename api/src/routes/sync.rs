@@ -225,9 +225,24 @@ async fn remove_listing(
 async fn mark_item_sold(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
+    let idempotency_key = headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+
     let mut guard = state.lock().await;
     let (farm, path) = &mut *guard;
+
+    // Key already used — return the original item without mutating
+    if let Some(ref key) = idempotency_key {
+        if let Some(item_id) = farm.idempotency_keys.get(key) {
+            if let Some(item) = farm.inventory.iter().find(|i| &i.id == item_id) {
+                return (StatusCode::OK, Json(json!(item.clone()))).into_response();
+            }
+        }
+    }
 
     let pos = farm.inventory.iter().position(|i| i.id == id);
     match pos {
@@ -242,6 +257,10 @@ async fn mark_item_sold(
         }
         Some(idx) => {
             farm.inventory[idx].stage = "sold".to_string();
+            // Store key atomically with the stage change
+            if let Some(key) = idempotency_key {
+                farm.idempotency_keys.insert(key, id);
+            }
             let updated = farm.inventory[idx].clone();
             let _ = crate::store::save(path, farm);
             (StatusCode::OK, Json(updated)).into_response()
