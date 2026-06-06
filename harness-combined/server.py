@@ -23,7 +23,7 @@ from mcp.server.fastmcp import FastMCP
 from gates import run_suite_for, run_suite_on_dir
 from memory import SQLiteFailureMemory
 from dag import DAGResolver
-from models import Spec, Task, TaskSpec, GateError
+from models import Spec, Task, TaskSpec
 
 mcp = FastMCP("harness")
 
@@ -122,6 +122,29 @@ def _detect_language(directory: str) -> str:
     return "python"  # default
 
 
+def _detect_stacks(directory: str) -> list[str]:
+    """Detect EVERY language stack present, so a polyglot worktree is never
+    silently gated as a single language. Markers mirror `_detect_language` but
+    also look one level down (e.g. Rust in `api/`, TS in `web/`)."""
+    d = Path(directory)
+    stacks: list[str] = []
+    if (d / "go.mod").exists():
+        stacks.append("go")
+    if (d / "Cargo.toml").exists() or any(d.glob("*/Cargo.toml")):
+        stacks.append("rust")
+    if (
+        (d / "tsconfig.json").exists() or (d / "package.json").exists()
+        or any(d.glob("*/tsconfig.json")) or any(d.glob("*/package.json"))
+    ):
+        stacks.append("typescript")
+    if (
+        (d / "pyproject.toml").exists() or (d / "setup.py").exists()
+        or (d / "setup.cfg").exists() or any(d.rglob("*.py"))
+    ):
+        stacks.append("python")
+    return stacks
+
+
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
 @mcp.tool()
@@ -161,21 +184,40 @@ def gate_run_on_dir(directory: str, language: str, project_root: str, fail_fast:
     Fail+fast: the failing gate result. Fail+full: {"passed": false, "language": ..., "gates": [...]}.
     """
     try:
-        lang = _detect_language(directory) if language == "auto" else language
-        results = run_suite_on_dir(lang, directory, fail_fast=fail_fast)
-        if all(r.passed for r in results):
-            return json.dumps({"passed": True, "language": lang})
-        if fail_fast:
-            failed = next(r for r in results if not r.passed)
-            return json.dumps(failed.to_dict(), indent=2)
+        if language == "auto":
+            stacks = _detect_stacks(directory) or [_detect_language(directory)]
+        else:
+            stacks = [language]
+        # Gate every detected stack; a polyglot worktree must not pass by
+        # gating only one language (FR-7). Single explicit language keeps the
+        # original response shape for back-compat with /build.
+        aggregated: list[tuple[str, Any]] = []
+        for stack in stacks:
+            results = run_suite_on_dir(stack, directory, fail_fast=fail_fast)
+            aggregated.extend((stack, r) for r in results)
+            if fail_fast and not all(r.passed for r in results):
+                failed = next(r for r in results if not r.passed)
+                payload = failed.to_dict()
+                payload["language"] = stack
+                return json.dumps(payload, indent=2)
+        if all(r.passed for _, r in aggregated):
+            if len(stacks) == 1:
+                return json.dumps({"passed": True, "language": stacks[0]})
+            return json.dumps({"passed": True, "languages": stacks})
+        if len(stacks) == 1:
+            return json.dumps({
+                "language": stacks[0],
+                "gates": [r.to_dict() for _, r in aggregated],
+                "passed": False,
+            }, indent=2)
         return json.dumps({
-            "language": lang,
-            "gates": [r.to_dict() for r in results],
+            "languages": stacks,
+            "gates": [{**r.to_dict(), "language": st} for st, r in aggregated],
             "passed": False,
         }, indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)})
-    except Exception as e:
+    except (OSError, ImportError, RuntimeError) as e:
         return json.dumps({"error": f"Gate execution failed: {e}"})
 
 
