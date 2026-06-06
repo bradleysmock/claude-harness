@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from models import GateError, GateResult
-from gates import ProcessResult
+from gates import ProcessResult, append_tool_error_if_silent
 
 
 @dataclass
@@ -328,11 +328,7 @@ def _lint_gate_dir(directory: str) -> GateResult:
     except subprocess.TimeoutExpired:
         return _timeout_error("lint")
     errors = _parse_ruff_json(result.stdout, root)
-    if result.returncode != 0 and not errors:
-        errors.append(GateError(
-            message=result.output[:500] or "ruff exited non-zero (tool may not be installed)",
-            file=None, line=None, column=None, code="TOOL_ERROR", severity="error",
-        ))
+    append_tool_error_if_silent(errors, result.returncode, result.output)
     return GateResult(
         gate="lint",
         passed=result.returncode == 0 and not errors,
@@ -353,11 +349,7 @@ def _type_check_gate_dir(directory: str) -> GateResult:
     except subprocess.TimeoutExpired:
         return _timeout_error("type_check")
     errors = _parse_mypy_output(result.output, root)
-    if result.returncode != 0 and not errors:
-        errors.append(GateError(
-            message=result.output[:500] or "mypy exited non-zero (tool may not be installed)",
-            file=None, line=None, column=None, code="TOOL_ERROR", severity="error",
-        ))
+    append_tool_error_if_silent(errors, result.returncode, result.output)
     return GateResult(
         gate="type_check",
         passed=result.returncode == 0 and not errors,
@@ -418,11 +410,7 @@ def _security_gate_dir(directory: str) -> GateResult:
     except subprocess.TimeoutExpired:
         return _timeout_error("security")
     errors = _parse_bandit_json(result.stdout, root)
-    if result.returncode not in (0, 1) and not errors:
-        errors.append(GateError(
-            message=result.output[:500] or "bandit exited non-zero (tool may not be installed)",
-            file=None, line=None, column=None, code="TOOL_ERROR", severity="error",
-        ))
+    append_tool_error_if_silent(errors, result.returncode, result.output, success_codes=(0, 1))
     return GateResult(
         gate="security",
         passed=result.returncode == 0 and not errors,

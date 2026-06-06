@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from models import GateError, GateResult
-from gates import ProcessResult
+from gates import ProcessResult, append_tool_error_if_silent, find_config_root
 
 
 _TSCONFIG = json.dumps({
@@ -256,19 +256,55 @@ def run_typescript_suite(
 
 # ── Directory mode gates ──────────────────────────────────────────────────────
 
+_TSCONFIG_NAMES = ("tsconfig.json",)
+_ESLINT_CONFIG_NAMES = (
+    "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs",
+    ".eslintrc.json", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.yml", ".eslintrc",
+)
+_JEST_CONFIG_NAMES = (
+    "jest.config.js", "jest.config.cjs", "jest.config.mjs",
+    "jest.config.ts", "jest.config.json",
+)
+
+
+def _changed_test_files(jest_root: Path, base: str = "main") -> list[str] | None:
+    """Test files changed vs the merge-base with ``base``, relative to ``jest_root``.
+
+    Returns a list of changed ``*.test.ts(x)`` paths, or ``None`` when scoping
+    cannot be determined (git missing, not a repo, base unknown). Callers must
+    treat ``None`` as "fall back to the full suite" — never as "skip all".
+    """
+    if shutil.which("git") is None:
+        return None
+    try:
+        mb = subprocess.run(
+            ["git", "-C", str(jest_root), "merge-base", "HEAD", base],
+            capture_output=True, text=True, timeout=30,
+        )
+        ref = mb.stdout.strip() if mb.returncode == 0 and mb.stdout.strip() else base
+        diff = subprocess.run(
+            ["git", "-C", str(jest_root), "diff", "--name-only", ref],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if diff.returncode != 0:
+        return None
+    return [
+        line.strip() for line in diff.stdout.splitlines()
+        if line.strip().endswith((".test.ts", ".test.tsx"))
+    ]
+
+
 def _type_check_gate_dir(directory: str) -> GateResult:
     start = time.monotonic()
-    root = Path(directory)
+    root = find_config_root(Path(directory), _TSCONFIG_NAMES)
     try:
         result = _exec(["npx", "--yes", "tsc", "--noEmit", "--pretty", "false"], root)
     except subprocess.TimeoutExpired:
         return _timeout_error("type_check")
     errors = _parse_tsc_errors(result.output, root)
-    if result.returncode != 0 and not errors:
-        errors.append(GateError(
-            message=result.output[:500] or "tsc exited non-zero",
-            file=None, line=None, column=None, code="TOOL_ERROR", severity="error",
-        ))
+    append_tool_error_if_silent(errors, result.returncode, result.output)
     return GateResult(
         gate="type_check",
         passed=result.returncode == 0 and not errors,
@@ -279,7 +315,7 @@ def _type_check_gate_dir(directory: str) -> GateResult:
 
 def _lint_gate_dir(directory: str) -> GateResult:
     start = time.monotonic()
-    root = Path(directory)
+    root = find_config_root(Path(directory), _ESLINT_CONFIG_NAMES)
     try:
         result = _exec([
             "npx", "--yes", "eslint", ".", "--format", "json", "--ext", ".ts,.tsx",
@@ -287,6 +323,7 @@ def _lint_gate_dir(directory: str) -> GateResult:
     except subprocess.TimeoutExpired:
         return _timeout_error("lint")
     errors = _parse_eslint_json(result.stdout, root)
+    append_tool_error_if_silent(errors, result.returncode, result.output)
     return GateResult(
         gate="lint",
         passed=result.returncode == 0 and not errors,
@@ -297,11 +334,16 @@ def _lint_gate_dir(directory: str) -> GateResult:
 
 def _test_gate_dir(directory: str) -> GateResult:
     start = time.monotonic()
-    root = Path(directory)
+    root = find_config_root(Path(directory), _JEST_CONFIG_NAMES)
+    # Scope to the test files this ticket changed so an unrelated ticket's
+    # (or broken pre-existing) test cannot fail the gate. Fail closed: if the
+    # change set can't be determined, run the full suite rather than skip.
+    scoped = _changed_test_files(root)
+    cmd = ["npx", "--yes", "jest", "--no-coverage"]
+    if scoped:
+        cmd += scoped
     try:
-        result = _exec([
-            "npx", "--yes", "jest", "--no-coverage",
-        ], root, timeout=180)
+        result = _exec(cmd, root, timeout=180)
     except subprocess.TimeoutExpired:
         return _timeout_error("test")
     if result.returncode == 0:

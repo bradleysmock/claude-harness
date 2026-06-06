@@ -1,1 +1,8 @@
 mcp>=1.0
+# Gate tooling — the directory-mode Python gates invoke these via
+# `sys.executable -m <tool>`, so they must live in the server's own venv
+# (the project under test may be stdlib-only and ship none of them).
+ruff>=0.5
+mypy>=1.10
+pytest>=8.0
+bandit>=1.7
