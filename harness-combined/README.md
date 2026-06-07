@@ -17,8 +17,8 @@ All work follows the same four-stage pipeline. The design stages are skippable f
 
 ```
 /problem XXXX      → problem.md, requirements.md, solution.md, design critic → CHECKPOINT 1
-/write-spec XXXX   → reads solution.md → .harness/specs/ (no re-exploration needed)
-/build XXXX        → worktree → spec engine → write target files → diff shown → post-build critic
+/write-spec XXXX   → (optional) pre-generate specs from solution.md into .harness/specs/
+/build XXXX        → auto-generates specs from solution.md if absent → worktree → spec engine → diff → post-build critic
                    ← review the critic's report; optionally run /review XXXX (interactive)
                      or /critique <files> (free-form comprehensive)
 /deliver XXXX      → merge branch → clean up → record learnings
@@ -27,8 +27,8 @@ All work follows the same four-stage pipeline. The design stages are skippable f
 ### Standalone (isolated unit, no design ceremony)
 
 ```
-/write-spec <description>   → explore codebase → .harness/specs/<id>.py
-/build <spec-id>            → gate engine (temp dir) → artifact
+/write-spec <description>      → (optional) pre-generate a spec into .harness/specs/<id>.py
+/build <description|spec-id>   → generates a spec from a description if needed → gate engine (temp dir) → artifact
 /deliver <run-id>           → write artifact to target file
 ```
 
@@ -131,8 +131,8 @@ The harness server exposes these tools to Claude:
 ### Build phase
 | Command | Purpose |
 |---|---|
-| `/write-spec <arg>` | Single entry point for spec authoring. Routes to ticket flow (digit-prefixed arg) or spec flow (free-form description). |
-| `/build <arg>` | Single entry point for implementation. Routes to ticket flow (worktree + diff) or spec flow (temp dir + artifact). |
+| `/write-spec <arg>` | **Optional** spec-authoring step. Routes to ticket flow (digit-prefixed arg) or spec flow (free-form description). `/build` self-specs when specs are absent, so this is only needed to pre-generate or hand-tune a spec. |
+| `/build <arg>` | Single entry point for implementation. Generates specs first if none exist for the ticket/description, then routes to ticket flow (worktree + diff) or spec flow (temp dir + artifact). |
 | `/deliver <arg>` | Single entry point for shipping. Routes to ticket flow (merge + cleanup) or spec flow (write artifact to target). |
 
 Each of these three commands is a **thin controller** in `commands/`. It inspects the argument, decides which mode applies, and reads the corresponding flow file from `context/flows/<command>-<mode>.md`. Only one flow file is loaded per invocation — keeps context lean and keeps the user-facing surface to one command per concept.

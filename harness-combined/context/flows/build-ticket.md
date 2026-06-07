@@ -4,7 +4,7 @@ Create a worktree, run the spec engine against it, write passing implementations
 
 Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, and `MAX_REPAIR_ATTEMPTS` (defaults: auto-detect, `.`, 3).
 
-## Step 1 — Resolve ticket and find specs
+## Step 1 — Resolve ticket, ensure specs exist
 
 Scan `.tickets/` for the ticket matching `$ARGUMENTS`. Read `status.md` to get the slug.
 
@@ -14,7 +14,16 @@ Find the spec or task for this ticket:
 - `.harness/tasks/XXXX-<slug>.py` — multi-spec task (preferred if it exists)
 - `.harness/specs/XXXX-<slug>*.py` — individual spec(s)
 
-If neither exists, tell the user to run `/write-spec XXXX` first and stop.
+**If specs exist** — continue to the standards/learnings load below.
+
+**If neither exists** — generate them inline before building (this replaces the old "run `/write-spec` first" hand-off):
+
+1. Perform **Steps 1–5** of `${CLAUDE_PLUGIN_ROOT}/context/flows/write-spec-ticket.md` (resolve + score-spec gate → read only the named files → choose single-spec vs DAG → write the spec/task files). **Skip that flow's Step 6 report** — you are continuing into the build, not handing off.
+2. **score-spec is a hard stop.** That flow's Step 1 runs the score-spec gate; if its verdict is **BLOCK**, stop here — **before any worktree is created** — show the failing checks, and tell the lead to fix the design artifacts (or run `/refine XXXX`) and re-run `/build XXXX`.
+3. **Status precondition** is enforced by that flow's Step 1: if `status` is not `solution`, it stops and directs the lead to run `/problem XXXX` first. Honor that stop.
+4. After the files are written, announce in one line: "No specs found — generated N spec(s)/task from `solution.md` (score-spec: PASS|WARN). Continuing to build."
+
+Then load lead-curated context (both the specs-exist and just-generated paths):
 
 If `.tickets/_standards.md` exists, load it via `@.tickets/_standards.md`.
 If `.tickets/_learnings.md` exists, load it via `@.tickets/_learnings.md`.

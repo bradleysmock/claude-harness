@@ -4,12 +4,14 @@ Generate and validate code in a temp dir; store the result as an artifact. No wo
 
 Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, and `MAX_REPAIR_ATTEMPTS` (defaults: python, `.`, 3).
 
-## Step 0 — Detect spec or task
+## Step 0 — Detect spec, task, or free-form description
 
-- `.harness/specs/$ARGUMENTS.py` → **spec path**
-- `.harness/tasks/$ARGUMENTS.py` → **task path**
+Decide by what `$ARGUMENTS` is and whether a file matches:
 
-If neither exists, tell the user to run `/write-spec <description>` first.
+- **Existing spec file** — `.harness/specs/$ARGUMENTS.py` exists → **spec path** (below).
+- **Existing task file** — `.harness/tasks/$ARGUMENTS.py` exists → **task path** (below).
+- **Bare id, no match** — `$ARGUMENTS` is a single token (no whitespace) and no file matches → **stop**. Tell the user no spec/task named `$ARGUMENTS` exists, and they can pass a description or check the id. Do **not** treat a bare token as a description — this guards against a typo'd id silently triggering a full codebase exploration.
+- **Free-form description** — `$ARGUMENTS` contains whitespace (e.g. `add bulk-export endpoint`) → generate the spec inline first: perform the full `${CLAUDE_PLUGIN_ROOT}/context/flows/write-spec-spec.md` procedure (explore the codebase, write the spec or task DAG to `.harness/specs/` / `.harness/tasks/`). Announce the generated id(s), then continue on the spec or task path below using that id.
 
 ## Spec path
 

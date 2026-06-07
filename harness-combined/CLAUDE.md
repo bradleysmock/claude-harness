@@ -15,15 +15,15 @@ All work follows one pipeline. Design stages are skippable for standalone work.
 
 ```
 /problem XXXX      design artifacts → CHECKPOINT 1: lead approves design
-/write-spec XXXX   specs derived from solution.md (no re-exploration)
-/build XXXX        worktree → spec engine → write target files → diff
+/write-spec XXXX   (optional) pre-generate or hand-tune specs from solution.md
+/build XXXX        auto-generates specs from solution.md if absent → worktree → spec engine → diff
 /deliver XXXX      merge branch → clean up → record learnings
 ```
 
 **Standalone** (isolated unit, no design ceremony):
 ```
-/write-spec <description>   explore codebase → spec
-/build <spec-id>            gate engine (temp dir) → artifact
+/write-spec <description>      (optional) pre-generate a spec from a description
+/build <description|spec-id>   generates a spec from a description if needed → gate engine (temp dir) → artifact
 /deliver <run-id>           write artifact to target file
 ```
 
@@ -37,7 +37,7 @@ The gate engine, failure memory, and quality hooks are shared across both paths.
 - Checkpoint presentations are concise: what was decided, what the critic found, what changed.
 - Do not narrate intermediate steps during autonomous phases — report at the checkpoint and post-build diff.
 - Surface any blockers discovered mid-phase immediately.
-- **Session boundary**: After Checkpoint 1, the lead should `/clear` before running `/write-spec XXXX` and `/build XXXX`. This keeps each phase's context lean.
+- **Session boundary**: After Checkpoint 1, the lead should `/clear` before running `/build XXXX` (which now self-generates specs from `solution.md`). This keeps each phase's context lean.
 
 ---
 

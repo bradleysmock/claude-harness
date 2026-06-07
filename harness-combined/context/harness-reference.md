@@ -45,6 +45,8 @@ updated: YYYY-MM-DD
 | `done`              | `/deliver`                      | — (terminal)                          |
 | `cancelled`         | `/cancel`                       | — (terminal)                          |
 
+> **Self-speccing:** `/write-spec` never changed `status`; the `solution → implementing` transition has always been driven by `/build` setup. As of the merged build flow, `/build` also *generates* the spec/task files inline when it starts from `status: solution` with no specs present. `/write-spec` is therefore an optional pre-step, not a required transition.
+
 ---
 
 ## Worktrees
