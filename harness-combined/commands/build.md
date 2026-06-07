@@ -6,10 +6,10 @@ If `$ARGUMENTS` is empty, ask the lead which ticket or spec to build before doin
 
 Look at `$ARGUMENTS` and pick exactly one mode:
 
-- **Ticket mode** — argument begins with four digits (e.g. `0001`, `0023-add-inventory`). A ticket directory exists at `.tickets/<arg>*/` with a `solution.md` and one or more specs at `.harness/specs/<arg>*.py`.
+- **Ticket mode** — argument begins with four digits (e.g. `0001`, `0023-add-inventory`). A ticket directory exists at `.tickets/<arg>*/` with an approved `solution.md`. Specs need not exist yet — `/build` generates them from `solution.md` if absent (the optional `/write-spec XXXX` can pre-generate or hand-tune them first).
   → Read `${CLAUDE_PLUGIN_ROOT}/context/flows/build-ticket.md` in full and follow it.
 
-- **Spec mode** — anything else (a bare spec-id or task-id under `.harness/specs/<id>.py` or `.harness/tasks/<id>.py`). No ticket, no worktree.
+- **Spec mode** — anything else: a bare spec-id/task-id under `.harness/specs/<id>.py` / `.harness/tasks/<id>.py`, or a free-form description. A description with no matching spec file makes `/build` generate the spec first. No ticket, no worktree.
   → Read `${CLAUDE_PLUGIN_ROOT}/context/flows/build-spec.md` in full and follow it.
 
 State the chosen mode in one sentence ("ticket mode for 0023-add-inventory" / "spec mode for auth-login") **before** loading the flow file.
