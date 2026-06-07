@@ -126,18 +126,53 @@ The critic loads expert panels per the trigger table in `${CLAUDE_PLUGIN_ROOT}/s
 
 Display the critic's structured report to the user verbatim.
 
-**If the critic surfaces BLOCKER findings:**
-- Update `status.md` to `status: changes-requested`.
-- Tell the user:
-  > The post-build critic surfaced N BLOCKER findings. Options:
-  > - Address the BLOCKERs and run `/build XXXX` to re-execute the spec engine.
-  > - Run `/review XXXX` for an interactive panel-aware deep-dive on the findings (same panels, conversational delivery, follow-up questions).
-  > - For a comprehensive panel review against arbitrary files in the worktree, run `/critique <files>`.
+**Severity policy** (this is the core of the post-build loop):
 
-**If the critic surfaces no BLOCKER findings:**
+- **BLOCKER and MAJOR findings are must-fix.** `/build` does **not** stop for the lead's decision on them — it auto-repairs them in the worktree (Step 7a). The lead is only consulted if auto-repair cannot clear them after `MAX_REPAIR_ATTEMPTS`.
+- **MINOR and OBS findings are optional.** Never auto-fix them. List them for the lead to decide on (Step 7c).
+
+### Step 7a — Auto-repair BLOCKER / MAJOR findings
+
+**If the critic surfaces no BLOCKER and no MAJOR findings**, skip to Step 7c.
+
+Otherwise, enter the repair loop. Run up to `MAX_REPAIR_ATTEMPTS` (default 3) attempts:
+
+For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
+
+1. Announce: "Auto-repair attempt N/`MAX_REPAIR_ATTEMPTS` — addressing M BLOCKER / K MAJOR finding(s)."
+2. For each BLOCKER and MAJOR finding, fix the specific `file:line` location in the worktree files directly. Call `memory(action="retrieve", ...)` first when a finding overlaps a known failure pattern. Do **not** touch MINOR / OBS findings.
+3. Re-run the integration gate so fixes don't regress: `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`. If it fails, repair the gate failures (same inner loop as Step 4e) before proceeding — a green gate is a precondition for re-review.
+4. Commit the repair round: `git -C .worktrees/XXXX-<slug> commit -am "fix: address post-build critic round N findings"`.
+5. Re-spawn the critic subagent (**Round**: `N+1`, same Phase/Ticket) to verify. Display its report verbatim.
+6. **If the new report has no BLOCKER and no MAJOR findings** → repair succeeded. Go to Step 7b.
+7. **If BLOCKER / MAJOR findings remain** and attempts are left → loop to attempt `N+1`.
+
+### Step 7b — Auto-repair succeeded
+
 - Keep `status.md` at `status: review-ready`.
 - Tell the user:
-  > The post-build critic found no BLOCKERs. Options:
+  > The post-build critic's BLOCKER/MAJOR findings were auto-repaired in N round(s) and re-verified clean. Options:
   > - Proceed to delivery with `/deliver XXXX`.
-  > - For an interactive panel-aware re-review (e.g., to dig into MAJOR / MINOR findings conversationally), run `/review XXXX`.
+  > - For an interactive panel-aware re-review (e.g., to dig into remaining MINOR / OBS findings conversationally), run `/review XXXX`.
   > - For a comprehensive panel review of selected files, run `/critique <files>`.
+
+### Step 7c — No must-fix findings (or only MINOR / OBS remain)
+
+- Keep `status.md` at `status: review-ready`.
+- Tell the user:
+  > The post-build critic found no BLOCKER/MAJOR findings. Options:
+  > - Proceed to delivery with `/deliver XXXX`.
+  > - For an interactive panel-aware re-review (e.g., to dig into MINOR / OBS findings conversationally), run `/review XXXX`.
+  > - For a comprehensive panel review of selected files, run `/critique <files>`.
+
+### Step 7d — Auto-repair exhausted (ask the lead)
+
+If BLOCKER / MAJOR findings still remain after `MAX_REPAIR_ATTEMPTS`:
+
+- Update `status.md` to `status: changes-requested`.
+- Show the lead the residual BLOCKER / MAJOR findings and what each repair round attempted.
+- Tell the user:
+  > Auto-repair could not clear N BLOCKER / K MAJOR finding(s) after `MAX_REPAIR_ATTEMPTS` attempts — your input is needed. Options:
+  > - Advise on the approach, then run `/build XXXX` to resume repair with the existing worktree.
+  > - Run `/review XXXX` for an interactive panel-aware deep-dive on the residual findings (same panels, conversational delivery, follow-up questions).
+  > - For a comprehensive panel review against arbitrary files in the worktree, run `/critique <files>`.

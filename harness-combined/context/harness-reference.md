@@ -126,7 +126,7 @@ The critic subagent (`critic`) is read-only. It loads expert panels by file scop
 The critic runs **automatically at both SDLC checkpoints**:
 
 - **Pre-build / design phase**: `/problem` Phase 5 spawns the critic with `Phase: design` against the three design artifacts. Max 2 rounds. Findings revise `solution.md` before Checkpoint 1.
-- **Post-build / code phase**: `/build` Step 7 spawns the critic with `Phase: code` against the worktree, using `problem.md` / `requirements.md` / `solution.md` as the ticket baseline. Findings drive the `review-ready` ↔ `changes-requested` status transition (BLOCKER → `changes-requested`). One round only; the manual `/review` skill is the re-review path.
+- **Post-build / code phase**: `/build` Step 7 spawns the critic with `Phase: code` against the worktree, using `problem.md` / `requirements.md` / `solution.md` as the ticket baseline. BLOCKER **and** MAJOR findings are must-fix: `/build` auto-repairs them in the worktree and re-spawns the critic to verify, looping up to `MAX_REPAIR_ATTEMPTS` (default 3) before consulting the lead. Only if auto-repair is exhausted does it set `status: changes-requested` and ask for the lead's input. MINOR / OBS findings are never auto-fixed — they are listed for the lead. The manual `/review` skill is the conversational re-review path.
 
 Optional manual review paths after the post-build critic:
 
@@ -140,4 +140,7 @@ Severity tiers (canonical — used by `critique`, `review`, and the critic subag
 - **MINOR** — improvement opportunity. Fix if the code is being touched anyway; otherwise logged.
 - **OBS** — observation worth noting. May reflect a legitimate tradeoff. Logged in the deliver summary only.
 
-The `changes-requested` status transition (review skill, build flow) fires on BLOCKER findings only. MAJOR / MINOR / OBS do not block merge; they appear in the report for the lead to decide on.
+Must-fix vs. optional differs by review path:
+
+- **`/build` post-build critic** — BLOCKER **and** MAJOR are must-fix and trigger the auto-repair loop (Step 7a); `changes-requested` fires only when that loop is exhausted. MINOR / OBS are optional — listed for the lead, never auto-fixed.
+- **`review` skill (interactive)** — `changes-requested` fires on BLOCKER findings; MAJOR / MINOR / OBS appear in the report for the lead to decide on.

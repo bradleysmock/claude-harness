@@ -161,7 +161,7 @@ These four behaviors are skills rather than commands. Invoke them explicitly wit
 **Two review cycles run automatically:**
 
 - **Pre-build (design)** — `/problem` Phase 5 spawns the critic subagent against `problem.md` / `requirements.md` / `solution.md`. Findings revise `solution.md` before Checkpoint 1. Max 2 rounds.
-- **Post-build (code)** — `/build` Step 7 spawns the critic subagent against the worktree, with `problem.md` / `requirements.md` / `solution.md` as the ticket baseline. Findings drive the `review-ready` ↔ `changes-requested` status transition. One-shot subagent report; not conversational.
+- **Post-build (code)** — `/build` Step 7 spawns the critic subagent against the worktree, with `problem.md` / `requirements.md` / `solution.md` as the ticket baseline. BLOCKER and MAJOR findings are must-fix: `/build` auto-repairs them and re-spawns the critic to verify, looping up to `MAX_REPAIR_ATTEMPTS` (default 3); only on exhaustion does it set `changes-requested` and ask the lead. MINOR / OBS are optional — listed, never auto-fixed.
 
 Two **optional** manual follow-ups are available between `/build` and `/deliver`:
 
