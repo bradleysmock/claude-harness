@@ -47,6 +47,12 @@ Write the active-ticket sentinel:
 echo 'XXXX-<slug>' > .tickets/.active
 ```
 
+Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). This records that work started, even if the build later escalates:
+```
+git add .tickets/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX → implementing"
+```
+
 ## Step 3 — Load DAG and checkpoint
 
 If a task file exists: call `dag_load("XXXX-<slug>", project_root)` to get execution layers.
@@ -104,6 +110,12 @@ Confirm the commit succeeds.
 ## Step 6 — Update status and show diff
 
 Update `status.md` to `status: review-ready`.
+
+Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). This is separate from the worktree commit in Step 5:
+```
+git add .tickets/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX → review-ready"
+```
 
 Run and display:
 ```
@@ -170,6 +182,11 @@ For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
 If BLOCKER / MAJOR findings still remain after `MAX_REPAIR_ATTEMPTS`:
 
 - Update `status.md` to `status: changes-requested`.
+- Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+  ```
+  git add .tickets/XXXX-<slug>/
+  git commit -m "chore(ticket): XXXX → changes-requested"
+  ```
 - Show the lead the residual BLOCKER / MAJOR findings and what each repair round attempted.
 - Tell the user:
   > Auto-repair could not clear N BLOCKER / K MAJOR finding(s) after `MAX_REPAIR_ATTEMPTS` attempts — your input is needed. Options:

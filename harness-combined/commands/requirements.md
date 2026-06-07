@@ -48,4 +48,11 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 
 4. Update `status.md` to `status: requirements`.
 
-5. If there are open questions, surface them to the lead. Otherwise suggest `/solution`.
+5. Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+```
+git add .tickets/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX → requirements"
+```
+
+6. If there are open questions, surface them to the lead. Otherwise suggest `/solution`.

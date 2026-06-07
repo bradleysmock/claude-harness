@@ -59,6 +59,12 @@ Warn on failure but continue.
 
 Set `status.md` to `status: done` and update the `updated` date.
 
+Commit the metadata transition to `main` — this is what records a finished ticket (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). It is a separate commit from the Step 4 integration:
+```
+git add .tickets/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX → done"
+```
+
 ## Step 7 — Suggest candidate learnings (do not write)
 
 `.tickets/_learnings.md` is lead-curated. The harness never writes to it.
@@ -90,6 +96,12 @@ For each ticket that is not `done` and not XXXX:
 3. Attempt: `git -C .worktrees/YYYY-<slug> rebase main`
    - Success: record "YYYY: rebased OK". If was `review-ready`, downgrade to `implementing` and note gates are invalidated.
    - Failure: run `git -C .worktrees/YYYY-<slug> rebase --abort`, record failure with manual recovery instructions.
+
+If any ticket was downgraded to `implementing` here, commit those metadata transitions to `main` (scoped add per ticket — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+```
+git add .tickets/YYYY-<slug>/
+git commit -m "chore(ticket): YYYY → implementing (rebased onto main)"
+```
 
 ## Step 10 — Report
 

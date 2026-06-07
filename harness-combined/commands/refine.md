@@ -19,6 +19,13 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 
 4. After each resolved item, update `solution.md` to reflect the decision. Track unresolved items in an Open Questions section.
 
-5. Status stays at `solution` — `/refine` can be run multiple times.
+5. Status stays at `solution` — `/refine` can be run multiple times. If you revised `solution.md` (or any artifact), commit the change to `main` so it is not left local-only (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+```
+git add .tickets/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX refine solution"
+```
+
+If no artifact was changed this pass, skip the commit.
 
 6. When satisfied, suggest `/write-spec XXXX` to formalize the solution into specs, then `/build XXXX` to begin implementation.

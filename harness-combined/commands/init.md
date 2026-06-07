@@ -34,10 +34,17 @@ MAX_REPAIR_ATTEMPTS = 3
 0001
 ```
 
-### 4 — Add `.worktrees` to `.gitignore`
+### 4 — Add harness paths to `.gitignore`
 
-If `.gitignore` exists, append `.worktrees/` if not already present.
-If `.gitignore` does not exist, create it with `.worktrees/`.
+Ensure each of these entries is present in `.gitignore` (append any that are missing; create the file if absent):
+
+```
+.worktrees/          # git worktrees
+.tickets/.active     # transient active-ticket sentinel
+.tickets/.ticket.lock # transient ticket-number claim lock
+```
+
+`.tickets/` itself (status.md, problem/requirements/solution.md, NEXT_TICKET, the lead-curated `_standards.md` / `_learnings.md`) **stays tracked** — the harness commits each status transition to `main` (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Only the two transient sentinels above are ignored, so they never show as uncommitted noise.
 
 ### 5 — Write lead-curated stub files
 

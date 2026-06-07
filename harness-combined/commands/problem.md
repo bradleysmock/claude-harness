@@ -206,6 +206,17 @@ Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
 
 Revise `solution.md` based on the critic's findings. If significant issues were raised, verify the revised file is fully written, then spawn a second critic round with `Round: 2`. **Maximum 2 rounds.**
 
+### Commit the design artifacts
+
+Once the critic loop is complete and `solution.md` is final, commit the ticket metadata to `main` (one commit for all three artifacts — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+```
+git add .tickets/XXXX-<slug>/ .tickets/NEXT_TICKET
+git commit -m "chore(ticket): XXXX design (status: solution)"
+```
+
+If the lead requests changes at Checkpoint 1 and you revise the artifacts, commit the revision the same way before continuing.
+
 ---
 
 ## Phase 6 — Spec Score Check

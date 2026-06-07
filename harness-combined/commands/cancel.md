@@ -39,5 +39,11 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 7. **Update ticket status.**
    Set `status.md` to `status: cancelled` and update the `updated` date.
 
+   Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+   ```
+   git add .tickets/XXXX-<slug>/
+   git commit -m "chore(ticket): XXXX → cancelled"
+   ```
+
 8. **Report completion.**
    Confirm what was cleaned up and note any warnings from earlier steps. Remind the lead that the ticket directory (`.tickets/XXXX-<slug>/`) is preserved for reference — delete it manually if it is no longer needed.

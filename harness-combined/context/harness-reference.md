@@ -41,11 +41,28 @@ updated: YYYY-MM-DD
 | `solution`          | `/problem` Phase 4              | `implementing`                        |
 | `implementing`      | `/build` setup                  | `review-ready`                        |
 | `review-ready`      | `/build` after gate/repair loop | `done` or `implementing`              |
-| `changes-requested` | `review` skill                  | `implementing` (re-run `/build`)      |
+| `changes-requested` | `/build` Step 7d, `review` skill | `implementing` (re-run `/build`)     |
 | `done`              | `/deliver`                      | — (terminal)                          |
 | `cancelled`         | `/cancel`                       | — (terminal)                          |
 
 > **Self-speccing:** `/write-spec` never changed `status`; the `solution → implementing` transition has always been driven by `/build` setup. As of the merged build flow, `/build` also *generates* the spec/task files inline when it starts from `status: solution` with no specs present. `/write-spec` is therefore an optional pre-step, not a required transition.
+
+### Committing ticket metadata
+
+`.tickets/` lives on `main` (only implementation code lives in the worktree — see **Worktrees** below). Every status transition **must be committed to `main`** so the ticket's state is durable (not local-only) and the history stays readable. Never leave `status.md` edits sitting uncommitted between commands.
+
+After finalizing a transition, commit **only that ticket's metadata** — a scoped add, so unrelated working-tree changes are never swept in:
+
+```
+git add .tickets/XXXX-<slug>/          # plus .tickets/NEXT_TICKET on first creation
+git commit -m "chore(ticket): XXXX → <status>"
+```
+
+Rules:
+- **One commit per transition.** Each command that writes `status.md` commits before it returns.
+- **Scope the add** to the ticket directory — never `git add -A`. Lead-curated `_learnings.md` / `_standards.md` and unrelated edits stay out.
+- `/problem` runs three transitions in one autonomous pass — it commits **once** at the end (`chore(ticket): XXXX design (status: solution)`), not three times.
+- These metadata commits are separate from the worktree's implementation commits and from the `/deliver` merge commit. Expect, for a finished ticket: design commit → (worktree code commits, merged) → `→ review-ready` commit → `→ done` commit.
 
 ---
 

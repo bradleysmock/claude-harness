@@ -55,4 +55,11 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
 
 4. Update `status.md` to `status: solution`.
 
-5. Offer `/refine` if further iteration is needed, or suggest `/write-spec XXXX` then `/build XXXX` when ready.
+5. Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+```
+git add .tickets/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX → solution"
+```
+
+6. Offer `/refine` if further iteration is needed, or suggest `/write-spec XXXX` then `/build XXXX` when ready.
