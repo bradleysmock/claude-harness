@@ -80,6 +80,22 @@ def discover_tickets_to_gate(project_root: Path) -> list[TicketContext]:
     return results
 
 
+def _python_project_root(worktree_dir: Path) -> Path:
+    """Find the Python project root within the worktree.
+
+    Returns worktree_dir if Python markers (pyproject.toml, etc.) exist there.
+    Otherwise returns the first non-hidden subdirectory that has Python markers.
+    Handles monorepo structures where the Python project lives one level deep.
+    """
+    markers = ("pyproject.toml", "setup.py", "setup.cfg", "requirements.txt")
+    if any((worktree_dir / m).exists() for m in markers):
+        return worktree_dir
+    for child in sorted(worktree_dir.iterdir()):
+        if child.is_dir() and not child.name.startswith(".") and any((child / m).exists() for m in markers):
+            return child
+    return worktree_dir
+
+
 def detect_stacks(worktree_dir: Path) -> list[str]:
     stacks: list[str] = []
     if any((worktree_dir / marker).exists() for marker in ("pyproject.toml", "setup.py", "setup.cfg", "requirements.txt")):
@@ -139,22 +155,38 @@ def changed_files(worktree_dir: Path, suffix: str) -> list[str]:
 
 def gates_python(worktree_dir: Path) -> list[str]:
     failures: list[str] = []
-    py_files = changed_files(worktree_dir, ".py")
+    python_root = _python_project_root(worktree_dir)
+    all_py_files = changed_files(worktree_dir, ".py")
+
+    # Remap paths to be relative to python_root; skip files outside it.
+    # changed_files() returns paths relative to worktree_dir (git root), e.g.
+    # "harness-combined/server.py". When python_root is a subdirectory we strip
+    # the prefix so tools run correctly from python_root.
+    if python_root != worktree_dir:
+        rel_prefix = python_root.relative_to(worktree_dir)
+        py_files: list[str] = []
+        for f in all_py_files:
+            try:
+                py_files.append(str(Path(f).relative_to(rel_prefix)))
+            except ValueError:
+                pass  # Outside python_root — skip
+    else:
+        py_files = all_py_files
 
     if py_files:
-        code, out = run_gate("ruff", ["check", "--output-format", "concise", *py_files], worktree_dir)
+        code, out = run_gate("ruff", ["check", "--output-format", "concise", *py_files], python_root)
         if code not in (0, None) and out:
             failures.append(f"ruff:\n{out}")
 
-        code, out = run_gate("bandit", ["-ll", "-q", "-f", "txt", *py_files], worktree_dir)
+        code, out = run_gate("bandit", ["-ll", "-q", "-f", "txt", *py_files], python_root)
         if code not in (0, None) and "No issues identified" not in out and out:
             failures.append(f"bandit:\n{out}")
 
-        code, out = run_gate("mypy", ["--no-error-summary", *py_files], worktree_dir)
+        code, out = run_gate("mypy", ["--no-error-summary", *py_files], python_root)
         if code not in (0, None) and out:
             failures.append(f"mypy:\n{out}")
 
-    code, out = run_gate("pytest", ["-q", "--no-header", "--no-summary"], worktree_dir)
+    code, out = run_gate("pytest", ["-q", "--no-header", "--no-summary"], python_root)
     if code not in (0, None) and out:
         tail = "\n".join(out.splitlines()[-40:])
         failures.append(f"pytest (last 40 lines):\n{tail}")
