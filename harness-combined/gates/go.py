@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import re
 import shutil
 import subprocess
@@ -7,9 +8,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from models import GateError, GateResult
 from gates import ProcessResult
-
+from models import GateError, GateResult
 
 _GO_MOD = "module harness/temp\n\ngo 1.21\n"
 

@@ -2,9 +2,10 @@
 DAG validation and topological resolution for multi-spec tasks.
 """
 from __future__ import annotations
+
 from collections import defaultdict, deque
 
-from models import Task, TaskSpec
+from models import Task
 
 
 class CyclicDependencyError(ValueError):

@@ -11,9 +11,8 @@ import re
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
-
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS failure_records (

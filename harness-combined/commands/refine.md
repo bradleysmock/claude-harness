@@ -2,7 +2,7 @@ Iterate on the solution design before implementation. Manual escape hatch for ad
 
 ## Ticket Resolution
 
-If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/` for tickets with `status: solution`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
+If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/` if not found. Otherwise scan `.tickets/` for tickets with `status: solution`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
 
 ## Steps
 

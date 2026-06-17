@@ -1,8 +1,8 @@
-Abandon an in-flight ticket: removes the worktree, deletes the branch, and sets status to `cancelled`. Safe to run at any stage before merge.
+Abandon an in-flight ticket: removes the worktree, deletes the branch, sets status to `cancelled`, and archives the ticket to `.tickets/completed/`. Safe to run at any stage before merge.
 
 ## Ticket Resolution
 
-If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/` for tickets whose status is not `done` and not `cancelled`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
+If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/` if not found there. Otherwise scan `.tickets/` for tickets whose status is not `done` and not `cancelled`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
 
 ## Steps
 
@@ -18,6 +18,7 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
      git branch -d <branch>                       (if branch exists)
      status.md → cancelled
      .tickets/.active deleted                     (if it matches this ticket)
+     mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/   (archive)
    This cannot be undone without git reflog. Proceed? (yes/no)
    ```
    Stop if the lead says no.
@@ -45,5 +46,20 @@ If a ticket number is provided as an argument, use it. Otherwise scan `.tickets/
    git commit -m "chore(ticket): XXXX → cancelled"
    ```
 
-8. **Report completion.**
-   Confirm what was cleaned up and note any warnings from earlier steps. Remind the lead that the ticket directory (`.tickets/XXXX-<slug>/`) is preserved for reference — delete it manually if it is no longer needed.
+8. **Archive the ticket directory.**
+   Move the ticket out of the active root into the completed subfolder:
+   ```
+   mkdir -p .tickets/completed
+   mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/
+   git rm -r --cached .tickets/XXXX-<slug>/
+   git add -- .tickets/completed/XXXX-<slug>/
+   git commit -m "chore(ticket): XXXX archive → completed/"
+   ```
+   This is always a **separate commit** from Step 7 — never amend, as Step 7 may already be pushed.
+
+   **Idempotency:** If `.tickets/completed/XXXX-<slug>/` already exists and `.tickets/XXXX-<slug>/` is absent, skip the mv and git operations (already archived) and continue.
+
+   **Partial-move guard:** If both `.tickets/XXXX-<slug>/` and `.tickets/completed/XXXX-<slug>/` exist simultaneously, warn the lead — treat the root copy as authoritative and proceed with the mv from root.
+
+9. **Report completion.**
+   Confirm what was cleaned up (worktree, branch, archive location), note any warnings from earlier steps, and remind the lead that the ticket is now in `.tickets/completed/XXXX-<slug>/`. Use `/reopen XXXX` to resume work on it.

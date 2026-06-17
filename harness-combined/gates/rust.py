@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import shutil
 import subprocess
@@ -8,9 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from models import GateError, GateResult
 from gates import ProcessResult
-
+from models import GateError, GateResult
 
 _CARGO_TOML = """\
 [package]

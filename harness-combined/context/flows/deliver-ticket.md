@@ -4,7 +4,7 @@ Merge the ticket's worktree branch into main, remove the worktree, and record le
 
 ## Step 1 — Resolve and validate
 
-Scan `.tickets/` for the ticket matching `$ARGUMENTS`. Read `status.md`.
+Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md`.
 
 - Confirm `status` is `review-ready`. If not, tell the user to run `/build XXXX` first and stop.
 - Extract `branch` (e.g. `ticket/XXXX-<slug>`) and `ticket` number.
@@ -15,7 +15,7 @@ Scan `.tickets/` for the ticket matching `$ARGUMENTS`. Read `status.md`.
 
 Get changed files: `git diff --name-only main....<branch>`
 
-Scan `.tickets/` for any other `review-ready` tickets. For each, get their changed files. If any overlap, warn the user:
+Scan `.tickets/` (not `.tickets/completed/`) for any other `review-ready` tickets. For each, get their changed files. If any overlap, warn the user:
 
 ```
 Warning: the following files are also changed in other review-ready tickets:
@@ -33,6 +33,7 @@ Ready to deliver ticket XXXX:
   git worktree remove .worktrees/XXXX-<slug>
   git branch -d <branch>
   status.md → done
+  mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/   (archive)
 Proceed? (yes/no)
 ```
 
@@ -55,15 +56,30 @@ git branch -d <branch>
 
 Warn on failure but continue.
 
-## Step 6 — Update ticket status
+## Step 6 — Record terminal status and archive
 
-Set `status.md` to `status: done` and update the `updated` date.
-
-Commit the metadata transition to `main` — this is what records a finished ticket (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). It is a separate commit from the Step 4 integration:
+**6a — Status transition commit.**
+Write `status: done` to `status.md` and set the `updated` date. Commit this status transition as a scoped add (see "Committing ticket metadata" in the harness reference):
 ```
 git add .tickets/XXXX-<slug>/
 git commit -m "chore(ticket): XXXX → done"
 ```
+This is a separate commit from the Step 4 merge commit.
+
+**6b — Archive commit.**
+Move the ticket directory to `.tickets/completed/` and stage the move:
+```
+mkdir -p .tickets/completed
+mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/
+git rm -r --cached .tickets/XXXX-<slug>/
+git add -- .tickets/completed/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX archive → completed/"
+```
+This is always a **separate commit** from the 6a status-transition commit.
+
+**Idempotency:** If `.tickets/completed/XXXX-<slug>/` already exists and `.tickets/XXXX-<slug>/` is absent, skip the mv and git operations (already archived) and continue.
+
+**Partial-move guard:** If both `.tickets/XXXX-<slug>/` and `.tickets/completed/XXXX-<slug>/` exist simultaneously, warn the lead — treat the root copy as authoritative and proceed with the mv from root.
 
 ## Step 7 — Suggest candidate learnings (do not write)
 
@@ -90,7 +106,7 @@ rm -f .tickets/.active
 
 ## Step 9 — Rebase in-flight worktrees
 
-For each ticket that is not `done` and not XXXX:
+For each active ticket in `.tickets/` (not `.tickets/completed/`) that is not XXXX:
 1. Read its `branch` from `status.md`. If empty, skip.
 2. Check for mid-rebase state: `git -C .worktrees/YYYY-<slug> rev-parse --git-dir`
 3. Attempt: `git -C .worktrees/YYYY-<slug> rebase main`

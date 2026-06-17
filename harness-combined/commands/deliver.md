@@ -6,7 +6,7 @@ If `$ARGUMENTS` is empty, ask the lead whether to deliver a ticket (give a numbe
 
 Look at `$ARGUMENTS` and pick exactly one mode:
 
-- **Ticket mode** — argument begins with four digits (e.g. `0001`, `0023-add-inventory`). A ticket directory exists at `.tickets/<arg>*/` with `status: review-ready`.
+- **Ticket mode** — argument begins with four digits (e.g. `0001`, `0023-add-inventory`). A ticket directory exists at `.tickets/<arg>*/` or `.tickets/completed/<arg>*/` with `status: review-ready`.
   → Read `${CLAUDE_PLUGIN_ROOT}/context/flows/deliver-ticket.md` in full and follow it.
 
 - **Spec mode** — anything else (a run-id from `.harness/results/`, or empty meaning "the most recent passed run").
@@ -14,4 +14,4 @@ Look at `$ARGUMENTS` and pick exactly one mode:
 
 State the chosen mode in one sentence **before** loading the flow file.
 
-If the argument starts with four digits but no matching ticket directory exists, ask the lead whether they meant a ticket or a standalone run-id that happens to start with digits.
+If the argument starts with four digits but no matching ticket directory exists in either `.tickets/` or `.tickets/completed/`, ask the lead whether they meant a ticket or a standalone run-id that happens to start with digits.

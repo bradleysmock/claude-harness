@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 import types
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,9 +20,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from mcp.server.fastmcp import FastMCP
 
+from dag import DAGResolver
 from gates import run_suite_for, run_suite_on_dir
 from memory import SQLiteFailureMemory
-from dag import DAGResolver
 from models import Spec, Task, TaskSpec
 
 mcp = FastMCP("harness")

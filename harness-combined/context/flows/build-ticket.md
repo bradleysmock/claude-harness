@@ -6,7 +6,7 @@ Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, and `M
 
 ## Step 1 — Resolve ticket, ensure specs exist
 
-Scan `.tickets/` for the ticket matching `$ARGUMENTS`. Read `status.md` to get the slug.
+Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md` to get the slug. Use whichever location the ticket is found in for all subsequent file references in this flow.
 
 If `status` is `changes-requested`, the worktree already exists from a prior `/build`. Skip Step 2; resume with the existing worktree and skip already-passed specs via `checkpoint(action="read", ...)`.
 

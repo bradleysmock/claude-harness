@@ -10,7 +10,8 @@ Initialize the harness pipeline in the current project.
 ├── tasks/        ← task DAG files go here
 ├── results/      ← run artifacts go here
 └── checkpoints/  ← task resume state
-.tickets/         ← SDLC ticket directory
+.tickets/         ← SDLC ticket directory (active tickets live here)
+.tickets/completed/ ← archived tickets (status: done or cancelled)
 .worktrees/       ← git worktrees (auto-gitignored)
 ```
 
@@ -44,7 +45,7 @@ Ensure each of these entries is present in `.gitignore` (append any that are mis
 .tickets/.ticket.lock # transient ticket-number claim lock
 ```
 
-`.tickets/` itself (status.md, problem/requirements/solution.md, NEXT_TICKET, the lead-curated `_standards.md` / `_learnings.md`) **stays tracked** — the harness commits each status transition to `main` (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Only the two transient sentinels above are ignored, so they never show as uncommitted noise.
+`.tickets/` itself (status.md, problem/requirements/solution.md, NEXT_TICKET, the lead-curated `_standards.md` / `_learnings.md`) **stays tracked** — the harness commits each status transition to `main` (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Only the two transient sentinels above are ignored. `.tickets/completed/` is also tracked — archived tickets are committed to git just like active ones.
 
 ### 5 — Write lead-curated stub files
 
