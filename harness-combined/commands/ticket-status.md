@@ -4,9 +4,14 @@ Generate a concise ticket status summary from the `.tickets/` directory.
 
 ```bash
 for f in .tickets/*/status.md; do echo "=== $f ==="; cat "$f"; done
+for f in .tickets/completed/*/status.md; do echo "=== $f ==="; cat "$f"; done
 ```
 
-Separate tickets by status: `done` tickets are closed; everything else is open. Collect each open ticket's number, title, and status string.
+Separate tickets by location and status:
+- **Active tickets**: any ticket under `.tickets/` (not `completed/`) — these are open regardless of status value.
+- **Completed tickets**: any ticket under `.tickets/completed/` — these are archived (status `done` or `cancelled`).
+
+Collect each active ticket's number, title, and status string.
 
 ## Step 2 — Read problem.md for open tickets
 
@@ -29,6 +34,14 @@ Produce output in this exact structure — no preamble, no closing remarks:
 | NNNN | Title | `status` |
 
 *(sorted ascending by ticket number)*
+
+### Completed Tickets
+
+| Ticket | Title | Status |
+|---|---|---|
+| NNNN | Title | `done` / `cancelled` |
+
+*(sorted ascending by ticket number; omit section if no completed tickets)*
 
 ### Implementation Order
 

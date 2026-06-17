@@ -2,7 +2,7 @@ Manual gate runner — runs the full gate suite against a ticket's worktree usin
 
 ## Ticket resolution
 
-A ticket number argument is required. If none is provided, scan `.tickets/` for tickets with `status: implementing` or `status: review-ready`. If exactly one exists, use it. Otherwise list candidates and stop.
+A ticket number argument is required. If none is provided, scan `.tickets/` (not `.tickets/completed/`) for tickets with `status: implementing` or `status: review-ready`. If exactly one exists, use it. Otherwise list candidates and stop. For direct ticket ID resolution, check `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/`.
 
 ## Steps
 

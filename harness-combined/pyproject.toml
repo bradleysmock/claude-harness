@@ -1,0 +1,4 @@
+[tool.bandit]
+# B102 (exec_used): server.py uses exec() to load harness-authored spec/task files
+# from .harness/specs/ and .harness/tasks/ — never external user input.
+skips = ["B102"]

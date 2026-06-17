@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import ast
 import json
 import os
@@ -12,8 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from models import GateError, GateResult
 from gates import ProcessResult, append_tool_error_if_silent
+from models import GateError, GateResult
 
 
 @dataclass
@@ -106,7 +107,7 @@ def _parse_mypy_output(output: str, root: Path | None = None) -> list[GateError]
 
 
 def _parse_ruff_json(stdout: str, root: Path | None = None) -> list[GateError]:
-    errors = []
+    errors: list[GateError] = []
     if not stdout.strip():
         return errors
     try:
@@ -131,7 +132,7 @@ def _parse_ruff_json(stdout: str, root: Path | None = None) -> list[GateError]:
 
 
 def _parse_bandit_json(stdout: str, root: Path | None = None) -> list[GateError]:
-    errors = []
+    errors: list[GateError] = []
     if not stdout.strip():
         return errors
     try:
@@ -236,7 +237,9 @@ def _test_gate(env: ExecutionEnvironment) -> GateResult:
     if result.returncode == 0:
         return GateResult(gate="test", passed=True, errors=[],
                           duration_ms=int((time.monotonic() - start) * 1000))
-    errors = []
+    errors: list[GateError] = []
+    current: str | None
+    lines: list[str]
     current, lines = None, []
     for line in result.output.splitlines():
         if line.startswith("FAILED"):
@@ -369,7 +372,9 @@ def _test_gate_dir(directory: str) -> GateResult:
     if result.returncode == 0:
         return GateResult(gate="test", passed=True, errors=[],
                           duration_ms=int((time.monotonic() - start) * 1000))
-    errors = []
+    errors: list[GateError] = []
+    current: str | None
+    lines: list[str]
     current, lines = None, []
     for line in result.output.splitlines():
         if line.startswith("FAILED"):
@@ -401,12 +406,15 @@ def _test_gate_dir(directory: str) -> GateResult:
 def _security_gate_dir(directory: str) -> GateResult:
     start = time.monotonic()
     root = Path(directory)
+    bandit_cmd = [
+        sys.executable, "-m", "bandit", "-r", ".",
+        "-f", "json", "--severity-level", "medium",
+        "--exclude", ".venv,venv,node_modules,.git",
+    ]
+    if (root / "pyproject.toml").exists():
+        bandit_cmd += ["-c", str(root / "pyproject.toml")]
     try:
-        result = _exec_dir([
-            sys.executable, "-m", "bandit", "-r", ".",
-            "-f", "json", "--severity-level", "medium",
-            "--exclude", ".venv,venv,node_modules,.git",
-        ], directory)
+        result = _exec_dir(bandit_cmd, directory)
     except subprocess.TimeoutExpired:
         return _timeout_error("security")
     errors = _parse_bandit_json(result.stdout, root)

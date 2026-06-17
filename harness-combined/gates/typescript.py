@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import re
 import shutil
@@ -9,9 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from models import GateError, GateResult
 from gates import ProcessResult, append_tool_error_if_silent, find_config_root
-
+from models import GateError, GateResult
 
 _TSCONFIG = json.dumps({
     "compilerOptions": {

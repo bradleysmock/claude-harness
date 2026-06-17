@@ -21,6 +21,8 @@ All SDLC work is tracked under `.tickets/`.
     solution.md
     status.md
     gate-findings.md
+  completed/         # Archived tickets (status: done or cancelled)
+    XXXX-<slug>/     # Same structure as active tickets; moved here by /deliver and /cancel
 ```
 
 Numbers are four-digit zero-padded (`0001`, `0002`, ...). `status.md` format:
@@ -38,12 +40,14 @@ updated: YYYY-MM-DD
 |---------------------|---------------------------------|---------------------------------------|
 | `problem`           | `/problem` Phase 2              | `requirements`                        |
 | `requirements`      | `/problem` Phase 3              | `solution`                            |
-| `solution`          | `/problem` Phase 4              | `implementing`                        |
+| `solution`          | `/problem` Phase 4; `/reopen` (from `completed/`) | `implementing`           |
 | `implementing`      | `/build` setup                  | `review-ready`                        |
 | `review-ready`      | `/build` after gate/repair loop | `done` or `implementing`              |
 | `changes-requested` | `/build` Step 7d, `review` skill | `implementing` (re-run `/build`)     |
-| `done`              | `/deliver`                      | — (terminal)                          |
-| `cancelled`         | `/cancel`                       | — (terminal)                          |
+| `done`              | `/deliver` (ticket archived to `completed/`) | `solution` via `/reopen` |
+| `cancelled`         | `/cancel` (ticket archived to `completed/`) | `solution` via `/reopen`  |
+
+> **Archive lifecycle:** `/deliver` and `/cancel` both move the ticket directory from `.tickets/<XXXX-slug>/` to `.tickets/completed/<XXXX-slug>/` after committing the terminal status. `/reopen XXXX` moves it back and sets `status: solution`. The `solution` status is therefore reachable from two paths: the forward design phase (`/problem`) and the reopen path (`/reopen`). After reopen, the lead must re-run `/build XXXX` before implementation resumes.
 
 > **Self-speccing:** `/write-spec` never changed `status`; the `solution → implementing` transition has always been driven by `/build` setup. As of the merged build flow, `/build` also *generates* the spec/task files inline when it starts from `status: solution` with no specs present. `/write-spec` is therefore an optional pre-step, not a required transition.
 
@@ -56,6 +60,23 @@ After finalizing a transition, commit **only that ticket's metadata** — a scop
 ```
 git add .tickets/XXXX-<slug>/          # plus .tickets/NEXT_TICKET on first creation
 git commit -m "chore(ticket): XXXX → <status>"
+```
+
+For the archive step (after `/deliver` or `/cancel` sets the terminal status), the directory moves, so the commit uses a different pair of operations:
+
+```
+# After OS mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/
+git rm -r --cached .tickets/XXXX-<slug>/
+git add -- .tickets/completed/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX archive → completed/"
+```
+
+For `/reopen`, the reverse:
+
+```
+# After OS mv .tickets/completed/XXXX-<slug>/ .tickets/XXXX-<slug>/
+git add -- .tickets/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX → solution (reopened)"
 ```
 
 Rules:

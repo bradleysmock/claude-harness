@@ -4,7 +4,7 @@ Read the approved `solution.md` and derive specs directly. The design phase alre
 
 ## Step 1 — Resolve ticket and score design artifacts
 
-Scan `.tickets/` for the ticket matching `$ARGUMENTS`. Read `status.md`, `solution.md`, `requirements.md`, `problem.md`.
+Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md`, `solution.md`, `requirements.md`, `problem.md`. Use whichever location the ticket is found in for all subsequent file references in this flow.
 
 Confirm `status` is `solution`. If not, tell the user to run `/problem XXXX` first (or `/refine XXXX` if `solution.md` exists but needs work) and stop.
 
