@@ -24,7 +24,8 @@ If a ticket number is provided as an argument, scan `.tickets/completed/<arg>*/`
    Ready to reopen ticket XXXX:
      mv .tickets/completed/XXXX-<slug>/ .tickets/XXXX-<slug>/
      status.md → solution
-     git add .tickets/XXXX-<slug>/
+     git rm -r --cached .tickets/completed/XXXX-<slug>/
+     git add -- .tickets/XXXX-<slug>/
      git commit -m "chore(ticket): XXXX → solution (reopened)"
    Re-run /build XXXX before resuming work. Proceed? (yes/no)
    ```
@@ -41,6 +42,7 @@ If a ticket number is provided as an argument, scan `.tickets/completed/<arg>*/`
 
 6. **Commit the reopen transition** (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
    ```
+   git rm -r --cached .tickets/completed/XXXX-<slug>/
    git add -- .tickets/XXXX-<slug>/
    git commit -m "chore(ticket): XXXX → solution (reopened)"
    ```

@@ -75,6 +75,7 @@ For `/reopen`, the reverse:
 
 ```
 # After OS mv .tickets/completed/XXXX-<slug>/ .tickets/XXXX-<slug>/
+git rm -r --cached .tickets/completed/XXXX-<slug>/
 git add -- .tickets/XXXX-<slug>/
 git commit -m "chore(ticket): XXXX → solution (reopened)"
 ```

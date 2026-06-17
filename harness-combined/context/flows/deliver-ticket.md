@@ -56,18 +56,26 @@ git branch -d <branch>
 
 Warn on failure but continue.
 
-## Step 6 — Update ticket status and archive
+## Step 6 — Record terminal status and archive
 
-1. Set `status.md` to `status: done` and update the `updated` date.
-2. Archive the ticket directory (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md` for the git commands):
-   ```
-   mkdir -p .tickets/completed
-   mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/
-   git rm -r --cached .tickets/XXXX-<slug>/
-   git add -- .tickets/completed/XXXX-<slug>/
-   git commit -m "chore(ticket): XXXX → done"
-   ```
-   This commit records both the terminal status and the archive move. It is separate from the Step 4 merge commit.
+**6a — Status transition commit.**
+Write `status: done` to `status.md` and set the `updated` date. Commit this status transition as a scoped add (see "Committing ticket metadata" in the harness reference):
+```
+git add .tickets/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX → done"
+```
+This is a separate commit from the Step 4 merge commit.
+
+**6b — Archive commit.**
+Move the ticket directory to `.tickets/completed/` and stage the move:
+```
+mkdir -p .tickets/completed
+mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/
+git rm -r --cached .tickets/XXXX-<slug>/
+git add -- .tickets/completed/XXXX-<slug>/
+git commit -m "chore(ticket): XXXX archive → completed/"
+```
+This is always a **separate commit** from the 6a status-transition commit.
 
 **Idempotency:** If `.tickets/completed/XXXX-<slug>/` already exists and `.tickets/XXXX-<slug>/` is absent, skip the mv and git operations (already archived) and continue.
 
