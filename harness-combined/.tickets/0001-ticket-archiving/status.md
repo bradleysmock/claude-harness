@@ -1,4 +1,4 @@
-status: implementing
+status: review-ready
 ticket: 0001
 title: Archive Completed and Cancelled Tickets
 branch: ticket/0001-ticket-archiving
