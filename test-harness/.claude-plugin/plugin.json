@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "test-harness",
+  "displayName": "Test Harness",
+  "version": "0.1.0",
+  "description": "Retrofit a high-integrity test suite onto an untested codebase: seam-aware, risk-ranked, oracle-grounded, and mutation-gated. Enforces Generator/Verifier role separation and the net-immutability and oracle-independence invariants mechanically.",
+  "author": { "name": "Bradley Smock" },
+  "license": "MIT",
+  "keywords": [
+    "testing",
+    "mutation-testing",
+    "characterization",
+    "oracle",
+    "devsecops",
+    "test-retrofit"
+  ]
+}

@@ -53,6 +53,18 @@
       "license": "MIT",
       "keywords": ["harness", "codegen", "tdd", "mcp", "sdlc", "no-api-key"],
       "category": "development"
+    },
+    {
+      "name": "test-harness",
+      "source": "./test-harness",
+      "description": "Retrofit a high-integrity test suite onto an untested codebase: seam-aware, risk-ranked, oracle-grounded, and mutation-gated. Enforces Generator/Verifier role separation and the net-immutability and oracle-independence invariants mechanically.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Bradley Smock"
+      },
+      "license": "MIT",
+      "keywords": ["testing", "mutation-testing", "characterization", "oracle", "devsecops", "test-retrofit"],
+      "category": "development"
     }
   ]
 }
