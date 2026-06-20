@@ -4,7 +4,7 @@ Requires the ticket to be at `status: solution`. If not, stop and tell the lead 
 
 ## Ticket Resolution
 
-If `$ARGUMENTS` begins with four digits, scan `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/` if not found. Confirm the matched ticket is at `status: solution`. If the status is not `solution`, stop and tell the lead to run `/problem XXXX` first.
+If `$ARGUMENTS` begins with four digits, scan `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/` if not found (diagnostic fallback only — any ticket found there will fail the `status: solution` check, giving a clear error rather than "not found"). Confirm the matched ticket is at `status: solution`. If the status is not `solution`, stop and tell the lead to run `/problem XXXX` first.
 
 If `$ARGUMENTS` is empty, scan `.tickets/` (not `.tickets/completed/`) for tickets with `status: solution`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before proceeding.
 

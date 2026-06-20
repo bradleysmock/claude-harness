@@ -10,7 +10,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/context/flows/build-ticket.md` and follow it exactly
 
 **Divergence condition**: When BLOCKER/MAJOR findings still remain after `MAX_REPAIR_ATTEMPTS` repair rounds (the condition that would normally trigger `build-ticket.md` Step 7d), stop following `build-ticket.md` and continue in this flow at Step A below.
 
-**Clean-build interception**: When the critic returns no BLOCKER/MAJOR findings (the condition that would normally trigger `build-ticket.md` Step 7b or 7c), stop following `build-ticket.md` and continue in this flow at Step B below.
+**Clean-build interception**: When the critic returns no BLOCKER/MAJOR findings (the condition that would normally trigger `build-ticket.md` Step 7b or 7c — 7b = repair loop cleared findings; 7c = no must-fix findings from the start), stop following `build-ticket.md` and continue in this flow at Step B below.
 
 ## Step A — Repair exhaustion
 
@@ -18,7 +18,7 @@ Do **not** transition to `changes-requested`. Do **not** ask the lead.
 
 Read `${CLAUDE_PLUGIN_ROOT}/context/flows/repair-escalation.md` and follow it.
 
-**If repair-escalation returns succeeded** → go to Step B.
+**If repair-escalation returns succeeded** → go to Step B. (Ticket status remains `review-ready` — repair-escalation does not change it.)
 
 **If repair-escalation returns exhausted**:
 1. Transition `status.md` to `status: changes-requested` and commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):

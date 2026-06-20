@@ -3,7 +3,7 @@
 Entered when BLOCKER/MAJOR findings remain after `MAX_REPAIR_ATTEMPTS` in the post-build critic loop. The worktree exists at `.worktrees/XXXX-slug/`, `gate-findings.md` is current at `.tickets/XXXX-slug/gate-findings.md`, and the latest critic report is in context.
 
 This flow returns one of two signals to the caller:
-- **succeeded**: all BLOCKER/MAJOR findings cleared
+- **succeeded**: all BLOCKER/MAJOR findings cleared (ticket status remains `review-ready` — unchanged by this flow)
 - **exhausted**: findings remain after all phases
 
 ## Phase 1 — Diagnostic subagent
@@ -24,11 +24,19 @@ Spawn a `claude` subagent (fresh context, read-only — it must not write or edi
 > 2. **Fix strategy** — a concrete approach that avoids what was already tried
 > 3. **Target locations** — which files and sections to change
 
-Apply the subagent's fix strategy: make the targeted edits directly in `.worktrees/XXXX-slug/`, then run:
+Apply the subagent's fix strategy: make the targeted edits directly in `.worktrees/XXXX-slug/`, targeting only the file(s) identified in the subagent's "Target locations" output above. Then commit the repair edits:
+
+```
+git -C .worktrees/XXXX-slug commit -am "fix: address post-build critic repair-escalation Phase 1 findings"
+```
+
+Then run:
 
 ```
 gate_run_on_dir(".worktrees/XXXX-slug", "auto", project_root)
 ```
+
+(`project_root` is inherited from the build phase context, loaded in `build-ticket.md` Step 1 from `.harness/config.py`.)
 
 Re-spawn the critic subagent (same Phase and Ticket as the caller, next Round number). Display its report verbatim. Allow up to `MAX_REPAIR_ATTEMPTS` additional repair rounds.
 
@@ -37,7 +45,7 @@ Re-spawn the critic subagent (same Phase and Ticket as the caller, next Round nu
 
 ## Phase 2 — Strategy reset
 
-Delete the failing target file(s) from the worktree (do not use `git checkout` — the goal is a clean slate, not the last committed version):
+Delete only the file(s) identified in Phase 1's "Target locations" output from the worktree (do not delete all worktree changes; do not use `git checkout` — the goal is a clean slate for the target files, not the last committed version):
 
 ```
 rm .worktrees/XXXX-slug/<target_file>
@@ -46,6 +54,12 @@ rm .worktrees/XXXX-slug/<target_file>
 Rewrite the target file(s) from the spec. Prepend the following to the generation context before writing:
 
 > Previous approaches tried: [brief summary of what the original repair loop and Phase 1 attempted]. These failed because: [root cause identified by the Phase 1 diagnostic subagent]. Do not use these approaches.
+
+After the rewrite, commit the new implementation:
+
+```
+git -C .worktrees/XXXX-slug commit -am "fix: address post-build critic repair-escalation Phase 2 rewrite"
+```
 
 Run `gate_run_on_dir` and re-spawn the critic. Display the critic's report verbatim. Allow up to `MAX_REPAIR_ATTEMPTS` rounds.
 
