@@ -80,21 +80,21 @@ Display the filtered suggestion list grouped by effort label (small → medium �
 
 ### Small effort
 
-| # | Title | Description |
-|---|-------|-------------|
-| 1 | ...   | ...         |
+| # | Title | Description | Effort |
+|---|-------|-------------|--------|
+| 1 | ...   | ...         | small  |
 
 ### Medium effort
 
-| # | Title | Description |
-|---|-------|-------------|
-| 2 | ...   | ...         |
+| # | Title | Description | Effort |
+|---|-------|-------------|--------|
+| 2 | ...   | ...         | medium |
 
 ### Large effort
 
-| # | Title | Description |
-|---|-------|-------------|
-| 3 | ...   | ...         |
+| # | Title | Description | Effort |
+|---|-------|-------------|--------|
+| 3 | ...   | ...         | large  |
 ```
 
 Numbering is sequential across all groups (1, 2, 3 … not restarted per group). Omit groups that have no suggestions.

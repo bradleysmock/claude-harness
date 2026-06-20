@@ -54,7 +54,7 @@ The suggest skill reads the live filesystem. To test against the fixture state r
    printf 'status: implementing\ntitle: Auto-cancel stale branches\n' > /tmp/suggest-fixture/.tickets/0002-stale/status.md
    ```
 
-2. Invoke the suggest skill, passing the temp directory as the project root (or tell the model to read from `/tmp/suggest-fixture/` instead of `.`).
+2. Invoke the suggest skill and instruct it to read from `/tmp/suggest-fixture/` as the project root in place of the current working directory.
 
 3. Verify each item in the **Expected Behavior** checklist against the output.
 
