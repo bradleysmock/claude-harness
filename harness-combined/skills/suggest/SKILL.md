@@ -11,11 +11,19 @@ Surface targeted, non-duplicate improvement ideas for the harness. Reads current
 
 ## Step 1 — Verify harness context, then inventory capabilities
 
-**Context check (mandatory — do not skip):** Check whether `commands/` or `.tickets/` exists in the current working directory. If neither exists, stop immediately and output:
+**Context check (mandatory — execute before any other step):**
+
+Run this exact shell command:
+
+```bash
+bash -c 'pwd; [ -d commands ] && echo HAS_COMMANDS || echo NO_COMMANDS; [ -d .tickets ] && echo HAS_TICKETS || echo NO_TICKETS'
+```
+
+If the output contains neither `HAS_COMMANDS` nor `HAS_TICKETS`, stop immediately — do not proceed to any further step — and output:
 
 ```
-/suggest requires a harness plugin root. Neither commands/ nor .tickets/ was found in the current directory.
-Run /suggest from your harness plugin directory (e.g. the folder containing commands/, skills/, gates/).
+/suggest requires a harness plugin root. Run it from a directory that contains commands/ or .tickets/ (e.g. your harness-combined plugin folder).
+Current directory: <insert pwd output here>
 ```
 
 If the context check passes, read the following locations (skip silently if a directory does not exist):
