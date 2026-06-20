@@ -14,10 +14,10 @@ Surface targeted, non-duplicate improvement ideas for whatever project is in the
 Run this shell command to establish the working directory and project type:
 
 ```bash
-bash -c 'pwd; [ -d commands ] && echo HAS_COMMANDS || true; [ -d .tickets ] && echo HAS_TICKETS || true'
+bash -c 'pwd; [ -f .claude-plugin/plugin.json ] && echo HAS_PLUGIN_MANIFEST || true; [ -d gates ] && echo HAS_GATES || true'
 ```
 
-**If the output contains `HAS_COMMANDS` or `HAS_TICKETS`:** this is a **harness root**. Set mode = `harness` and proceed to Step 2-H.
+**If the output contains `HAS_PLUGIN_MANIFEST` or `HAS_GATES`:** this is a **harness plugin root**. Set mode = `harness` and proceed to Step 2-H.
 
 **Otherwise:** this is an **app project**. Set mode = `app` and proceed to Step 2-A.
 
