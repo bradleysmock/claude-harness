@@ -149,10 +149,11 @@ Each of these three commands is a **thin controller** in `commands/`. It inspect
 
 ## Skills (intent-triggered)
 
-These four behaviors are skills rather than commands. Invoke them explicitly with `/<name>` or just describe the intent — the model will pick the right skill from the description.
+These five behaviors are skills rather than commands. Invoke them explicitly with `/<name>` or just describe the intent — the model will pick the right skill from the description.
 
 | Skill | Triggers on | Purpose |
 |---|---|---|
+| `suggest` | "what should we build next?", "what features are missing?", "suggest something" | Inventories current capabilities and open tickets, compares against comparable tools, surfaces up to 10 non-duplicate improvement ideas, emits `/problem`-ready lines for accepted suggestions. |
 | `review` | "review ticket 0003", "is 0007 ready to merge?" | Ticket-scoped post-build review against problem / requirements / solution. Sets `changes-requested` if must-fix found. |
 | `critique` | "critique my changes", "expert panel review of the auth route" | Free-form expert-panel critique of the current diff or specified files. Writes `CRITIQUE.md`. |
 | `status` | "what's open?", "where are we?" | Combined view of tickets + standalone runs + failure-memory presence. |
@@ -254,6 +255,7 @@ harness-combined/
 │   ├── ticket-status.md   ← Ticket summary
 │   └── init.md            ← Initialize both workflows
 ├── skills/
+│   ├── suggest/SKILL.md   ← Feature suggestion skill (eval-fixture.md for testing)
 │   ├── review/SKILL.md    ← Ticket-scoped post-build review
 │   ├── critique/SKILL.md  ← Expert-panel critique of a diff
 │   ├── status/SKILL.md    ← Combined tickets + spec/build view
