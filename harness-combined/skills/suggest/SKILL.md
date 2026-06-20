@@ -1,6 +1,6 @@
 ---
 name: suggest
-description: Surface targeted, non-duplicate improvement suggestions for the harness by inventorying current capabilities, reading open ticket titles, and comparing against comparable SDLC / AI-coding-assistant tools. Accepts structured numeric input; emits /problem-ready lines for accepted suggestions. TRIGGER when the user asks "what should we build next?", "what features are missing?", "what could we improve?", "suggest something", or invokes /suggest. SKIP when the user has a specific feature in mind and just wants to create a ticket (use /problem instead).
+description: Surface targeted, non-duplicate improvement suggestions for the harness by inventorying current capabilities, reading open ticket titles, and comparing against comparable SDLC / AI-coding-assistant tools. Accepts structured numeric input; emits /problem-ready lines for accepted suggestions. TRIGGER when the user asks "what should we build next?", "what features are missing?", "what could we improve?", "suggest something", or invokes /suggest — AND the current working directory is a harness plugin root (contains commands/ or .tickets/). SKIP when the user has a specific feature in mind and just wants to create a ticket (use /problem instead). SKIP when the current directory is not a harness plugin root.
 ---
 
 # Feature Suggestion Skill
@@ -9,9 +9,16 @@ Surface targeted, non-duplicate improvement ideas for the harness. Reads current
 
 ---
 
-## Step 1 — Inventory harness capabilities
+## Step 1 — Verify harness context, then inventory capabilities
 
-Read the following locations (degrade gracefully if any directory does not exist — skip with no error):
+**Context check (mandatory — do not skip):** Check whether `commands/` or `.tickets/` exists in the current working directory. If neither exists, stop immediately and output:
+
+```
+/suggest requires a harness plugin root. Neither commands/ nor .tickets/ was found in the current directory.
+Run /suggest from your harness plugin directory (e.g. the folder containing commands/, skills/, gates/).
+```
+
+If the context check passes, read the following locations (skip silently if a directory does not exist):
 
 - `commands/` — list filenames (strip `.md`)
 - `skills/` — list subdirectory names
