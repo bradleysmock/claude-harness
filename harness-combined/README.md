@@ -255,6 +255,7 @@ harness-combined/
 │   ├── ticket-status.md   ← Ticket summary
 │   └── init.md            ← Initialize both workflows
 ├── skills/
+│   ├── suggest/SKILL.md   ← Feature suggestion skill (eval-fixture.md for testing)
 │   ├── review/SKILL.md    ← Ticket-scoped post-build review
 │   ├── critique/SKILL.md  ← Expert-panel critique of a diff
 │   ├── status/SKILL.md    ← Combined tickets + spec/build view

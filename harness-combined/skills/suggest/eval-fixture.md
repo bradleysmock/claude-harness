@@ -40,6 +40,28 @@ When the suggest skill runs against this fixture state, it must:
 
 ---
 
+## How to Run
+
+The suggest skill reads the live filesystem. To test against the fixture state rather than the real harness, follow these steps:
+
+1. Create a temp directory with the fixture layout:
+
+   ```
+   mkdir -p /tmp/suggest-fixture/commands /tmp/suggest-fixture/skills/review /tmp/suggest-fixture/.tickets/0001-parallel/  /tmp/suggest-fixture/.tickets/0002-stale/
+   touch /tmp/suggest-fixture/commands/build.md
+   touch /tmp/suggest-fixture/commands/deliver.md
+   printf 'status: implementing\ntitle: Parallel gate execution\n' > /tmp/suggest-fixture/.tickets/0001-parallel/status.md
+   printf 'status: implementing\ntitle: Auto-cancel stale branches\n' > /tmp/suggest-fixture/.tickets/0002-stale/status.md
+   ```
+
+2. Invoke the suggest skill, passing the temp directory as the project root (or tell the model to read from `/tmp/suggest-fixture/` instead of `.`).
+
+3. Verify each item in the **Expected Behavior** checklist against the output.
+
+If running in the real harness is unavoidable, override Step 1 of the skill by providing the fixture inventory manually ("treat the current harness as if it has only the commands: build, deliver and skills: review") and verify deduplication behavior only.
+
+---
+
 ## Example Passing Suggestions (for calibration)
 
 The following would all count as non-trivial and non-duplicate against the fixture:
@@ -51,6 +73,16 @@ The following would all count as non-trivial and non-duplicate against the fixtu
 | 3 | Rollback command | Reverse a delivered ticket: undo the merge, restore the worktree, and reset status to review-ready. | large |
 | 4 | Ticket export | Export open tickets to a portable JSON/CSV format for syncing to external issue trackers (Linear, GitHub Issues). | medium |
 | 5 | Pre-commit hook install | Add a `/hooks-install` command that writes a `.git/hooks/pre-commit` script running the full gate suite locally before each commit. | small |
+
+### Would-be Excluded Suggestions (deduplication calibration)
+
+The following would be **correctly filtered out** against this fixture:
+
+| Title | Reason excluded |
+|-------|----------------|
+| Parallel build jobs | Duplicates "Parallel gate execution" — covers parallelism/concurrency topic |
+| Auto-expire branches | Duplicates "Auto-cancel stale branches" — covers branch lifecycle topic |
+| Add a build command | Trivial — `build` is already in the fixture commands inventory |
 
 ---
 
