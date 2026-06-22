@@ -146,6 +146,27 @@ Two independent memory layers, no overlap:
 
 ---
 
+## Tech Stack Advisor
+
+An optional sub-procedure that fires in `/problem` between Phase 3 (Requirements) and Phase 4 (Solution) when a new application, microservice, or UI component is detected. It is not triggered in `/build` or `/autopilot`.
+
+**Trigger condition:** High-confidence new-artifact detection requires BOTH a keyword signal (`new`, `create`, `build`, `scaffold`, `greenfield` in the request) AND a manifest-absent signal (none of `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod` at the project root). Either signal alone yields `feature-addition` classification and the advisor is skipped.
+
+**Skip conditions:**
+- `--no-stack-check` passed in the `/problem` invocation — advisor is bypassed entirely.
+- `requirements.md` already contains a populated `## Tech Stack` section — advisor is bypassed; the existing stack is used as-is.
+
+**`## Tech Stack` contract:** Once the advisor (or the lead manually) writes a `## Tech Stack` section into `requirements.md`, `/build` and `/autopilot` read and honor it without re-prompting the lead on subsequent runs.
+
+**Rejection termination:** If the lead rejects the proposal twice without specifying an alternative (or provides two invalid responses, or one of each), the advisor writes the following placeholder and exits without blocking Phase 4:
+```
+<!-- stack not specified — fill in before /build -->
+```
+
+The full interaction protocol is in `context/flows/stack-advisor.md`.
+
+---
+
 ## Artifact Constraints
 
 | Artifact          | Hard limit |
