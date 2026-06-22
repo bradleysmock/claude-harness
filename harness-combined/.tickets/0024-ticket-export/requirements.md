@@ -1,6 +1,6 @@
 # Requirements
 
-**Ticket**: 0010
+**Ticket**: 0024
 **Title**: Ticket export (JSON/CSV)
 
 ## Functional Requirements

@@ -1,6 +1,6 @@
 # Problem Statement
 
-**Ticket**: 0009
+**Ticket**: 0023
 **Title**: Spec diff on refine
 **Date**: 2026-06-21
 

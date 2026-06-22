@@ -1,6 +1,6 @@
 # Problem Statement
 
-**Ticket**: 0011
+**Ticket**: 0027
 **Title**: Ticket template customization
 **Date**: 2026-06-21
 

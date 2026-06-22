@@ -1,6 +1,6 @@
 # Solution
 
-**Ticket**: 0012
+**Ticket**: 0030
 **Title**: Selective Gate Skipping
 
 ## Approach

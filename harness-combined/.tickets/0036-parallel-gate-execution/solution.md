@@ -1,6 +1,6 @@
 # Solution
 
-**Ticket**: 0017
+**Ticket**: 0036
 **Title**: Parallel gate execution
 
 ## Approach

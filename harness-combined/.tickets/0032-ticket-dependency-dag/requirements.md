@@ -1,6 +1,6 @@
 # Requirements
 
-**Ticket**: 0013
+**Ticket**: 0032
 **Title**: Ticket dependency field and DAG visualization
 
 ## Functional Requirements

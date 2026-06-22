@@ -1,6 +1,6 @@
 # Problem Statement
 
-**Ticket**: 0016
+**Ticket**: 0034
 **Title**: Requirements integrity review skill
 **Date**: 2026-06-21
 

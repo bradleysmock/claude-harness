@@ -1,5 +1,5 @@
 status: solution
-ticket: 0012
+ticket: 0030
 title: Selective Gate Skipping
-branch: ticket/0012-selective-gate-skipping
+branch: ticket/0030-selective-gate-skipping
 updated: 2026-06-21

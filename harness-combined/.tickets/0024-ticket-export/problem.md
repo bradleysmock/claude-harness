@@ -1,6 +1,6 @@
 # Problem Statement
 
-**Ticket**: 0010
+**Ticket**: 0024
 **Title**: Ticket export (JSON/CSV)
 **Date**: 2026-06-21
 

@@ -1,6 +1,6 @@
 # Problem Statement
 
-**Ticket**: 0015
+**Ticket**: 0033
 **Title**: Replan command
 **Date**: 2026-06-21
 

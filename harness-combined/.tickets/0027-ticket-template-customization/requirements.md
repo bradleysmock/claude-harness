@@ -1,6 +1,6 @@
 # Requirements
 
-**Ticket**: 0011
+**Ticket**: 0027
 **Title**: Ticket template customization
 
 ## Functional Requirements

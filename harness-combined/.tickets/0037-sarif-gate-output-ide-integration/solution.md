@@ -1,6 +1,6 @@
 # Solution
 
-**Ticket**: 0018
+**Ticket**: 0037
 **Title**: SARIF gate output and IDE integration
 
 ## Approach

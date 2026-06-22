@@ -1,6 +1,6 @@
 # Problem Statement
 
-**Ticket**: 0012
+**Ticket**: 0028
 **Title**: GitHub PR auto-creation
 **Date**: 2026-06-21
 

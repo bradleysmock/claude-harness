@@ -1,6 +1,6 @@
 # Problem Statement
 
-**Ticket**: 0012
+**Ticket**: 0030
 **Title**: Selective Gate Skipping
 **Date**: 2026-06-21
 

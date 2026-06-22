@@ -1,5 +1,5 @@
 status: solution
-ticket: 0009
+ticket: 0023
 title: Spec diff on refine
-branch: ticket/0009-spec-diff-on-refine
+branch: ticket/0023-spec-diff-on-refine
 updated: 2026-06-21

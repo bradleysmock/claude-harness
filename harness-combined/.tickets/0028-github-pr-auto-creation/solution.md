@@ -1,6 +1,6 @@
 # Solution
 
-**Ticket**: 0012
+**Ticket**: 0028
 **Title**: GitHub PR auto-creation
 
 ## Approach

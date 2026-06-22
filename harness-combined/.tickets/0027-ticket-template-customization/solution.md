@@ -1,6 +1,6 @@
 # Solution
 
-**Ticket**: 0011
+**Ticket**: 0027
 **Title**: Ticket template customization
 
 ## Approach

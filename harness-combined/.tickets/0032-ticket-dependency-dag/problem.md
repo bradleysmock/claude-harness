@@ -1,6 +1,6 @@
 # Problem Statement
 
-**Ticket**: 0013
+**Ticket**: 0032
 **Title**: Ticket dependency field and DAG visualization
 **Date**: 2026-06-21
 

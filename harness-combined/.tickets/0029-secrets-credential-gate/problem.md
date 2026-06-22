@@ -1,6 +1,6 @@
 # Problem Statement
 
-**Ticket**: 0012
+**Ticket**: 0029
 **Title**: Secrets/Credential Gate
 **Date**: 2026-06-21
 
