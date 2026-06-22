@@ -5,42 +5,44 @@
 
 ## Approach
 
-Add a `stack_advisor` sub-procedure to `commands/problem.md` that fires between Phase 3 (requirements) and Phase 4 (solution) when a new-artifact signal is detected. The advisor reads `_standards.md`, scans the project root for existing manifest files, and composes a proposal. The lead approves or amends inline; the result is written into `requirements.md § Tech Stack` before solution planning begins. No new Python modules — pure command-prose logic.
+Add a `stack_advisor` sub-procedure extracted to `context/flows/stack-advisor.md` (keeping `commands/problem.md` legible) that fires between Phase 3 (requirements) and Phase 4 (solution) when a new-artifact signal is detected. The advisor reads only structured key-value fields from `_standards.md` and checks manifest file existence at the project root — it does not ingest arbitrary file content into the LLM context. The lead approves or amends inline; the result is written into `requirements.md § Tech Stack` before solution planning begins. Rejection retries are capped at 2; a placeholder is written on exhaustion. No new Python modules — pure command-prose logic.
 
 ## Components
 
 | Component | Responsibility | Interface |
 |-----------|---------------|-----------|
-| `new_artifact_detector` | Classify request as new-app / new-service / new-UI / feature-addition | Reads request text + project root manifests; returns `{type, confidence}` |
-| `stack_signal_collector` | Gather signals: `_standards.md` keys, manifest language, explicit request text | Returns ordered list of `{signal, source, priority}` |
-| `proposal_builder` | Compose the stack proposal table with rationale from collected signals | Returns Markdown table |
-| `stack_approval_gate` | Present proposal to lead; handle approve/modify/reject | Writes approved stack to `requirements.md`; blocks on rejection until stack is provided |
-| Guard in `commands/problem.md` | Check for existing `## Tech Stack` section and `--no-stack-check` flag; skip if present | None |
+| Guard (first) | Check for existing `## Tech Stack` section and `--no-stack-check` flag; skip entire advisor if present | None; pure branch |
+| `new_artifact_detector` | Classify request as `new-app \| new-service \| new-ui \| feature-addition` with `confidence: high\|medium\|low`; trigger only on `high` confidence; default to `feature-addition` on `medium\|low` | Reads keyword signals AND manifest-absent signal; BOTH must be present for `high` confidence |
+| `stack_signal_collector` | Gather structured signals only: `_standards.md` key-value fields (`language:`, `framework:`, `runtime:`), manifest file existence (type detection, no content read), explicit language/framework words in request | Returns ordered `[{choice, value, source, priority}]` |
+| `proposal_builder` | Compose the stack proposal table from collected signals with one-line rationale per row | Returns Markdown table |
+| `stack_approval_interaction` | Present proposal to lead; handle approve/modify/reject with max-2-retry termination; write to `requirements.md § Tech Stack` or placeholder on exhaustion | Side-effect: writes `requirements.md`; returns `{approved: bool, stack: str}` |
 
 ## Tech Choices
 
 | Choice | Rationale |
 |--------|-----------|
-| Command-prose only (no new Python module) | Keeps the change contained to `commands/problem.md` and optionally `commands/autopilot.md`; no new server.py surface |
-| Signals ranked: _standards.md > manifest files > request text > defaults | Explicit lead configuration always wins; project convention second; request intent third; training-data default last |
-| Single interactive round-trip | NFR-1: one proposal + one response, not a wizard |
+| Flow file in `context/flows/stack-advisor.md`, not inline in `commands/problem.md` | Keeps problem.md legible; flow file is independently auditable; follows existing pattern (flows/build-ticket.md, etc.) |
+| Structured key extraction only from `_standards.md` and manifests | Closes lethal-trifecta risk: LLM does not see raw `_standards.md` prose or arbitrary manifest content |
+| Signals ranked: _standards.md > manifest exists > request text > defaults | Explicit lead config wins; project convention second; request intent third; training-data default last |
+| Require BOTH keyword AND absent-manifest for high-confidence new-artifact | Operationalizes conservative classifier; prevents false positives when "new" appears in feature requests on existing codebases |
+| Single interactive round-trip with max-2 rejection retries | NFR-1: one proposal + one response, not a wizard; max-2 ensures fail-closed exit path |
 | Approval stored in `requirements.md § Tech Stack` | Existing read path in `/build` already honors this section; no new persistence mechanism needed |
+| Advisor scoped to `/problem` only | Avoids adding a trigger surface to `/autopilot`; `/autopilot` already reads the recorded stack |
 
 ## Test Plan
 
 | Requirement | Test Type   | Scenario(s) |
 |-------------|-------------|-------------|
-| FR-1        | Unit        | "new FastAPI microservice" → type=service; "add /health endpoint" → type=feature |
-| FR-2        | Integration | New-service request → proposal table appears before Checkpoint 1 |
-| FR-3        | Unit        | `_standards.md` with `language: Go` → proposal defaults to Go |
-| FR-4        | Unit        | Project root has `package.json` → proposal includes Node/TS |
+| FR-1/NFR-2  | Unit        | ≥8 classification cases: new app (no manifest) → high/trigger; feature + manifest → feature; "new" + manifest present → feature; ambiguous no keywords → feature; porting service → feature; refactor into standalone → feature; new UI subdir → high/trigger; monorepo new-service sibling → high/trigger |
+| FR-3        | Unit        | `_standards.md` with `language: Go` → proposal defaults to Go; prose in _standards.md not ingested |
+| FR-4        | Unit        | `package.json` present at root → Node/TS signal detected; file not read past existence + name check |
 | FR-5        | Integration | Lead approves → `## Tech Stack` written to requirements.md |
 | FR-6        | Integration | Lead modifies proposal → modified stack written |
-| FR-7        | Integration | Lead rejects → follow-up prompt; custom stack recorded |
+| FR-7        | Integration | Lead rejects once → re-prompt; lead rejects twice → placeholder written, advisor exits |
 | FR-8        | Integration | Existing `## Tech Stack` section → `/build` reads it, no re-prompt |
-| FR-9        | Integration | Existing `## Tech Stack` section → advisor not triggered in `/problem` |
-| FR-10       | Integration | `--no-stack-check` flag → advisor skipped, proceeds to Checkpoint 1 |
-| NFR-2       | Unit        | "add endpoint to user service" → detector returns feature-addition with zero misclassification |
+| FR-9        | Integration | Existing `## Tech Stack` section → guard fires, advisor not triggered in `/problem` |
+| FR-10       | Integration | `--no-stack-check` flag → guard fires, advisor skipped, proceeds to Checkpoint 1 |
+| FR-11       | Integration | `/autopilot` on ticket with `## Tech Stack` → uses recorded stack, does not re-trigger advisor |
 
 ## Tradeoffs
 
@@ -56,10 +58,10 @@ Add a `stack_advisor` sub-procedure to `commands/problem.md` that fires between 
 
 ## Implementation Order
 
-1. Add `new_artifact_detector` logic to `commands/problem.md` (heuristic: keywords "new", "build a", "create a", "initialize" + absence of an existing codebase manifest at project root)
-2. Add `stack_signal_collector` logic (read `_standards.md` for language/framework keys, scan root for manifests, extract explicit request signals)
-3. Add `proposal_builder` (compose Markdown table: Choice | Rationale, one row per stack dimension)
-4. Add `stack_approval_gate` (present table, await lead input, write to `requirements.md § Tech Stack` on approve/modify)
-5. Add guard: skip if `## Tech Stack` already populated in `requirements.md`; skip if `--no-stack-check` flag present
-6. Update `commands/autopilot.md` (if exists) with the same advisor call for standalone new-app invocations
-7. Update `context/harness-reference.md` to document the advisor flow and `--no-stack-check` flag
+1. Write `context/flows/stack-advisor.md` shell with guard first: read `requirements.md`, check for `## Tech Stack` presence; check `--no-stack-check` flag; skip (return) if either is true
+2. Add `new_artifact_detector` section: keyword scan + manifest-absent check; output `{type, confidence}`; `high` requires BOTH signals; default `feature-addition` on `medium|low`
+3. Add `stack_signal_collector` section: read `_standards.md` structured keys only (language, framework, runtime); detect manifest file existence (no content read); extract explicit language/framework words from request text
+4. Add `proposal_builder` section: compose Markdown table from signals; one row per dimension; include rationale source (`_standards.md` / manifest / request / default)
+5. Add `stack_approval_interaction` section: present table; handle approve/modify/reject; max-2 rejection retries; write `## Tech Stack` to `requirements.md` or placeholder on exhaustion
+6. Wire `stack-advisor.md` call into `commands/problem.md` between Phase 3 and Phase 4 (one-line `@context/flows/stack-advisor.md` include)
+7. Update `context/harness-reference.md` to document the advisor flow, `--no-stack-check` flag, and the `## Tech Stack` contract for `/build`
