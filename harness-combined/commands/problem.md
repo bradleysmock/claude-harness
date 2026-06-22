@@ -124,6 +124,20 @@ Update `status.md` to `status: requirements`.
 
 ---
 
+## Phase 3.5 — Tech Stack Advisor
+
+Read and follow `${CLAUDE_PLUGIN_ROOT}/context/flows/stack-advisor.md`.
+
+This sub-procedure fires between Phase 3 and Phase 4. It detects whether the request describes a new application, microservice, or UI component; if so, proposes a tech stack for lead approval before any implementation files are written. The approved stack is recorded in `requirements.md § Tech Stack`.
+
+Skip conditions (handled inside the flow):
+- The ticket's `requirements.md` already has a populated `## Tech Stack` section → flow exits immediately.
+- `--no-stack-check` was passed in the `/problem` invocation → flow exits immediately.
+
+If either skip condition fires (or confidence is not high), the flow exits and Phase 4 begins normally.
+
+---
+
 ## Phase 4 — Solution
 
 Draft the solution covering: approach, components, tech choices with rationale, test plan, tradeoffs, risks, and implementation order.
