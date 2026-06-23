@@ -1,4 +1,4 @@
-status: review-ready
+status: done
 ticket: 0001
 title: Suggest skill: copy output to clipboard and write to suggestions.txt
 branch: ticket/0001-suggest-skill-clipboard-output
