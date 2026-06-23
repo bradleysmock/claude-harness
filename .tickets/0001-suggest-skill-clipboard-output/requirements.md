@@ -10,7 +10,7 @@
 3. When accepted `/problem` lines are emitted (Step 8), they must be appended to `suggestions.txt` below the table.
 4. The system must inform the lead that the file has been written and clipboard has been populated (single confirmation line per action).
 5. Each run must overwrite `suggestions.txt` (not append to prior runs) — the file reflects the current session only.
-6. If no suggestions pass deduplication (Step 6 removes all candidates), no file is written and no clipboard action is taken.
+6. The system must not write `suggestions.txt` or perform any clipboard action when no suggestions pass deduplication (Step 6 removes all candidates).
 
 ## Non-Functional Requirements
 
