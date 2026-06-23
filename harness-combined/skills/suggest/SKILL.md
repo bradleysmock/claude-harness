@@ -158,7 +158,7 @@ Numbering is sequential across all groups (not restarted per group). Omit empty 
 
 When at least one suggestion is present:
 
-1. **Write the file** — using the Write tool (not shell redirection), write the full suggestions section (the `## Suggestions` header and every effort-group table, exactly as displayed above) to `suggestions.txt` in the working directory. This overwrites any `suggestions.txt` left by a prior run, so the file always reflects the current session only.
+1. **Write the file** — using the Write tool (not shell redirection), write the full suggestions section (the `## Suggestions` header and every effort-group table, exactly as displayed above) to `suggestions.txt` in the working directory. Write **only** the suggestions section: do not include the accept prompt or the confirmation line in the file. This overwrites any `suggestions.txt` left by a prior run, so the file always reflects the current session only.
 2. **Copy to clipboard** — run this via the Bash tool:
 
    ```bash
@@ -166,10 +166,16 @@ When at least one suggestion is present:
    ```
 
    The `command -v pbcopy` guard short-circuits silently when `pbcopy` is unavailable (non-macOS); no error is surfaced. The file-redirect form (`pbcopy < suggestions.txt`) carries no shell interpolation of suggestion content — `suggestions.txt` is always written immediately before this call.
-3. **Confirm** — print exactly one line:
+3. **Confirm** — print exactly one line, reflecting whether the clipboard copy actually ran. If `pbcopy` was available (macOS), print:
 
    ```
    Suggestions written to suggestions.txt and copied to clipboard.
+   ```
+
+   If `pbcopy` was unavailable and the copy was skipped, print instead:
+
+   ```
+   Suggestions written to suggestions.txt (clipboard copy skipped — pbcopy unavailable).
    ```
 
 Then prompt:
