@@ -152,6 +152,26 @@ Display grouped by effort (small → medium → large), each group under its own
 
 Numbering is sequential across all groups (not restarted per group). Omit empty groups.
 
+### Step 7 output — persist and copy
+
+**Precondition guard**: these actions run only when the deduplicated candidate list from Step 6 is non-empty. If Step 6 removed all candidates, execution already stopped there, so file-write and clipboard actions are unreachable — do **not** create `suggestions.txt` and do **not** touch the clipboard when there are no suggestions.
+
+When at least one suggestion is present:
+
+1. **Write the file** — using the Write tool (not shell redirection), write the full suggestions section (the `## Suggestions` header and every effort-group table, exactly as displayed above) to `suggestions.txt` in the working directory. This overwrites any `suggestions.txt` left by a prior run, so the file always reflects the current session only.
+2. **Copy to clipboard** — run this via the Bash tool:
+
+   ```bash
+   command -v pbcopy >/dev/null 2>&1 && pbcopy < suggestions.txt
+   ```
+
+   The `command -v pbcopy` guard short-circuits silently when `pbcopy` is unavailable (non-macOS); no error is surfaced. The file-redirect form (`pbcopy < suggestions.txt`) carries no shell interpolation of suggestion content — `suggestions.txt` is always written immediately before this call.
+3. **Confirm** — print exactly one line:
+
+   ```
+   Suggestions written to suggestions.txt and copied to clipboard.
+   ```
+
 Then prompt:
 
 ```
@@ -176,8 +196,22 @@ Each line must be ≤120 characters. Truncate at the last word boundary before t
 
 These lines are for **manual paste** — do not auto-invoke any tools or flows after emitting them.
 
+### Step 8 output — append accepted lines to the file
+
+This runs only when at least one number was accepted (i.e. one or more `/problem` lines were emitted above). On the skip path (Step 8 "any other input"), nothing was emitted, so do not modify `suggestions.txt`.
+
+1. **Read** the current `suggestions.txt` content (the suggestions table written in Step 7).
+2. **Overwrite** `suggestions.txt` via the Write tool with the combined content: the existing table, then the accepted `/problem` lines appended below it.
+3. **Confirm** — print exactly one line:
+
+   ```
+   suggestions.txt updated with accepted /problem lines.
+   ```
+
 ---
 
 ## Step 9 — Done
 
 Stop. The lead pastes accepted lines into a new session to create tickets.
+
+As side-effects of this run, `suggestions.txt` in the working directory holds the suggestions table (plus any accepted `/problem` lines), and the suggestions table has been copied to the system clipboard. Clipboard copy is best-effort — it occurs only when macOS `pbcopy` is available and is skipped silently otherwise.
