@@ -79,6 +79,27 @@ def read(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
 
 
+def convention_section() -> str:
+    """Return just the '## Progress checklist' section of harness-reference.md,
+    from its heading to the next top-level heading (or EOF). Scopes content
+    assertions so they pin the convention's own text, not stray mentions
+    elsewhere in the document."""
+    content = read("context/harness-reference.md")
+    start = content.index("## Progress checklist")
+    nxt = content.find("\n## ", start + 1)
+    return content[start:] if nxt == -1 else content[start:nxt]
+
+
+def block_after_sentinel(rel: str) -> str:
+    """Return a flow file's checklist block: from the sentinel to the next
+    '## ' heading (or EOF). Bounds the window structurally instead of by a
+    fixed byte count."""
+    content = read(rel)
+    idx = content.index(SENTINEL)
+    nxt = content.find("\n## ", idx)
+    return content[idx:] if nxt == -1 else content[idx:nxt]
+
+
 def labels(rel: str) -> list[str]:
     """Extract a flow's declared stage labels.
 
@@ -111,12 +132,14 @@ def test_convention_covers_mechanism() -> None:
 
 
 def test_convention_has_one_list_per_run_rule() -> None:
-    content = read("context/harness-reference.md")
-    assert "One list per run" in content
-    assert "sub-flow" in content
+    # Scope to the convention section so the assertions actually pin the rule's
+    # text — both filenames also appear elsewhere in harness-reference.md.
+    section = convention_section()
+    assert "One list per run" in section
+    assert "sub-flow" in section
     # Names the two sub-flows the rule guards.
-    assert "build-ticket.md" in content
-    assert "deliver-ticket.md" in content
+    assert "build-ticket.md" in section
+    assert "deliver-ticket.md" in section
 
 
 def test_convention_has_true_state_on_early_exit() -> None:
@@ -133,9 +156,7 @@ def test_sentinel_present_in_each_flow_file() -> None:
 
 def test_each_block_references_the_convention() -> None:
     for rel in SENTINEL_FILES:
-        content = read(rel)
-        idx = content.index(SENTINEL)
-        block = content[idx:idx + 600]
+        block = block_after_sentinel(rel)
         assert "Progress checklist" in block, f"convention reference missing in {rel}"
         assert "harness-reference.md" in block, f"convention pointer missing in {rel}"
 
