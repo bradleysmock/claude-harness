@@ -83,3 +83,17 @@ def test_cancel_supports_abandon_alias() -> None:
     c = read("commands/cancel.md")
     assert "--abandon" in c
     assert "abandoned" in c
+
+
+# ── Task 9: /status owner column + stale-implementing flag ──────────────────
+def test_status_skill_shows_owner() -> None:
+    assert "owner" in read("skills/status/SKILL.md").lower()
+
+
+def test_status_skill_flags_stale_implementing() -> None:
+    c = read("skills/status/SKILL.md").lower()
+    assert "stale" in c and "implementing" in c
+
+
+def test_ticket_status_shows_owner() -> None:
+    assert "owner" in read("commands/ticket-status.md").lower()

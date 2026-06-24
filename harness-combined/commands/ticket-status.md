@@ -11,7 +11,7 @@ Separate tickets by location and status:
 - **Active tickets**: any ticket under `.tickets/` (not `completed/`) — these are open regardless of status value.
 - **Completed tickets**: any ticket under `.tickets/completed/` — these are archived (status `done` or `cancelled`).
 
-Collect each active ticket's number, title, and status string.
+Collect each active ticket's number, title, status string, and `owner` field from its `status.md`.
 
 ## Step 2 — Read problem.md for open tickets
 
@@ -29,9 +29,9 @@ Produce output in this exact structure — no preamble, no closing remarks:
 
 ### Open Tickets
 
-| Ticket | Title | Status |
-|---|---|---|
-| NNNN | Title | `status` |
+| Ticket | Title | Status | Owner |
+|---|---|---|---|
+| NNNN | Title | `status` | owner |
 
 *(sorted ascending by ticket number)*
 
