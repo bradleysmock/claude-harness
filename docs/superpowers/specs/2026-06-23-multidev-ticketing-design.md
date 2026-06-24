@@ -42,8 +42,8 @@ Rejected alternatives: an external tracker as source of truth (adds hard network
 Claiming a ticket number is a tiny, immediately-pushed commit to `main`:
 
 1. `git fetch origin main`; acquire local `.ticket.lock` (pid:epoch — retained to serialize same-machine agents and avoid wasted round-trips).
-2. Compute `XXXX = max(existing ticket dirs) + 1`. `NEXT_TICKET` is demoted to a non-authoritative cache/hint; the authoritative next number is derived from the existing ticket directories, removing the counter file as the sole conflict point.
-3. Write a **stub only**: `status.md` (`status: claimed`, `owner:`, `slug`, `date`) plus a `NEXT_TICKET` bump. No design docs yet.
+2. Compute `XXXX = max(existing ticket dirs) + 1`, scanning **both** `.tickets/*` and `.tickets/completed/*` so a number from an archived ticket is never reused. `NEXT_TICKET` is **removed entirely** — it added no value over the directory scan and reintroduced the single-file merge conflict this design exists to eliminate.
+3. Write a **stub only**: `status.md` (`status: claimed`, `owner:`, `slug`, `date`). No design docs yet.
 4. Commit `chore(ticket): XXXX claim` → `git push origin main`.
 5. **On push rejection** (another dev claimed `XXXX` first): `git pull --rebase`, recompute `XXXX` (now higher), `git mv` the stub dir to the new number, re-commit, re-push. Retry ≤ 5×; if still conflicting, stop and report to the lead.
 6. Release the lock.
@@ -91,7 +91,7 @@ To allow bug reports to enter via GitHub later with no rework:
 | `/problem` | Claim + push at Phase 1 (early start signal + reservation with retry/renumber); design commit + push at end; records `owner`. |
 | `/build` | Commits `implementing` to `main` (the start signal) when creating the worktree; all later status churn stays on the branch. |
 | `/deliver` | Merge branch→main (final status rides along), archive to `completed/`, push. |
-| `/cancel` | Terminal `cancelled`. New `/abandon` (or `/cancel --abandon`) → `abandoned`. |
+| `/cancel` | Terminal `cancelled`. New `/abandon` → `abandoned`; `/cancel --abandon` is kept as an equivalent alias (syntactic sugar). |
 | `/status` | Shows `owner`; flags stale `implementing` tickets as abandonment candidates. |
 | Stop hook | New orphan guard (block turn on uncommitted tracked `.tickets/` files). |
 | `.ticket.lock` | Retained for same-machine agent serialization. |
@@ -106,7 +106,7 @@ To allow bug reports to enter via GitHub later with no rework:
 
 ## Success Criteria
 
-- Two developers can each run the create→build→deliver flow concurrently against a shared `origin` with no ID collision and no manual `NEXT_TICKET` conflict resolution.
+- Two developers can each run the create→build→deliver flow concurrently against a shared `origin` with no ID collision and no manual counter-file conflict resolution (no `NEXT_TICKET` exists to conflict).
 - After any turn that touches `.tickets/`, there are zero uncommitted tracked ticket files (guard-enforced).
 - `main` shows `claimed`/`implementing`/`abandoned`/terminal status for every ticket; implementation-phase sub-states do not appear on `main` until merge.
 - `status.md` carries `owner`; `/status` lists owners and stale-ticket candidates.
