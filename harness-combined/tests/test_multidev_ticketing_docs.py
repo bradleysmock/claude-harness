@@ -59,5 +59,6 @@ def test_deliver_pushes_terminal_status() -> None:
 
 
 def test_deliver_documents_status_merge() -> None:
-    c = read("context/flows/deliver-ticket.md")
-    assert "fast-forward" in c or "fast forward" in c
+    c = read("context/flows/deliver-ticket.md").lower()
+    assert "status merge" in c
+    assert "no content conflict" in c or "no conflict" in c or "cleanly" in c

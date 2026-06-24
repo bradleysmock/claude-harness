@@ -66,7 +66,7 @@ git commit -m "chore(ticket): XXXX → done"
 git push
 ```
 
-> **Status merge:** the merged branch carries its `review-ready` `status.md`; because the branch forked from the `implementing` commit on `main` and only the branch advanced that file, the `--no-ff` merge fast-forwards `status.md` with no conflict. This `→ done` commit then sets the terminal state on `main`.
+> **Status merge:** the merged branch carries its `review-ready` `status.md`. Because the branch forked from the `implementing` commit on `main` and only the branch modified that file afterward, the `--no-ff` merge resolves `status.md` cleanly — no content conflict (main and the merge base agree on it; only the branch side changed). The following `→ done` commit then overwrites `review-ready` with the terminal `done` state on `main`.
 
 This is a separate commit from the Step 4 merge commit.
 
