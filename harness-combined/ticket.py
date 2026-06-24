@@ -161,7 +161,7 @@ def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries:
 
 def _main(argv: list[str]) -> int:
     if not argv:
-        print("usage: ticket <set-status|owner> ...", file=sys.stderr)
+        print("usage: ticket <claim|set-status|owner> ...", file=sys.stderr)
         return 2
     repo = find_tickets_root(Path.cwd()).parent
     cmd = argv[0]
@@ -172,6 +172,14 @@ def _main(argv: list[str]) -> int:
         push = "--push" in argv
         positional = [a for a in argv[1:] if not a.startswith("--")]
         print(set_status(repo, positional[0], positional[1], push=push))
+        return 0
+    if cmd == "claim":
+        push = "--push" in argv
+        positional = [a for a in argv[1:] if not a.startswith("--")]
+        if len(positional) < 2:
+            print("usage: ticket claim <slug> <title> [--push]", file=sys.stderr)
+            return 2
+        print(claim(repo, positional[0], positional[1], push=push))
         return 0
     print(f"unknown command {cmd!r}", file=sys.stderr)
     return 2

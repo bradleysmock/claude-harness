@@ -32,7 +32,7 @@ Both are lead-curated. The model treats them as hard constraints, not suggestion
 
 ## Step 2 — Create worktree (skip if resuming changes-requested)
 
-First, commit `status: implementing` to `main` and push it. This must happen **before** the worktree is created so the branch forks from the `implementing` commit (keeping the later branch→main merge a clean fast-forward of `status.md`):
+First, commit `status: implementing` to `main` and push it. This must happen **before** the worktree is created so the branch forks from the `implementing` commit (keeping the later branch→main merge a clean, conflict-free merge of `status.md`):
 
 ```
 python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX implementing --push

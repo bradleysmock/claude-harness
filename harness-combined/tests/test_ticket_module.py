@@ -112,6 +112,22 @@ def test_claim_writes_stub_and_commits(tmp_path: Path) -> None:
     assert parsed["source"] == "local"
 
 
+def test_cli_claim_dispatches(tmp_path, monkeypatch) -> None:
+    repo = tmp_path / "cli"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "c@x.c"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "c"], cwd=repo, check=True)
+    (repo / ".tickets").mkdir()
+    (repo / ".tickets" / ".keep").write_text("", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+    rc = ticket._main(["claim", "widget", "Widget"])
+    assert rc == 0
+    assert (repo / ".tickets" / "0001-widget" / "status.md").exists()
+
+
 def test_claim_renumbers_when_number_taken_on_push(tmp_path: Path) -> None:
     bare, alice = _init_remote_clone(tmp_path, "alice")
     bob = tmp_path / "bob"
