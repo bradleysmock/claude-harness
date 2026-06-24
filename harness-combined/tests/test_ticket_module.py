@@ -1,5 +1,7 @@
 # harness-combined/tests/test_ticket_module.py
+import subprocess
 from pathlib import Path
+
 import ticket
 
 
@@ -31,3 +33,53 @@ def test_parse_status_reads_fields(tmp_path: Path) -> None:
     parsed = ticket.parse_status(f)
     assert parsed["status"] == "implementing"
     assert parsed["owner"] == "a@b.c"
+
+
+def _init_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "dev@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Dev"], cwd=repo, check=True)
+    tdir = repo / ".tickets" / "0008-thing"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: solution\nticket: 0008\ntitle: Thing\n"
+        "branch: ticket/0008-thing\nowner: dev@example.com\n"
+        "source: local\nexternal_id:\nupdated: 2026-06-23\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+    return repo
+
+
+def test_owner_reads_git_email(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    assert ticket.owner(repo) == "dev@example.com"
+
+
+def test_set_status_edits_and_commits(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    ticket.set_status(repo, "0008", "implementing")
+    parsed = ticket.parse_status(repo / ".tickets" / "0008-thing" / "status.md")
+    assert parsed["status"] == "implementing"
+    # working tree is clean — nothing orphaned
+    porcelain = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout
+    assert porcelain.strip() == ""
+    subject = subprocess.run(
+        ["git", "log", "-1", "--pretty=%s"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert subject == "chore(ticket): 0008 → implementing"
+
+
+def test_set_status_scopes_add(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    (repo / "unrelated.txt").write_text("dirty", encoding="utf-8")  # untracked, must stay untracked
+    ticket.set_status(repo, "0008", "review-ready")
+    porcelain = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout
+    assert "unrelated.txt" in porcelain  # NOT swept into the commit
