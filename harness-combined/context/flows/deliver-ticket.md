@@ -63,7 +63,11 @@ Write `status: done` to `status.md` and set the `updated` date. Commit this stat
 ```
 git add .tickets/XXXX-<slug>/
 git commit -m "chore(ticket): XXXX → done"
+git push
 ```
+
+> **Status merge:** the merged branch carries its `review-ready` `status.md`; because the branch forked from the `implementing` commit on `main` and only the branch advanced that file, the `--no-ff` merge fast-forwards `status.md` with no conflict. This `→ done` commit then sets the terminal state on `main`.
+
 This is a separate commit from the Step 4 merge commit.
 
 **6b — Archive commit.**
@@ -74,6 +78,7 @@ mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/
 git rm -r --cached .tickets/XXXX-<slug>/
 git add -- .tickets/completed/XXXX-<slug>/
 git commit -m "chore(ticket): XXXX archive → completed/"
+git push
 ```
 This is always a **separate commit** from the 6a status-transition commit.
 
@@ -117,6 +122,7 @@ If any ticket was downgraded to `implementing` here, commit those metadata trans
 ```
 git add .tickets/YYYY-<slug>/
 git commit -m "chore(ticket): YYYY → implementing (rebased onto main)"
+git push
 ```
 
 ## Step 10 — Report

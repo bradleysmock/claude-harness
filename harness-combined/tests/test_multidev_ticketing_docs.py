@@ -49,3 +49,15 @@ def test_build_review_ready_commits_on_branch() -> None:
     assert "branch only" in c or "on the branch" in c
     # review-ready commit must run inside the worktree, not against main
     assert "git -C .worktrees/XXXX-<slug>" in c or "in the worktree" in c
+
+
+# ── Task 7: deliver-ticket.md — push transitions, document status-merge ──────
+def test_deliver_pushes_terminal_status() -> None:
+    c = read("context/flows/deliver-ticket.md")
+    seg = c[c.index('XXXX → done'):]
+    assert "git push" in seg[:400]
+
+
+def test_deliver_documents_status_merge() -> None:
+    c = read("context/flows/deliver-ticket.md")
+    assert "fast-forward" in c or "fast forward" in c
