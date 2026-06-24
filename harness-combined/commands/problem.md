@@ -5,6 +5,11 @@ If `.tickets/_learnings.md` exists, load it via @.tickets/_learnings.md as conte
 
 Both files are lead-curated. The machine's separate BM25 failure trail at `.harness/memory.db` is opaque and consulted only by `memory(action="retrieve", ...)` during gate repair — do not surface its contents here.
 
+<!-- progress-checklist -->
+**Progress checklist** — as the first action, create the `TodoWrite` checklist (see "Progress checklist" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+`Clarity check · Claim ticket · Problem · Requirements · Tech-stack advisor (if new app) · Solution · Critic loop · Checkpoint 1`
+
 ---
 
 ## Phase 0 — Clarity Check

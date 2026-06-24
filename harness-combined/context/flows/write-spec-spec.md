@@ -2,6 +2,11 @@
 
 The argument is a free-form description. Explore the codebase first, then write a spec or task DAG.
 
+<!-- progress-checklist -->
+**Progress checklist** — as the first action, create the `TodoWrite` checklist (see "Progress checklist" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+`Analyze (spec vs task DAG) · Write spec(s)`
+
 ## Exploration — do this before writing anything
 
 1. Find the entry point. Where does this task attach to the existing system? Read those files fully.

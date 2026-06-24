@@ -4,6 +4,11 @@ Autonomous build-to-deliver pipeline. The ticket is confirmed at `status: soluti
 
 **Announce**: "Autopilot mode for XXXX-slug."
 
+<!-- progress-checklist -->
+**Progress checklist** — as the first action of this run, create the `TodoWrite` checklist (see "Progress checklist" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). This is the parent run; the `build-ticket.md` and `deliver-ticket.md` sub-flows adopt this same list rather than creating their own:
+
+`Generate specs (if needed) · Build XXXX in worktree · Critic + auto-repair · Merge worktree · Status → done + archive · Cleanup`
+
 ## Steps 1–7c — Build
 
 Read `${CLAUDE_PLUGIN_ROOT}/context/flows/build-ticket.md` and follow it exactly through Steps 1–7c: worktree creation, spec generation (if specs are absent), spec execution, gate repair loop, worktree commit, diff display, critic spawn, and BLOCKER/MAJOR auto-repair.

@@ -2,6 +2,11 @@
 
 Read the approved `solution.md` and derive specs directly. The design phase already explored the codebase; do not re-explore.
 
+<!-- progress-checklist -->
+**Progress checklist** — as the first action, create the `TodoWrite` checklist (see "Progress checklist" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+`Analyze (spec vs task DAG) · Write spec(s)`
+
 ## Step 1 — Resolve ticket and score design artifacts
 
 Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md`, `solution.md`, `requirements.md`, `problem.md`. Use whichever location the ticket is found in for all subsequent file references in this flow.
