@@ -62,3 +62,24 @@ def test_deliver_documents_status_merge() -> None:
     c = read("context/flows/deliver-ticket.md").lower()
     assert "status merge" in c
     assert "no content conflict" in c or "no conflict" in c or "cleanly" in c
+
+
+# ── Task 8: /abandon command + /cancel --abandon alias ──────────────────────
+def test_abandon_command_exists() -> None:
+    assert (ROOT / "commands/abandon.md").exists()
+
+
+def test_abandon_sets_abandoned_status() -> None:
+    c = read("commands/abandon.md")
+    assert "status: abandoned" in c or "→ abandoned" in c
+
+
+def test_abandon_distinct_from_cancelled() -> None:
+    c = read("commands/abandon.md")
+    assert "started but dropped" in c or "dropped" in c
+
+
+def test_cancel_supports_abandon_alias() -> None:
+    c = read("commands/cancel.md")
+    assert "--abandon" in c
+    assert "abandoned" in c
