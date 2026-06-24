@@ -1,4 +1,4 @@
-status: solution
+status: implementing
 ticket: 0003
 title: Squash-merge ticket delivery: two commits to main per ticket
 branch: ticket/0003-squash-merge-delivery
