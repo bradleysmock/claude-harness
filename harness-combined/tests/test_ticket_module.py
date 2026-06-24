@@ -83,3 +83,43 @@ def test_set_status_scopes_add(tmp_path: Path) -> None:
         ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
     ).stdout
     assert "unrelated.txt" in porcelain  # NOT swept into the commit
+
+
+def _init_remote_clone(tmp_path: Path, name: str) -> tuple[Path, Path]:
+    bare = tmp_path / "origin.git"
+    if not bare.exists():
+        subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True)
+    clone = tmp_path / name
+    subprocess.run(["git", "clone", "-q", str(bare), str(clone)], check=True)
+    subprocess.run(["git", "config", "user.email", f"{name}@x.c"], cwd=clone, check=True)
+    subprocess.run(["git", "config", "user.name", name], cwd=clone, check=True)
+    (clone / ".tickets").mkdir()
+    (clone / ".tickets" / ".keep").write_text("", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=clone, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=clone, check=True)
+    subprocess.run(["git", "push", "-q", "origin", "HEAD"], cwd=clone, check=True)
+    return bare, clone
+
+
+def test_claim_writes_stub_and_commits(tmp_path: Path) -> None:
+    _, clone = _init_remote_clone(tmp_path, "alice")
+    slug = ticket.claim(clone, "add-widget", "Add widget")
+    status_md = clone / ".tickets" / slug / "status.md"
+    parsed = ticket.parse_status(status_md)
+    assert slug == "0001-add-widget"
+    assert parsed["status"] == "claimed"
+    assert parsed["owner"] == "alice@x.c"
+    assert parsed["source"] == "local"
+
+
+def test_claim_renumbers_when_number_taken_on_push(tmp_path: Path) -> None:
+    bare, alice = _init_remote_clone(tmp_path, "alice")
+    bob = tmp_path / "bob"
+    subprocess.run(["git", "clone", "-q", str(bare), str(bob)], check=True)
+    subprocess.run(["git", "config", "user.email", "bob@x.c"], cwd=bob, check=True)
+    subprocess.run(["git", "config", "user.name", "bob"], cwd=bob, check=True)
+
+    alice_slug = ticket.claim(alice, "alpha", "Alpha", push=True)   # wins 0001, pushed
+    bob_slug = ticket.claim(bob, "beta", "Beta", push=True)         # must renumber to 0002
+    assert alice_slug == "0001-alpha"
+    assert bob_slug == "0002-beta"

@@ -114,6 +114,46 @@ def set_status(repo: Path, ident: str, new_status: str, *, push: bool = False) -
     return subject
 
 
+def _has_remote(repo: Path) -> bool:
+    return bool(git(repo, "remote", check=False).stdout.strip())
+
+
+def _write_stub(ticket_dir: Path, number_str: str, slug: str, title: str, who: str) -> None:
+    ticket_dir.mkdir(parents=True, exist_ok=True)
+    (ticket_dir / "status.md").write_text(
+        f"status: claimed\nticket: {number_str}\ntitle: {title}\n"
+        f"branch: ticket/{number_str}-{slug}\nowner: {who}\n"
+        f"source: local\nexternal_id:\nupdated: {date.today().isoformat()}\n",
+        encoding="utf-8",
+    )
+
+
+def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries: int = 5) -> str:
+    tickets_root = repo / ".tickets"
+    who = owner(repo)
+    remote = push and _has_remote(repo)
+    if remote:
+        git(repo, "fetch", "origin", check=False)
+
+    number_str = ""
+    for attempt in range(max_retries + 1):
+        number_str = format_number(next_number(tickets_root))
+        full_slug = f"{number_str}-{slug}"
+        ticket_dir = tickets_root / full_slug
+        _write_stub(ticket_dir, number_str, slug, title, who)
+        git(repo, "add", "--", str(ticket_dir.relative_to(repo)))
+        git(repo, "commit", "-m", f"chore(ticket): {number_str} claim")
+        if not remote:
+            return full_slug
+        push_proc = git(repo, "push", check=False)
+        if push_proc.returncode == 0:
+            return full_slug
+        # Someone claimed first. Rebase, drop our number, retry with a higher one.
+        git(repo, "reset", "--hard", "HEAD~1", check=False)
+        git(repo, "pull", "--rebase", check=False)
+    raise RuntimeError(f"claim exhausted {max_retries} retries (last tried {number_str})")
+
+
 def _main(argv: list[str]) -> int:
     if not argv:
         print("usage: ticket <set-status|owner> ...", file=sys.stderr)
