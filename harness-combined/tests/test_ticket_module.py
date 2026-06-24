@@ -123,3 +123,5 @@ def test_claim_renumbers_when_number_taken_on_push(tmp_path: Path) -> None:
     bob_slug = ticket.claim(bob, "beta", "Beta", push=True)         # must renumber to 0002
     assert alice_slug == "0001-alpha"
     assert bob_slug == "0002-beta"
+    assert (bob / ".tickets" / bob_slug / "status.md").exists()
+    assert ticket.parse_status(bob / ".tickets" / bob_slug / "status.md")["status"] == "claimed"

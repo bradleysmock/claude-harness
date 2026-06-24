@@ -150,7 +150,12 @@ def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries:
             return full_slug
         # Someone claimed first. Rebase, drop our number, retry with a higher one.
         git(repo, "reset", "--hard", "HEAD~1", check=False)
-        git(repo, "pull", "--rebase", check=False)
+        pull_proc = git(repo, "pull", "--rebase", check=False)
+        if pull_proc.returncode != 0:
+            git(repo, "rebase", "--abort", check=False)
+            raise RuntimeError(
+                f"claim: rebase failed while renumbering: {pull_proc.stderr.strip()}"
+            )
     raise RuntimeError(f"claim exhausted {max_retries} retries (last tried {number_str})")
 
 
