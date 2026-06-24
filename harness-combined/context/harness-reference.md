@@ -212,3 +212,19 @@ Must-fix vs. optional differs by review path:
 
 - **`/build` post-build critic** — BLOCKER **and** MAJOR are must-fix and trigger the auto-repair loop (Step 7a); `changes-requested` fires only when that loop is exhausted. MINOR / OBS are optional — listed for the lead, never auto-fixed.
 - **`review` skill (interactive)** — `changes-requested` fires on BLOCKER findings; MAJOR / MINOR / OBS appear in the report for the lead to decide on.
+
+---
+
+## Progress checklist
+
+Every multi-stage flow (one that runs more than one named stage before returning to the lead) shows its progress as a live checklist so the lead can always see where the run is. The mechanism is **instruction-based** — there is no hook that injects it; reliability comes from making it the flow's first action.
+
+Convention:
+
+- **First action.** Before executing the flow's first step, call `TodoWrite` to create a checklist with exactly one item per stage the flow declares in its own "Progress checklist" block (the labels after the `<!-- progress-checklist -->` sentinel).
+- **One `in_progress`.** Mark a stage `in_progress` when you start it and `completed` when you finish it. Keep exactly one item `in_progress` at a time.
+- **Short labels.** Use the flow's declared labels verbatim — they are kept to a few words so they survive UI truncation. Do not paraphrase or expand them.
+- **True state on early exit.** If the flow stops early (escalation, a blocking question, an error), leave the checklist reflecting the true state — the stage that was running stays `in_progress`, later stages stay pending. Never mark `completed` work that did not finish.
+- **One list per run.** A flow entered as a **sub-flow** under a parent flow does **not** create its own checklist. The parent already declared the full run's stages and created the list; the sub-flow adopts that existing list and advances the stages it owns. Concretely, `build-ticket.md` and `deliver-ticket.md` run as sub-flows under `/autopilot` — under autopilot they advance the autopilot run's checklist rather than creating a second one. The observable trigger is simply whether a checklist already exists for this run.
+
+Each multi-stage flow carries its own "Progress checklist" block at the top (before its first step), opening with the `<!-- progress-checklist -->` sentinel, declaring its stage labels, and pointing back to this convention. Labels shared across flows are byte-identical so a sub-flow's stages line up with the parent's.

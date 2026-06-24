@@ -4,6 +4,13 @@ Create a worktree, run the spec engine against it, write passing implementations
 
 Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, and `MAX_REPAIR_ATTEMPTS` (defaults: auto-detect, `.`, 3).
 
+<!-- progress-checklist -->
+**Progress checklist** — as the first action, create the `TodoWrite` checklist (see "Progress checklist" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+`Generate specs (if needed) · Build XXXX in worktree · Critic + auto-repair · Present diff (Checkpoint 2)`
+
+**Sub-flow note:** this flow may run as a sub-flow under `/autopilot`. If a checklist already exists for this run (autopilot created it), follow the convention's one-list-per-run rule — adopt that existing list and advance its stages, do **not** create a second one.
+
 ## Step 1 — Resolve ticket, ensure specs exist
 
 Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md` to get the slug. Use whichever location the ticket is found in for all subsequent file references in this flow.

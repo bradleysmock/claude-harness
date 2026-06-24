@@ -4,6 +4,11 @@ Generate and validate code in a temp dir; store the result as an artifact. No wo
 
 Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, and `MAX_REPAIR_ATTEMPTS` (defaults: python, `.`, 3).
 
+<!-- progress-checklist -->
+**Progress checklist** — as the first action, create the `TodoWrite` checklist (see "Progress checklist" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+`Generate spec (if needed) · Run gate engine · Produce artifact`
+
 ## Step 0 — Detect spec, task, or free-form description
 
 Decide by what `$ARGUMENTS` is and whether a file matches:

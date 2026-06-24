@@ -2,6 +2,13 @@
 
 Merge the ticket's worktree branch into main, remove the worktree, and record learnings. The diff was already reviewed after `/build`.
 
+<!-- progress-checklist -->
+**Progress checklist** — as the first action, create the `TodoWrite` checklist (see "Progress checklist" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+
+`Merge worktree · Status → done + archive · Cleanup`
+
+**Sub-flow note:** this flow may run as a sub-flow under `/autopilot`. If a checklist already exists for this run (autopilot created it), follow the convention's one-list-per-run rule — adopt that existing list and advance its delivery stages, do **not** create a second one.
+
 ## Step 1 — Resolve and validate
 
 Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md`.
