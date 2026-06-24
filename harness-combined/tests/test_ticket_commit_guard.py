@@ -46,3 +46,11 @@ def test_no_tickets_dir_is_noop(tmp_path: Path) -> None:
     repo = tmp_path / "empty"
     repo.mkdir()
     assert guard.dirty_ticket_files(repo) == []
+
+
+def test_untracked_new_ticket_dir_is_flagged(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    new_dir = repo / ".tickets" / "0002-fresh"
+    new_dir.mkdir()
+    (new_dir / "status.md").write_text("status: claimed\n", encoding="utf-8")
+    assert any("0002-fresh" in f for f in guard.dirty_ticket_files(repo))

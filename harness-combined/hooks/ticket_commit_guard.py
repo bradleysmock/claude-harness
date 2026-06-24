@@ -22,6 +22,8 @@ IGNORED = {".tickets/.ticket.lock", ".tickets/.active"}
 def dirty_ticket_files(project_root: Path) -> list[str]:
     if not (project_root / ".tickets").is_dir() or shutil.which("git") is None:
         return []
+    # Paths are reported relative to the repo root; this assumes the harness
+    # project root is the git repo root (true for the harness's single-root layout).
     proc = subprocess.run(
         ["git", "-C", str(project_root), "status", "--porcelain", "--", ".tickets/"],
         capture_output=True, text=True, check=False,
@@ -33,6 +35,8 @@ def dirty_ticket_files(project_root: Path) -> list[str]:
         if not line.strip():
             continue
         path = line[3:].strip()  # strip the 2-char status code + space
+        if " -> " in path:  # rename: keep the destination path
+            path = path.rsplit(" -> ", 1)[1]
         if path in IGNORED:
             continue
         dirty.append(path)
