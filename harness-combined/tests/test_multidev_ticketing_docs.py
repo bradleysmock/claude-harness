@@ -97,3 +97,30 @@ def test_status_skill_flags_stale_implementing() -> None:
 
 def test_ticket_status_shows_owner() -> None:
     assert "owner" in read("commands/ticket-status.md").lower()
+
+
+# ── Task 10: harness-reference.md lifecycle, state-split, NEXT_TICKET, GitHub seam ──
+def test_reference_has_claimed_and_abandoned() -> None:
+    c = read("context/harness-reference.md")
+    assert "`claimed`" in c and "`abandoned`" in c
+
+
+def test_reference_removes_next_ticket_counter() -> None:
+    c = read("context/harness-reference.md")
+    # The directory-listing line that documented NEXT_TICKET must be gone.
+    assert "NEXT_TICKET        # Next available" not in c
+    assert "max(existing" in c or "scans both" in c.lower() or "active and completed" in c.lower()
+
+
+def test_reference_documents_state_split() -> None:
+    c = read("context/harness-reference.md").lower()
+    assert "branch only" in c or "branch-local" in c
+
+
+def test_reference_documents_github_seam_fields() -> None:
+    c = read("context/harness-reference.md")
+    assert "source:" in c and "external_id:" in c
+
+
+def test_reference_documents_owner_field() -> None:
+    assert "owner:" in read("context/harness-reference.md")
