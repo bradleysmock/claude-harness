@@ -11,13 +11,15 @@ Read `.harness/config.py` if it exists to get `PROJECT_ROOT` (default `.`).
 
 ## Step 1 — Ticket status (SDLC workflow)
 
-Scan `.tickets/*/status.md` for active tickets (those not in `completed/`). Exclude any with status `done` or `cancelled` — they belong in the Completed section below. For each active ticket, report: ticket number, title, status.
+Scan `.tickets/*/status.md` for active tickets (those not in `completed/`). Exclude any with status `done` or `cancelled` — they belong in the Completed section below. For each active ticket, read `owner` and `updated` from its `status.md` and report: ticket number, title, status, owner, updated date.
 
 ### Active Tickets
 
-| Ticket | Title | Status |
-|--------|-------|--------|
-| XXXX   | ...   | implementing / review-ready / ... |
+| Ticket | Title | Status | Owner | Updated |
+|--------|-------|--------|-------|---------|
+| XXXX   | ...   | implementing / review-ready / ... | <owner from status.md> | <updated> |
+
+> **Stale check:** flag any ticket in `implementing` whose `updated` date is more than 7 days old as a possible abandonment candidate (owner may have dropped it). Suggest `/abandon XXXX` or pinging the owner. Never abandon automatically.
 
 If there are `review-ready` tickets, remind the user: invoke `/gate XXXX` for fresh gate findings, then `/deliver XXXX` once approved.
 

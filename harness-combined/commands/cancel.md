@@ -1,13 +1,15 @@
 Abandon an in-flight ticket: removes the worktree, deletes the branch, sets status to `cancelled`, and archives the ticket to `.tickets/completed/`. Safe to run at any stage before merge.
 
+With `--abandon`, the terminal status is `abandoned` instead of `cancelled` — use it when work was started but dropped rather than deliberately cancelled. (`/abandon` is the dedicated alias for this path.)
+
 ## Ticket Resolution
 
-If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/` if not found there. Otherwise scan `.tickets/` for tickets whose status is not `done` and not `cancelled`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
+If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/` if not found there. Otherwise scan `.tickets/` for tickets whose status is not `done` and not `cancelled` and not `abandoned`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
 
 ## Steps
 
 1. **Read `status.md`** for the resolved ticket. Extract:
-   - `status` — must not be `done` or `cancelled`. If it is, tell the lead and stop.
+   - `status` — must not be `done` or `cancelled` (nor `abandoned`). If it is, tell the lead and stop.
    - `branch` — the branch name (e.g. `ticket/XXXX-<slug>`)
    - `ticket` — the four-digit number
 
@@ -45,6 +47,8 @@ If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, th
    git add .tickets/XXXX-<slug>/
    git commit -m "chore(ticket): XXXX → cancelled"
    ```
+
+   Under `--abandon`, set `abandoned` instead: `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX abandoned --push`.
 
 8. **Archive the ticket directory.**
    Move the ticket out of the active root into the completed subfolder:

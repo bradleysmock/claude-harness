@@ -22,21 +22,19 @@ If the request is sufficiently clear, proceed without asking. Do not ask questio
 
 ## Phase 1 — Claim Ticket Number
 
-Ticket number assignment must be atomic to prevent two concurrent agents from claiming the same number.
+Ticket number assignment must be atomic across developers. A claim is a small commit to `main` that is pushed immediately — first-push-wins; a loser re-numbers and retries. The claim commit is also the durable "work started / number taken" signal other developers see on `main`.
 
-1. Check for a lock file at `.tickets/.ticket.lock`. If it exists, read its contents (format: `pid:timestamp_epoch`). If the timestamp is more than 60 seconds old, or if the pid is no longer running (`kill -0 <pid>` exits non-zero), treat the lock as stale and delete it automatically before proceeding. If the lock is fresh and the pid is alive, run `sleep 2` and check again — retry up to 5 times. If still held by a live process after 5 retries, stop and report the conflict to the lead.
+1. Acquire the local lock `.tickets/.ticket.lock` (format `pid:epoch`) exactly as before — it serializes multiple agents on *this* machine and avoids wasted round-trips. Treat a lock whose timestamp is >60s old or whose pid is dead (`kill -0 <pid>` nonzero) as stale and delete it; otherwise `sleep 2` and retry up to 5 times, then report the conflict.
 
-2. Write `.tickets/.ticket.lock` with content `$$:$(date +%s)` (current pid and epoch timestamp) to claim the lock.
+2. Claim the number with the `ticket.py claim` helper (it scans both `.tickets/*` and `.tickets/completed/*` for the next number, writes the stub `status.md` with `status: claimed` and `owner:` from `git config user.email`, commits `chore(ticket): XXXX claim`, and — when an `origin` exists — pushes; on a rejected push it rebases, re-numbers, and retries up to 5 times):
 
-3. Read `.tickets/NEXT_TICKET` if it exists — this is the next available number. If the file does not exist, scan `.tickets/` for all existing ticket directories, find the highest number, and compute the next one. Start at `0001` if no tickets exist.
+   `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" claim <slug> "<title>" --push`
 
-4. Record the claimed number as XXXX.
+   The command prints the claimed `XXXX-<slug>`. Record XXXX. If it exits non-zero after retries, stop and report the conflict to the lead.
 
-5. Write the incremented value back to `.tickets/NEXT_TICKET`.
+3. Release the lock: `rm -f .tickets/.ticket.lock`.
 
-6. Delete `.tickets/.ticket.lock` to release the lock.
-
-Now create the ticket directory and files.
+The ticket directory now exists with a `claimed` stub. Phases 2–4 fill in `problem.md`, `requirements.md`, and `solution.md`.
 
 ---
 
@@ -71,10 +69,13 @@ Write `.tickets/XXXX-<slug>/problem.md` (hard limit: 40 lines — use bullets, n
 Write `.tickets/XXXX-<slug>/status.md`:
 
 ```
-status: problem
+status: solution
 ticket: XXXX
 title: <title>
 branch: ticket/XXXX-<slug>
+owner: <git config user.email>
+source: local
+external_id:
 updated: YYYY-MM-DD
 ```
 
@@ -225,8 +226,9 @@ Revise `solution.md` based on the critic's findings. If significant issues were 
 Once the critic loop is complete and `solution.md` is final, commit the ticket metadata to `main` (one commit for all three artifacts — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
 
 ```
-git add .tickets/XXXX-<slug>/ .tickets/NEXT_TICKET
+git add .tickets/XXXX-<slug>/
 git commit -m "chore(ticket): XXXX design (status: solution)"
+git push    # publish the design so other developers see it; the claim commit was already pushed
 ```
 
 If the lead requests changes at Checkpoint 1 and you revise the artifacts, commit the revision the same way before continuing.

@@ -32,26 +32,22 @@ Both are lead-curated. The model treats them as hard constraints, not suggestion
 
 ## Step 2 — Create worktree (skip if resuming changes-requested)
 
+First, commit `status: implementing` to `main` and push it. This must happen **before** the worktree is created so the branch forks from the `implementing` commit (keeping the later branch→main merge a clean, conflict-free merge of `status.md`):
+
 ```
-git branch ticket/XXXX-<slug>
-mkdir -p .worktrees
-git worktree add .worktrees/XXXX-<slug> ticket/XXXX-<slug>
+python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX implementing --push
 ```
 
-Confirm the worktree directory exists. If git fails, stop and report the error.
+The `--push` flag runs `git push` atomically with the commit, publishing the start signal before any branch is forked.
 
-Update `status.md` to `status: implementing`.
+Then create the worktree from the now-updated `main`:
 
-Write the active-ticket sentinel:
 ```
+git worktree add .worktrees/XXXX-<slug> -b ticket/XXXX-<slug>
 echo 'XXXX-<slug>' > .tickets/.active
 ```
 
-Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). This records that work started, even if the build later escalates:
-```
-git add .tickets/XXXX-<slug>/
-git commit -m "chore(ticket): XXXX → implementing"
-```
+From here, all implementation status churn (`review-ready`, `changes-requested`) is **branch only** — committed inside the worktree, never to `main`. `main` keeps showing `implementing` until `/deliver` merges the branch.
 
 ## Step 3 — Load DAG and checkpoint
 
@@ -109,12 +105,11 @@ Confirm the commit succeeds.
 
 ## Step 6 — Update status and show diff
 
-Update `status.md` to `status: review-ready`.
+Update `status.md` to `status: review-ready`. Commit it **in the worktree** (branch-local — it must not touch `main`):
 
-Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). This is separate from the worktree commit in Step 5:
 ```
-git add .tickets/XXXX-<slug>/
-git commit -m "chore(ticket): XXXX → review-ready"
+git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/status.md
+git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX → review-ready"
 ```
 
 Run and display:
@@ -181,11 +176,10 @@ For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
 
 If BLOCKER / MAJOR findings still remain after `MAX_REPAIR_ATTEMPTS`:
 
-- Update `status.md` to `status: changes-requested`.
-- Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+- Update `status.md` to `status: changes-requested` and commit it in the worktree:
   ```
-  git add .tickets/XXXX-<slug>/
-  git commit -m "chore(ticket): XXXX → changes-requested"
+  git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/status.md
+  git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX → changes-requested"
   ```
 - Show the lead the residual BLOCKER / MAJOR findings and what each repair round attempted.
 - Tell the user:

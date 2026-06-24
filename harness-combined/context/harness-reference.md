@@ -10,19 +10,14 @@ All SDLC work is tracked under `.tickets/`.
 
 ```
 .tickets/
-  NEXT_TICKET        # Next available ticket number (atomic counter)
-  .ticket.lock       # Lock file — present only during number claim (format: pid:epoch)
+  .ticket.lock       # Lock file — present only during a same-machine number claim (format: pid:epoch)
   .active            # Active session ticket slug (scopes stop hook)
-  _standards.md      # Lead-curated engineering standards (created by /init)
-  _learnings.md      # Lead-curated must-fix patterns (created by /init)
+  _standards.md
+  _learnings.md
   XXXX-<slug>/
-    problem.md
-    requirements.md
-    solution.md
-    status.md
-    gate-findings.md
-  completed/         # Archived tickets (status: done or cancelled)
-    XXXX-<slug>/     # Same structure as active tickets; moved here by /deliver and /cancel
+    ...
+  completed/         # Archived tickets (status: done / cancelled / abandoned)
+# Next number = max(existing XXXX dirs across .tickets/* and .tickets/completed/*) + 1. No counter file.
 ```
 
 Numbers are four-digit zero-padded (`0001`, `0002`, ...). `status.md` format:
@@ -31,6 +26,9 @@ status: <stage>
 ticket: XXXX
 title: <short human-readable title>
 branch: ticket/XXXX-<slug>
+owner: <git config user.email>
+source: local           # reserved seam — `github` etc. for externally-sourced tickets (not built)
+external_id:            # reserved seam — e.g. github:#123
 updated: YYYY-MM-DD
 ```
 
@@ -38,18 +36,28 @@ updated: YYYY-MM-DD
 
 | Status              | Set by                          | Transitions to                        |
 |---------------------|---------------------------------|---------------------------------------|
+| `claimed`           | `/problem` Phase 1 claim        | `solution`                            |
 | `problem`           | `/problem` Phase 2              | `requirements`                        |
 | `requirements`      | `/problem` Phase 3              | `solution`                            |
 | `solution`          | `/problem` Phase 4; `/reopen` (from `completed/`) | `implementing`           |
 | `implementing`      | `/build` setup                  | `review-ready`                        |
-| `review-ready`      | `/build` after gate/repair loop | `done` or `implementing`              |
-| `changes-requested` | `/build` Step 7d, `review` skill | `implementing` (re-run `/build`)     |
+| `review-ready`      | `/build` after gate/repair loop — **branch only** | `done` or `implementing` |
+| `changes-requested` | `/build` Step 7d, `review` skill — **branch only** | `implementing` (re-run `/build`) |
 | `done`              | `/deliver` (ticket archived to `completed/`) | `solution` via `/reopen` |
 | `cancelled`         | `/cancel` (ticket archived to `completed/`) | `solution` via `/reopen`  |
+| `abandoned`         | `/abandon` or `/cancel --abandon` (terminal) | `solution` via `/reopen` |
 
 > **Archive lifecycle:** `/deliver` and `/cancel` both move the ticket directory from `.tickets/<XXXX-slug>/` to `.tickets/completed/<XXXX-slug>/` after committing the terminal status. `/reopen XXXX` moves it back and sets `status: solution`. The `solution` status is therefore reachable from two paths: the forward design phase (`/problem`) and the reopen path (`/reopen`). After reopen, the lead must re-run `/build XXXX` before implementation resumes.
 
 > **Self-speccing:** `/write-spec` never changed `status`; the `solution → implementing` transition has always been driven by `/build` setup. As of the merged build flow, `/build` also *generates* the spec/task files inline when it starts from `status: solution` with no specs present. `/write-spec` is therefore an optional pre-step, not a required transition.
+
+### State split (multi-developer)
+
+`main` carries the coarse, durable signal — `claimed`, `solution`, `implementing` (work started), and the terminal `done` / `cancelled` / `abandoned`. The fine implementation-phase states (`review-ready`, `changes-requested`) are **branch only**: committed inside the worktree and merged to `main` at `/deliver`. Because `/build` commits `implementing` to `main` and pushes *before* forking the worktree, only the branch advances `status.md` afterward, so the branch→main merge resolves `status.md` cleanly with no conflict.
+
+`owner` (from `git config user.email`) is recorded at claim time. Number claiming is git-coordinated: a small `chore(ticket): XXXX claim` commit pushed first-wins; a loser re-numbers and retries. The `ticket.py` helper performs claims and transitions atomically (edit + scoped commit), and the `ticket_commit_guard` Stop hook blocks the turn if any tracked `.tickets/` file is left uncommitted.
+
+**GitHub seam (reserved):** `source` / `external_id` exist so bug reports can later enter as tickets via GitHub Issues, behind the same `ticket.py` boundary. No network path is built in this iteration.
 
 ### Committing ticket metadata
 
@@ -58,7 +66,7 @@ updated: YYYY-MM-DD
 After finalizing a transition, commit **only that ticket's metadata** — a scoped add, so unrelated working-tree changes are never swept in:
 
 ```
-git add .tickets/XXXX-<slug>/          # plus .tickets/NEXT_TICKET on first creation
+git add .tickets/XXXX-<slug>/
 git commit -m "chore(ticket): XXXX → <status>"
 ```
 
