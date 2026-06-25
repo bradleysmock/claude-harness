@@ -2,6 +2,8 @@
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import ticket
 
 
@@ -141,3 +143,234 @@ def test_claim_renumbers_when_number_taken_on_push(tmp_path: Path) -> None:
     assert bob_slug == "0002-beta"
     assert (bob / ".tickets" / bob_slug / "status.md").exists()
     assert ticket.parse_status(bob / ".tickets" / bob_slug / "status.md")["status"] == "claimed"
+
+
+def _branch_exists(repo: Path, branch: str) -> bool:
+    return bool(
+        subprocess.run(
+            ["git", "-C", str(repo), "branch", "--list", branch],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    )
+
+
+def test_claim_creates_branch_and_worktree_after_push(tmp_path: Path) -> None:
+    _, alice = _init_remote_clone(tmp_path, "alice")
+    slug = ticket.claim(alice, "widget", "Widget", push=True)
+    assert slug == "0001-widget"
+    # create-after-push: the winning claim has a branch and a worktree
+    assert _branch_exists(alice, "ticket/0001-widget")
+    assert (alice / ".worktrees" / "0001-widget").is_dir()
+
+
+def test_claim_renumber_leaves_no_orphan_branch_or_worktree(tmp_path: Path) -> None:
+    bare, alice = _init_remote_clone(tmp_path, "alice")
+    bob = tmp_path / "bob"
+    subprocess.run(["git", "clone", "-q", str(bare), str(bob)], check=True)
+    subprocess.run(["git", "config", "user.email", "bob@x.c"], cwd=bob, check=True)
+    subprocess.run(["git", "config", "user.name", "bob"], cwd=bob, check=True)
+
+    ticket.claim(alice, "alpha", "Alpha", push=True)               # wins 0001
+    bob_slug = ticket.claim(bob, "beta", "Beta", push=True)        # renumbers to 0002
+    assert bob_slug == "0002-beta"
+    # the dropped number 0001 must not have left a branch or worktree in bob's repo
+    assert not _branch_exists(bob, "ticket/0001-beta")
+    assert not (bob / ".worktrees" / "0001-beta").exists()
+    # the winning number did get its branch + worktree
+    assert _branch_exists(bob, "ticket/0002-beta")
+    assert (bob / ".worktrees" / "0002-beta").is_dir()
+
+
+def test_set_status_push_publishes_branch(tmp_path: Path) -> None:
+    bare, dev = _init_remote_clone(tmp_path, "dev")
+    # a branch-only ticket lives on its feature branch
+    subprocess.run(["git", "-C", str(dev), "checkout", "-qb", "ticket/0005-x"], check=True)
+    tdir = dev / ".tickets" / "0005-x"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: solution\nticket: 0005\ntitle: X\nbranch: ticket/0005-x\nowner: dev@x.c\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(dev), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(dev), "commit", "-qm", "seed branch"], check=True)
+
+    ticket.set_status(dev, "0005", "implementing", push=True)  # branch-only, no upstream yet
+    # origin now has the feature branch (upstream was set on first push)
+    refs = subprocess.run(
+        ["git", "-C", str(bare), "for-each-ref", "--format=%(refname)"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert "refs/heads/ticket/0005-x" in refs
+
+
+def test_deliver_squash_single_commit_with_done_archive(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    run("config", "user.email", "d@x.c")
+    run("config", "user.name", "d")
+    tdir = repo / ".tickets" / "0001-thing"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: claimed\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: d@x.c\nupdated: 2026-06-23\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "chore(ticket): 0001 claim")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+    claim_rev = run("rev-parse", "HEAD")
+
+    # Feature branch: code change + branch-only review-ready transition.
+    run("checkout", "-qb", "ticket/0001-thing")
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tdir / "status.md").write_text(
+        "status: review-ready\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: d@x.c\nupdated: 2026-06-24\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "feat: thing")
+    run("checkout", "-q", main_branch)
+
+    subject = ticket.deliver_squash(repo, "ticket/0001-thing", "0001-thing", "Thing")
+    assert "(squash)" in subject
+
+    # FR-1: exactly one commit on main since claim, and it is not a merge commit.
+    assert run("rev-list", "--count", f"{claim_rev}..HEAD") == "1"
+    assert run("rev-list", "--merges", "--count", f"{claim_rev}..HEAD") == "0"
+
+    # FR-2: HEAD tree has the code diff + completed/<slug>/status.md (done), no <slug>/.
+    tree = run("ls-tree", "-r", "--name-only", "HEAD")
+    assert "feature.py" in tree
+    assert ".tickets/completed/0001-thing/status.md" in tree
+    assert ".tickets/0001-thing/status.md" not in tree
+    done = run("show", "HEAD:.tickets/completed/0001-thing/status.md")
+    assert "status: done" in done
+
+    # the merged branch was deleted as part of delivery
+    assert not _branch_exists(repo, "ticket/0001-thing")
+
+
+def test_reopen_then_redeliver_adds_one_further_squash_commit(tmp_path: Path) -> None:
+    """FR-6 git-sim: a delivered (archived) ticket is reopened onto a fresh branch
+    forked from main HEAD, and a second deliver_squash adds exactly one more
+    squashed commit on main (completed/<slug>/status.md back at done)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    run("config", "user.email", "d@x.c")
+    run("config", "user.name", "d")
+
+    # Prior delivery already happened: main has completed/<slug>/ (done) + code.
+    completed = repo / ".tickets" / "completed" / "0001-thing"
+    completed.mkdir(parents=True)
+    (completed / "status.md").write_text(
+        "status: done\nticket: 0001\ntitle: Thing\nbranch: ticket/0001-thing\nowner: d@x.c\n",
+        encoding="utf-8",
+    )
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    run("add", "-A")
+    run("commit", "-qm", "feat: 0001-thing Thing (squash)")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+    delivered_rev = run("rev-parse", "HEAD")
+
+    # /reopen: fresh branch from main HEAD; restore the dir onto the branch.
+    run("checkout", "-qb", "ticket/0001-thing", main_branch)
+    (repo / ".tickets" / "completed" / "0001-thing").rename(repo / ".tickets" / "0001-thing")
+    tdir = repo / ".tickets" / "0001-thing"
+    (tdir / "status.md").write_text(
+        "status: solution\nticket: 0001\ntitle: Thing\nbranch: ticket/0001-thing\nowner: d@x.c\n",
+        encoding="utf-8",
+    )
+    run("rm", "-r", "--cached", "--", ".tickets/completed/0001-thing/")
+    run("add", "--", ".tickets/0001-thing/")
+    run("commit", "-qm", "chore(ticket): 0001 → solution (reopened)")
+    # further work on the reopened branch
+    (repo / "feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    (tdir / "status.md").write_text(
+        "status: review-ready\nticket: 0001\ntitle: Thing\nbranch: ticket/0001-thing\nowner: d@x.c\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "feat: more work")
+    run("checkout", "-q", main_branch)
+
+    ticket.deliver_squash(repo, "ticket/0001-thing", "0001-thing", "Thing")
+
+    # one further squash commit on main since the prior delivery, not a merge commit
+    assert run("rev-list", "--count", f"{delivered_rev}..HEAD") == "1"
+    assert run("rev-list", "--merges", "--count", f"{delivered_rev}..HEAD") == "0"
+    tree = run("ls-tree", "-r", "--name-only", "HEAD")
+    assert ".tickets/completed/0001-thing/status.md" in tree
+    assert ".tickets/0001-thing/status.md" not in tree
+    assert "status: done" in run("show", "HEAD:.tickets/completed/0001-thing/status.md")
+    assert "VALUE = 2" in run("show", "HEAD:feature.py")  # the reopened work landed
+
+
+def test_deliver_squash_preserves_branch_and_worktree_on_rejected_push(tmp_path: Path) -> None:
+    """B-01 regression guard: when the publish is rejected (another developer
+    advanced origin/main between the squash and the push), deliver_squash must
+    raise and leave the branch + worktree intact — never destroy the only copy
+    of the squashed commit's source history."""
+    bare, dev = _init_remote_clone(tmp_path, "dev")
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(dev), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    # Claim stub on dev's main, pushed so origin and dev agree.
+    tdir = dev / ".tickets" / "0001-x"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: claimed\nticket: 0001\ntitle: X\nbranch: ticket/0001-x\nowner: dev@x.c\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "chore(ticket): 0001 claim")
+    run("push", "-q", "origin", "HEAD")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+
+    # Feature branch + worktree with code + branch-only review-ready.
+    worktree = dev / ".worktrees" / "0001-x"
+    run("worktree", "add", "-q", str(worktree), "-b", "ticket/0001-x")
+    (worktree / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(worktree), "add", "-A"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(worktree), "commit", "-qm", "feat: x"], check=True
+    )
+
+    # Another developer advances origin/main, so dev's delivery push is non-fast-forward.
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(bare), str(other)], check=True)
+    subprocess.run(["git", "config", "user.email", "o@x.c"], cwd=other, check=True)
+    subprocess.run(["git", "config", "user.name", "o"], cwd=other, check=True)
+    (other / "unrelated.txt").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(other), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(other), "commit", "-qm", "other work"], check=True)
+    subprocess.run(["git", "-C", str(other), "push", "-q", "origin", "HEAD"], check=True)
+
+    head_before = run("rev-parse", "HEAD")
+    with pytest.raises(RuntimeError):
+        ticket.deliver_squash(dev, "ticket/0001-x", "0001-x", "X")
+
+    # fail-closed: branch and worktree survive; the squash commit is preserved locally
+    assert _branch_exists(dev, "ticket/0001-x")
+    assert worktree.is_dir()
+    assert run("rev-parse", "HEAD") != head_before  # the local squash commit was made
+    assert main_branch  # sanity: we resolved the main branch name

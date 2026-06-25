@@ -22,32 +22,38 @@ If a ticket number is provided as an argument, scan `.tickets/completed/<arg>*/`
 3. **Confirm with the lead** before proceeding:
    ```
    Ready to reopen ticket XXXX:
-     mv .tickets/completed/XXXX-<slug>/ .tickets/XXXX-<slug>/
+     git worktree add .worktrees/XXXX-<slug> -b ticket/XXXX-<slug> main   (fresh branch from main HEAD)
+     mv .tickets/completed/XXXX-<slug>/ .tickets/XXXX-<slug>/   (in the worktree)
      status.md → solution
      git rm -r --cached .tickets/completed/XXXX-<slug>/
      git add -- .tickets/XXXX-<slug>/
-     git commit -m "chore(ticket): XXXX → solution (reopened)"
+     git commit -m "chore(ticket): XXXX → solution (reopened)"   (on the branch, then push)
    Re-run /build XXXX before resuming work. Proceed? (yes/no)
    ```
    Stop if the lead says no.
 
-4. **Move the ticket back to root.**
+4. **Fork a fresh branch + worktree from `main` HEAD.**
+   The prior delivery squash-merged **and deleted** the original `ticket/XXXX-<slug>` branch, so its per-commit history is gone — the squashed commit on `main` is the new base. Fork a fresh branch from `main` HEAD and check it out in a worktree:
+   ```
+   git worktree add .worktrees/XXXX-<slug> -b ticket/XXXX-<slug> main
+   ```
+   If the branch already exists (a stale leftover), pick it up instead: `git worktree add .worktrees/XXXX-<slug> ticket/XXXX-<slug>`. If worktree creation fails, report and stop.
+
+5. **Restore the ticket dir onto the branch.** All of the following happen **in the worktree** (`.worktrees/XXXX-<slug>/`), committed on the branch — never on `main`. `main` keeps the archived `completed/XXXX-<slug>/` until the next `/deliver` squash.
    ```
    mv .tickets/completed/XXXX-<slug>/ .tickets/XXXX-<slug>/
    ```
    If the mv fails, report the error and stop.
 
-5. **Update ticket status.**
-   Set `status.md` to `status: solution` and update the `updated` date.
-
-6. **Commit the reopen transition** (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+6. **Set status and commit the reopen transition on the branch** (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Set `status.md` to `status: solution` with an updated date, then:
    ```
-   git rm -r --cached .tickets/completed/XXXX-<slug>/
-   git add -- .tickets/XXXX-<slug>/
-   git commit -m "chore(ticket): XXXX → solution (reopened)"
+   git -C .worktrees/XXXX-<slug> rm -r --cached .tickets/completed/XXXX-<slug>/
+   git -C .worktrees/XXXX-<slug> add -- .tickets/XXXX-<slug>/
+   git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX → solution (reopened)"
+   git -C .worktrees/XXXX-<slug> push
    ```
 
 7. **Report completion.**
-   Confirm the ticket is now at `.tickets/XXXX-<slug>/` with `status: solution`. Remind the lead:
-   - Run `/build XXXX` before resuming implementation — existing specs may be stale.
-   - The original branch and worktree were deleted at cancel/deliver time; `/build` will create a new branch and worktree.
+   Confirm the ticket dir is restored at `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/` with `status: solution` on the fresh branch. Remind the lead:
+   - Run `/build XXXX` before resuming implementation — existing specs may be stale; `/build` resumes this worktree.
+   - The next `/deliver` squashes the reopened work into a **further** commit on `main`.

@@ -11,7 +11,9 @@ Separate tickets by location and status:
 - **Active tickets**: any ticket under `.tickets/` (not `completed/`) — these are open regardless of status value.
 - **Completed tickets**: any ticket under `.tickets/completed/` — these are archived (status `done` or `cancelled`).
 
-Collect each active ticket's number, title, status string, and `owner` field from its `status.md`.
+Collect each active ticket's number, title, status string, and `owner` field. Read these from the ticket's **worktree** copy when it exists locally — `.worktrees/<slug>/.tickets/<slug>/status.md` — because post-claim states (`solution`, `implementing`, `review-ready`, `changes-requested`) are **branch-only**; `main`'s copy is just the `claimed` stub. Fall back to `main`'s stub when the worktree is absent.
+
+> **Cross-machine limitation:** without the ticket's worktree locally, only `main`'s `claimed` stub is visible, so the ticket reads as `claimed` even when its pushed branch is further along. Accepted; inspect the branch directly (`git show ticket/<slug>:.tickets/<slug>/status.md`) if needed.
 
 ## Step 2 — Read problem.md for open tickets
 

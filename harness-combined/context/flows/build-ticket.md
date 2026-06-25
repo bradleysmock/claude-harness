@@ -37,24 +37,24 @@ If `.tickets/_learnings.md` exists, load it via `@.tickets/_learnings.md`.
 
 Both are lead-curated. The model treats them as hard constraints, not suggestions. The machine's BM25 failure trail (`.harness/memory.db`) is consulted only by `memory(action="retrieve", ...)` during repair — it never feeds back into these files automatically.
 
-## Step 2 — Create worktree (skip if resuming changes-requested)
+## Step 2 — Resume the claim worktree (do not create one)
 
-First, commit `status: implementing` to `main` and push it. This must happen **before** the worktree is created so the branch forks from the `implementing` commit (keeping the later branch→main merge a clean, conflict-free merge of `status.md`):
-
-```
-python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX implementing --push
-```
-
-The `--push` flag runs `git push` atomically with the commit, publishing the start signal before any branch is forked.
-
-Then create the worktree from the now-updated `main`:
+The branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` already exist — they were created at claim time (`/problem` Phase 1), and the design artifacts live on the branch. **Resume** that worktree; do not fork a new one. Only if the worktree is somehow absent (e.g. a fresh clone, or a ticket claimed before branch-at-claim) recreate it from the existing branch:
 
 ```
-git worktree add .worktrees/XXXX-<slug> -b ticket/XXXX-<slug>
+git worktree add .worktrees/XXXX-<slug> ticket/XXXX-<slug>   # fallback only — normally the worktree already exists
 echo 'XXXX-<slug>' > .tickets/.active
 ```
 
-From here, all implementation status churn (`review-ready`, `changes-requested`) is **branch only** — committed inside the worktree, never to `main`. `main` keeps showing `implementing` until `/deliver` merges the branch.
+Then transition `status: implementing` **on the branch** (branch only — it must **not** touch `main`), committing+pushing inside the worktree by running the helper from within it:
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX implementing --push   # cwd = .worktrees/XXXX-<slug>
+```
+
+Run with the worktree as the cwd so the helper resolves the worktree's `.tickets/` and commits to the branch; `--push` publishes the branch (setting upstream on first push).
+
+From here, **all** implementation status churn (`implementing`, `review-ready`, `changes-requested`) is **branch only** — committed inside the worktree and pushed, never to `main`. `main` keeps showing `claimed` until `/deliver` squash-merges the branch.
 
 ## Step 3 — Load DAG and checkpoint
 

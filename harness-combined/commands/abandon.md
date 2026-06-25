@@ -10,9 +10,9 @@ If a ticket number is provided, scan `.tickets/<arg>*/` then `.tickets/completed
 
 2. **Confirm with the lead.** Show what will happen: the worktree (if any) is removed, the branch deleted, status.md → abandoned, the `.active` sentinel cleared if it matches, and the ticket archived to `.tickets/completed/`. Stop if the lead declines.
 
-3. **Remove the worktree** if `.worktrees/XXXX-<slug>` exists: `git worktree remove --force .worktrees/XXXX-<slug>`. Warn and continue on failure.
+3. **Remove the worktree** if `.worktrees/XXXX-<slug>` exists: `git worktree remove --force .worktrees/XXXX-<slug>`. The worktree exists from **claim time** for any ticket past claim. Warn and continue on failure.
 
-4. **Delete the branch** if it exists: `git branch -D ticket/XXXX-<slug>`. Warn and continue on failure.
+4. **Delete the branch** if it exists: `git branch -D ticket/XXXX-<slug>`. The branch also exists from claim time and is unmerged, so use `-D`. Warn and continue on failure.
 
 5. **Clear sentinels:** `rm -f .tickets/.active` (if it names this ticket) and `rm -f .tickets/.ticket.lock`.
 

@@ -31,7 +31,7 @@ Ticket number assignment must be atomic across developers. A claim is a small co
 
 1. Acquire the local lock `.tickets/.ticket.lock` (format `pid:epoch`) exactly as before — it serializes multiple agents on *this* machine and avoids wasted round-trips. Treat a lock whose timestamp is >60s old or whose pid is dead (`kill -0 <pid>` nonzero) as stale and delete it; otherwise `sleep 2` and retry up to 5 times, then report the conflict.
 
-2. Claim the number with the `ticket.py claim` helper (it scans both `.tickets/*` and `.tickets/completed/*` for the next number, writes the stub `status.md` with `status: claimed` and `owner:` from `git config user.email`, commits `chore(ticket): XXXX claim`, and — when an `origin` exists — pushes; on a rejected push it rebases, re-numbers, and retries up to 5 times):
+2. Claim the number with the `ticket.py claim` helper (it scans both `.tickets/*` and `.tickets/completed/*` for the next number, writes the stub `status.md` with `status: claimed`, `title`, `branch`, and `owner:` from `git config user.email`, commits `chore(ticket): XXXX claim`, and — when an `origin` exists — pushes; on a rejected push it rebases, re-numbers, and retries up to 5 times). **Only after the winning push** does it create the branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` — so a renumber-on-reject leaves no orphaned branch or worktree (create-after-push):
 
    `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" claim <slug> "<title>" --push`
 
@@ -39,13 +39,15 @@ Ticket number assignment must be atomic across developers. A claim is a small co
 
 3. Release the lock: `rm -f .tickets/.ticket.lock`.
 
-The ticket directory now exists with a `claimed` stub. Phases 2–4 fill in `problem.md`, `requirements.md`, and `solution.md`.
+The claim commit is the **only** `main` commit the ticket writes before delivery. The ticket directory now exists with a `claimed` stub on `main`, and the branch `ticket/XXXX-<slug>` + worktree `.worktrees/XXXX-<slug>` exist for the rest of the design and build. **Phases 2–4 write `problem.md`, `requirements.md`, and `solution.md` into the worktree (`.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/`) and commit+push them on the branch — never to `main`.**
 
 ---
 
 ## Phase 2 — Problem
 
-Write `.tickets/XXXX-<slug>/problem.md` (hard limit: 40 lines — use bullets, not prose):
+> **All Phase 2–4 artifact writes go into the worktree, on the branch.** Every `.tickets/XXXX-<slug>/...` path named in Phases 2–4 below is the worktree-qualified path `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/...`. Writing to `main`'s bare `.tickets/` path would leave the design uncommitted on `main` (the orphaned-metadata failure the guard catches) and violate the branch-only invariant. Commit + push them on the branch in Phase 5.
+
+Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/problem.md` (hard limit: 40 lines — use bullets, not prose):
 
 ```markdown
 # Problem Statement
@@ -71,7 +73,7 @@ Write `.tickets/XXXX-<slug>/problem.md` (hard limit: 40 lines — use bullets, n
 <Bullet list: explicit exclusions. Omit section if nothing is excluded.>
 ```
 
-Write `.tickets/XXXX-<slug>/status.md`:
+Update `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/status.md` (the claim stub is already there — edit it in place):
 
 ```
 status: solution
@@ -90,7 +92,7 @@ updated: YYYY-MM-DD
 
 Based on `problem.md`, derive requirements without asking the lead. Flag genuine blockers in the Open Questions section rather than stopping.
 
-Write `.tickets/XXXX-<slug>/requirements.md` (hard limit: 60 lines — omit sections that don't apply):
+Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md` (hard limit: 60 lines — omit sections that don't apply):
 
 ```markdown
 # Requirements
@@ -148,7 +150,7 @@ If either skip condition fires (or confidence is not high), the flow exits and P
 
 Draft the solution covering: approach, components, tech choices with rationale, test plan, tradeoffs, risks, and implementation order.
 
-Write `.tickets/XXXX-<slug>/solution.md` (hard limit: 80 lines — use tables and bullets, not prose; omit sections that don't apply):
+Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md` (hard limit: 80 lines — use tables and bullets, not prose; omit sections that don't apply):
 
 ```markdown
 # Solution
@@ -197,10 +199,10 @@ Update `status.md` to `status: solution`.
 
 ## Phase 5 — Critic Loop
 
-Before spawning the critic, verify that all three artifact files exist and are non-empty:
-- `.tickets/XXXX-<slug>/problem.md`
-- `.tickets/XXXX-<slug>/requirements.md`
-- `.tickets/XXXX-<slug>/solution.md`
+Before spawning the critic, verify that all three artifact files exist and are non-empty (in the worktree, where Phases 2–4 wrote them):
+- `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/problem.md`
+- `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md`
+- `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md`
 
 If any file is missing or empty, fix the write before proceeding.
 
@@ -210,11 +212,11 @@ Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
 > Ticket: **XXXX-<slug>**
 > Round: **1** (max 2)
 >
-> Follow `@${CLAUDE_PLUGIN_ROOT}/context/critic-brief.md`. The artifact files to review are:
+> Follow `@${CLAUDE_PLUGIN_ROOT}/context/critic-brief.md`. The artifact files to review are (in the worktree):
 >
-> - `.tickets/XXXX-<slug>/problem.md`
-> - `.tickets/XXXX-<slug>/requirements.md`
-> - `.tickets/XXXX-<slug>/solution.md`
+> - `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/problem.md`
+> - `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md`
+> - `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md`
 >
 > You are reviewing documents, not code — apply expert lenses at the design level. Add these design-specific evaluations on top of the standard brief:
 >
@@ -226,17 +228,17 @@ Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
 
 Revise `solution.md` based on the critic's findings. If significant issues were raised, verify the revised file is fully written, then spawn a second critic round with `Round: 2`. **Maximum 2 rounds.**
 
-### Commit the design artifacts
+### Commit the design artifacts (on the branch)
 
-Once the critic loop is complete and `solution.md` is final, commit the ticket metadata to `main` (one commit for all three artifacts — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+Once the critic loop is complete and `solution.md` is final, commit the three artifacts **on the feature branch inside the worktree** and push — never to `main` (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). The claim commit was already the ticket's one pre-delivery `main` commit; the design lives on the branch and reaches `main` only via the delivery squash:
 
 ```
-git add .tickets/XXXX-<slug>/
-git commit -m "chore(ticket): XXXX design (status: solution)"
-git push    # publish the design so other developers see it; the claim commit was already pushed
+git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/
+git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX design (status: solution)"
+git -C .worktrees/XXXX-<slug> push    # publish the design on the branch for other developers
 ```
 
-If the lead requests changes at Checkpoint 1 and you revise the artifacts, commit the revision the same way before continuing.
+If the lead requests changes at Checkpoint 1 and you revise the artifacts, commit the revision the same way (on the branch) before continuing.
 
 ---
 

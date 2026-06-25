@@ -36,64 +36,56 @@ This is a warning, not a stop.
 
 ```
 Ready to deliver ticket XXXX:
-  git merge --no-ff <branch>
-  git worktree remove .worktrees/XXXX-<slug>
-  git branch -d <branch>
+  git merge --squash <branch>      (one squashed commit — no per-branch-commit history, no merge commit)
   status.md → done
   mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/   (archive)
+  ↑ status → done and the archive are both folded into the single squash commit
+  git push
+  git worktree remove .worktrees/XXXX-<slug>
+  git branch -D <branch>      (-D, not -d: a squash leaves the branch without merge ancestry)
 Proceed? (yes/no)
 ```
 
 Stop if the user says no.
 
-## Step 4 — Merge
+## Step 4 — Squash-merge: fold `→ done` + archive into one commit
+
+A delivered ticket adds **exactly one** commit to `main`. Run the sequence below — encapsulated and unit-tested as `ticket.py deliver_squash()` (it asserts the one-commit invariant). It mirrors the archive pattern (OS `mv` + `git rm -r --cached` + `git add`, **never** `git mv`, which is unsound against the index `merge --squash` leaves):
 
 ```
-git merge --no-ff <branch>
-```
+# 1. Stage the whole branch diff (code + the branch's .tickets/XXXX-<slug>/) — no commit, no merge commit
+git merge --squash <branch>
 
-If the merge fails, report the error and stop without continuing to cleanup.
-
-## Step 5 — Clean up
-
-```
-git worktree remove .worktrees/XXXX-<slug>
-git branch -d <branch>
-```
-
-Warn on failure but continue.
-
-## Step 6 — Record terminal status and archive
-
-**6a — Status transition commit.**
-Write `status: done` to `status.md` and set the `updated` date. Commit this status transition as a scoped add (see "Committing ticket metadata" in the harness reference):
-```
-git add .tickets/XXXX-<slug>/
-git commit -m "chore(ticket): XXXX → done"
-git push
-```
-
-> **Status merge:** the merged branch carries its `review-ready` `status.md`. Because the branch forked from the `implementing` commit on `main` and only the branch modified that file afterward, the `--no-ff` merge resolves `status.md` cleanly — no content conflict (main and the merge base agree on it; only the branch side changed). The following `→ done` commit then overwrites `review-ready` with the terminal `done` state on `main`.
-
-This is a separate commit from the Step 4 merge commit.
-
-**6b — Archive commit.**
-Move the ticket directory to `.tickets/completed/` and stage the move:
-```
+# 2. Archive: OS-move the squash-staged ticket dir into completed/
 mkdir -p .tickets/completed
 mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/
+
+# 3. Rewrite .tickets/completed/XXXX-<slug>/status.md → status: done (+ updated: <today>) at the NEW path
+
+# 4. Clear the squash-staged old path; stage the archived path (code changes stay squash-staged)
 git rm -r --cached .tickets/XXXX-<slug>/
 git add -- .tickets/completed/XXXX-<slug>/
-git commit -m "chore(ticket): XXXX archive → completed/"
-git push
-```
-This is always a **separate commit** from the 6a status-transition commit.
 
-**Idempotency:** If `.tickets/completed/XXXX-<slug>/` already exists and `.tickets/XXXX-<slug>/` is absent, skip the mv and git operations (already archived) and continue.
+# 5. ONE commit: full code diff + completed/XXXX-<slug>/ at done, and no .tickets/XXXX-<slug>/ entry
+git commit -m "feat: XXXX <title> (squash)"
+
+# 6. Publish FIRST; only on a successful push remove the worktree + delete the branch
+#    (-D, not -d: a squash leaves the branch without merge ancestry, so git never
+#     treats it as "fully merged"). On a rejected push, stop with both intact and retry.
+git push
+git worktree remove .worktrees/XXXX-<slug>
+git branch -D <branch>
+```
+
+If the `git merge --squash` reports a conflict, report the error and stop without committing or cleaning up.
+
+> **Squash status resolution:** because `main` carried only the `claimed` stub for this ticket and never re-touched `.tickets/XXXX-<slug>/` after the claim, the squash merge's merge base for that path is the claim stub and only the branch changed it — so it resolves cleanly with no conflict. The branch's `review-ready` `status.md` is squash-staged, then overwritten in place to `done` before the single commit. There is **no `--no-ff` merge commit and no separate `→ done` / archive commit** — `→ done` and the archive are folded into the one squash commit. A reopened ticket repeats this, adding a further squashed commit.
+
+**Idempotency:** If `.tickets/completed/XXXX-<slug>/` already exists and `.tickets/XXXX-<slug>/` is absent, the ticket is already archived — skip the mv and continue with the commit.
 
 **Partial-move guard:** If both `.tickets/XXXX-<slug>/` and `.tickets/completed/XXXX-<slug>/` exist simultaneously, warn the lead — treat the root copy as authoritative and proceed with the mv from root.
 
-## Step 7 — Suggest candidate learnings (do not write)
+## Step 5 — Suggest candidate learnings (do not write)
 
 `.tickets/_learnings.md` is lead-curated. The harness never writes to it.
 
@@ -110,13 +102,13 @@ The model's raw per-failure record already lives in `.harness/memory.db` via `me
 
 If `gate-findings.md` is empty or no repair occurred, skip this step.
 
-## Step 8 — Clear sentinel
+## Step 6 — Clear sentinel
 
 ```
 rm -f .tickets/.active
 ```
 
-## Step 9 — Rebase in-flight worktrees
+## Step 7 — Rebase in-flight worktrees
 
 For each active ticket in `.tickets/` (not `.tickets/completed/`) that is not XXXX:
 1. Read its `branch` from `status.md`. If empty, skip.
@@ -125,13 +117,13 @@ For each active ticket in `.tickets/` (not `.tickets/completed/`) that is not XX
    - Success: record "YYYY: rebased OK". If was `review-ready`, downgrade to `implementing` and note gates are invalidated.
    - Failure: run `git -C .worktrees/YYYY-<slug> rebase --abort`, record failure with manual recovery instructions.
 
-If any ticket was downgraded to `implementing` here, commit those metadata transitions to `main` (scoped add per ticket — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+If any ticket was downgraded to `implementing` here, commit that transition **on its own branch** (inside its worktree — the `implementing` state is branch-only, never committed to `main`), and push:
 ```
-git add .tickets/YYYY-<slug>/
-git commit -m "chore(ticket): YYYY → implementing (rebased onto main)"
-git push
+git -C .worktrees/YYYY-<slug> add .tickets/YYYY-<slug>/status.md
+git -C .worktrees/YYYY-<slug> commit -m "chore(ticket): YYYY → implementing (rebased onto main)"
+git -C .worktrees/YYYY-<slug> push
 ```
 
-## Step 10 — Report
+## Step 8 — Report
 
-Summarize what was merged, cleaned up, and any rebase results.
+Summarize what was delivered (the single squash commit), cleaned up, and any rebase results.

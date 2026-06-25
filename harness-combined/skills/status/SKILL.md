@@ -11,7 +11,11 @@ Read `.harness/config.py` if it exists to get `PROJECT_ROOT` (default `.`).
 
 ## Step 1 — Ticket status (SDLC workflow)
 
-Scan `.tickets/*/status.md` for active tickets (those not in `completed/`). Exclude any with status `done` or `cancelled` — they belong in the Completed section below. For each active ticket, read `owner` and `updated` from its `status.md` and report: ticket number, title, status, owner, updated date.
+Scan `.tickets/*/status.md` for active tickets (those not in `completed/`). Exclude any with status `done` or `cancelled` — they belong in the Completed section below.
+
+**Worktree-aware read.** Post-claim states (`solution`, `implementing`, `review-ready`, `changes-requested`) are **branch-only** — `main`'s `.tickets/<slug>/status.md` is just the `claimed` stub. So for each active ticket, when its worktree exists locally (`.worktrees/<slug>/`), read the real progress from `.worktrees/<slug>/.tickets/<slug>/status.md`; otherwise fall back to `main`'s claim stub. Read `owner` and `updated` and report: ticket number, title, status, owner, updated date.
+
+> **Cross-machine limitation:** a developer who does not have the ticket's worktree locally (e.g. it was claimed and built on another machine) sees only `main`'s `claimed` stub — so the ticket shows as `claimed` for them even though it is further along on its pushed branch. This is accepted; the real state lives on the branch. To inspect it without the worktree, read the branch: `git show ticket/<slug>:.tickets/<slug>/status.md`.
 
 ### Active Tickets
 

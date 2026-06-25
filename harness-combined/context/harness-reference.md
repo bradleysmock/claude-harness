@@ -34,43 +34,52 @@ updated: YYYY-MM-DD
 
 ### Status transitions
 
-| Status              | Set by                          | Transitions to                        |
-|---------------------|---------------------------------|---------------------------------------|
-| `claimed`           | `/problem` Phase 1 claim        | `solution`                            |
-| `problem`           | `/problem` Phase 2              | `requirements`                        |
-| `requirements`      | `/problem` Phase 3              | `solution`                            |
-| `solution`          | `/problem` Phase 4; `/reopen` (from `completed/`) | `implementing`           |
-| `implementing`      | `/build` setup                  | `review-ready`                        |
-| `review-ready`      | `/build` after gate/repair loop — **branch only** | `done` or `implementing` |
-| `changes-requested` | `/build` Step 7d, `review` skill — **branch only** | `implementing` (re-run `/build`) |
-| `done`              | `/deliver` (ticket archived to `completed/`) | `solution` via `/reopen` |
-| `cancelled`         | `/cancel` (ticket archived to `completed/`) | `solution` via `/reopen`  |
-| `abandoned`         | `/abandon` or `/cancel --abandon` (terminal) | `solution` via `/reopen` |
+| Status              | Set by                          | Commit target | Transitions to                        |
+|---------------------|---------------------------------|---------------|---------------------------------------|
+| `claimed`           | `/problem` Phase 1 claim        | **main**      | `solution`                            |
+| `problem`           | `/problem` Phase 2              | branch only   | `requirements`                        |
+| `requirements`      | `/problem` Phase 3              | branch only   | `solution`                            |
+| `solution`          | `/problem` Phase 4; `/reopen` (onto a fresh branch) | branch only | `implementing`         |
+| `implementing`      | `/build` setup (resumes the claim worktree) | branch only | `review-ready`            |
+| `review-ready`      | `/build` after gate/repair loop | branch only   | `done` or `implementing`              |
+| `changes-requested` | `/build` Step 7d, `review` skill | branch only  | `implementing` (re-run `/build`)      |
+| `done`              | `/deliver` (folded into the squash commit) | **main** | `solution` via `/reopen` |
+| `cancelled`         | `/cancel` (ticket archived to `completed/`) | **main** | `solution` via `/reopen`  |
+| `abandoned`         | `/abandon` or `/cancel --abandon` (terminal) | **main** | `solution` via `/reopen` |
 
-> **Archive lifecycle:** `/deliver` and `/cancel` both move the ticket directory from `.tickets/<XXXX-slug>/` to `.tickets/completed/<XXXX-slug>/` after committing the terminal status. `/reopen XXXX` moves it back and sets `status: solution`. The `solution` status is therefore reachable from two paths: the forward design phase (`/problem`) and the reopen path (`/reopen`). After reopen, the lead must re-run `/build XXXX` before implementation resumes.
+> **Two commits on `main` per ticket.** `main` carries **only** the `claimed` commit and one squashed delivery commit. Every state between — `problem`, `requirements`, `solution`, `implementing`, `review-ready`, `changes-requested` — is **branch only**: committed inside the claim-time worktree and pushed to origin, never committed to `main` before delivery. `main` therefore never re-touches a claimed ticket's `.tickets/<slug>/` until that ticket's own `/deliver`.
+
+> **Archive lifecycle:** `/deliver` folds the `→ done` transition **and** the `.tickets/<slug>/ → completed/<slug>/` archive into the single `git merge --squash` commit (see **Squash delivery** below). `/cancel` and `/abandon` archive in their own separate terminal commit on `main`. `/reopen XXXX` forks a fresh branch from `main` HEAD and restores the dir from `completed/` onto that branch, setting `status: solution`. The `solution` status is therefore reachable from two paths: the forward design phase (`/problem`) and the reopen path (`/reopen`). After reopen, the lead must re-run `/build XXXX` before implementation resumes.
 
 > **Self-speccing:** `/write-spec` never changed `status`; the `solution → implementing` transition has always been driven by `/build` setup. As of the merged build flow, `/build` also *generates* the spec/task files inline when it starts from `status: solution` with no specs present. `/write-spec` is therefore an optional pre-step, not a required transition.
 
 ### State split (multi-developer)
 
-`main` carries the coarse, durable signal — `claimed`, `solution`, `implementing` (work started), and the terminal `done` / `cancelled` / `abandoned`. The fine implementation-phase states (`review-ready`, `changes-requested`) are **branch only**: committed inside the worktree and merged to `main` at `/deliver`. Because `/build` commits `implementing` to `main` and pushes *before* forking the worktree, only the branch advances `status.md` afterward, so the branch→main merge resolves `status.md` cleanly with no conflict.
+`main` carries only the coarse, durable signal — the `claimed` commit and the terminal `done` / `cancelled` / `abandoned`. **All** post-claim implementation-phase states (`solution`, `implementing`, `review-ready`, `changes-requested`) are **branch only**: committed inside the claim-time worktree and pushed to origin, never to `main`. Because `main` never re-touches a claimed ticket's `.tickets/<slug>/` after the claim stub, the delivery `git merge --squash`'s merge base for that path is the claim stub and only the branch changed it — so the path resolves cleanly with no conflict, and the whole branch (code + the branch's `.tickets/<slug>/`) collapses into one commit.
 
-`owner` (from `git config user.email`) is recorded at claim time. Number claiming is git-coordinated: a small `chore(ticket): XXXX claim` commit pushed first-wins; a loser re-numbers and retries. The `ticket.py` helper performs claims and transitions atomically (edit + scoped commit), and the `ticket_commit_guard` Stop hook blocks the turn if any tracked `.tickets/` file is left uncommitted.
+The branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` are created at **claim time** (`/problem` Phase 1) — but only **after** the claim push wins, so a renumber-on-reject leaves no orphaned branch or worktree. The worktree's lifecycle therefore spans `/problem` → `/build` → `/deliver`. `/build` **resumes** that pre-existing worktree rather than creating one.
+
+`owner` (from `git config user.email`) is recorded at claim time. Number claiming is git-coordinated: a small `chore(ticket): XXXX claim` commit pushed first-wins; a loser re-numbers and retries. The `ticket.py` helper performs claims and transitions atomically (edit + scoped commit + push of the branch), encapsulates the squash delivery in `deliver_squash()`, and the `ticket_commit_guard` Stop hook blocks the turn if any tracked `.tickets/` file is left uncommitted — scanning the main root **and** every active worktree (discovered via `git worktree list`, anchored on `git rev-parse --git-common-dir`) so a branch-only edit can't be left dangling either.
+
+### Squash delivery
+
+`/deliver` merges the feature branch with `git merge --squash` (not `--no-ff`), producing exactly one "completed work" commit on `main` that contains the entire branch diff — no per-worktree-commit history and no merge commit. The `→ done` transition and the `completed/<slug>/` archive are folded into that **same** commit. The sequence (`ticket.py deliver_squash()`) mirrors the archive pattern — `git merge --squash`, then OS `mv` + `git rm -r --cached` + `git add` (never `git mv`, which is unsound against the index a squash leaves) — then one commit, push, and removal of the worktree + branch. A reopened ticket forks a fresh branch and adds a **further** squashed commit on re-delivery.
 
 **GitHub seam (reserved):** `source` / `external_id` exist so bug reports can later enter as tickets via GitHub Issues, behind the same `ticket.py` boundary. No network path is built in this iteration.
 
 ### Committing ticket metadata
 
-`.tickets/` lives on `main` (only implementation code lives in the worktree — see **Worktrees** below). Every status transition **must be committed to `main`** so the ticket's state is durable (not local-only) and the history stays readable. Never leave `status.md` edits sitting uncommitted between commands.
+The **claim** stub (`status: claimed`, carrying `title` / `owner` / `branch`) is committed and pushed to `main` — the only `main` commit a ticket writes before delivery. **After the claim**, the ticket directory lives on the feature branch inside the worktree: every status transition **and** every artifact write (`problem.md`, `requirements.md`, `solution.md`, spec/task files, implementation) is committed to the **branch and pushed to origin**, never to `main`. Never leave `status.md` edits sitting uncommitted between commands.
 
-After finalizing a transition, commit **only that ticket's metadata** — a scoped add, so unrelated working-tree changes are never swept in:
+After finalizing a transition, commit **only that ticket's metadata** — a scoped add, so unrelated working-tree changes are never swept in. On the branch, use the helper so the commit and the branch push are atomic:
 
 ```
-git add .tickets/XXXX-<slug>/
-git commit -m "chore(ticket): XXXX → <status>"
+python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX <status> --push
 ```
 
-For the archive step (after `/deliver` or `/cancel` sets the terminal status), the directory moves, so the commit uses a different pair of operations:
+which is equivalent to a scoped `git add .tickets/XXXX-<slug>/` + `git commit` + a push of the current branch (setting upstream on first push).
+
+`/deliver` folds the terminal `→ done` and the archive into the single squash commit (see **Squash delivery**). For `/cancel` and `/abandon`, the directory moves to `completed/` in a separate terminal commit on `main`:
 
 ```
 # After OS mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/
@@ -79,7 +88,7 @@ git add -- .tickets/completed/XXXX-<slug>/
 git commit -m "chore(ticket): XXXX archive → completed/"
 ```
 
-For `/reopen`, the reverse:
+For `/reopen`, the reverse, committed **on the fresh branch** (not `main`):
 
 ```
 # After OS mv .tickets/completed/XXXX-<slug>/ .tickets/XXXX-<slug>/
@@ -89,10 +98,10 @@ git commit -m "chore(ticket): XXXX → solution (reopened)"
 ```
 
 Rules:
-- **One commit per transition.** Each command that writes `status.md` commits before it returns.
+- **One commit per transition.** Each command that writes `status.md` commits before it returns, and pushes the branch it lives on.
 - **Scope the add** to the ticket directory — never `git add -A`. Lead-curated `_learnings.md` / `_standards.md` and unrelated edits stay out.
-- `/problem` runs three transitions in one autonomous pass — it commits **once** at the end (`chore(ticket): XXXX design (status: solution)`), not three times.
-- These metadata commits are separate from the worktree's implementation commits and from the `/deliver` merge commit. Expect, for a finished ticket: design commit → (worktree code commits, merged) → `→ review-ready` commit → `→ done` commit.
+- `/problem` writes the design artifacts on the branch and commits+pushes them there (e.g. `chore(ticket): XXXX design (status: solution)`) — no design commit ever lands on `main`.
+- Expect, for a finished ticket, exactly **two** `main` commits: the `claim` commit and the squashed delivery commit. All design, implementation, and intermediate-status commits live on the branch (pushed) and collapse into that one delivery commit.
 
 ---
 
@@ -100,8 +109,9 @@ Rules:
 
 - **Branch naming**: `ticket/XXXX-<slug>`
 - **Worktree location**: `.worktrees/XXXX-<slug>` — globally git-ignored
-- All implementation happens in the worktree. **Never commit implementation to main directly.**
-- The worktree is merged to main only after the lead approves the post-build diff.
+- **Created at claim time** (`/problem` Phase 1), only after the claim push wins, so the design phase has a branch to write to and a renumber leaves no orphan. The worktree's lifecycle spans `/problem` → `/build` → `/deliver`; `/build` resumes it.
+- All design artifacts **and** implementation live on the branch in the worktree. **Never commit them to `main` directly** — only the `claim` commit and the squashed delivery commit touch `main`.
+- The branch is squash-merged to `main` at `/deliver`, then the worktree is removed and the branch deleted.
 
 ---
 

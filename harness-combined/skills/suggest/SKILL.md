@@ -52,9 +52,11 @@ Assemble: project name, detected language/framework, a one-sentence purpose (inf
 
 ## Step 3 — Read open ticket titles
 
-Scan `.tickets/*/status.md`. Exclude files under `.tickets/completed/`. For each remaining file, extract only the first line that begins with `title:` — strip the prefix and surrounding whitespace. If the result contains a double-quote, replace it with a single-quote.
+Scan `.tickets/*/status.md`. Exclude files under `.tickets/completed/`. For each remaining ticket, read its **worktree** copy when that worktree exists locally (`.worktrees/<slug>/.tickets/<slug>/status.md`), else `main`'s claim stub — post-claim states are branch-only, so the worktree carries the live `status:` while `main` shows only `claimed`. Extract only the first line that begins with `title:` — strip the prefix and surrounding whitespace. If the result contains a double-quote, replace it with a single-quote.
 
 Also check `status:` and exclude any with `status: done` or `status: cancelled`.
+
+> **Cross-machine limitation:** without the worktree locally, a ticket reads as `claimed` from `main`'s stub even when its pushed branch is further along; this is accepted (it only affects the `done`/`cancelled` exclusion, never the trust boundary below).
 
 Collect title strings into a list. If `.tickets/` does not exist, use `[]`.
 

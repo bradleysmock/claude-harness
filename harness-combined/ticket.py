@@ -110,12 +110,31 @@ def set_status(repo: Path, ident: str, new_status: str, *, push: bool = False) -
     subject = f"chore(ticket): {number} → {new_status}"
     git(repo, "commit", "-m", subject)
     if push:
-        git(repo, "push")
+        _push_current_branch(repo)
     return subject
 
 
 def _has_remote(repo: Path) -> bool:
     return bool(git(repo, "remote", check=False).stdout.strip())
+
+
+def _push_current_branch(repo: Path) -> bool:
+    """Push HEAD's branch and report whether it is safe to proceed.
+
+    Branch-only ticket states live on a worktree branch with no upstream yet —
+    fall back to `push -u origin <branch>` so the first transition publishes the
+    branch. Returns True when there is nothing to publish (no remote — local-only
+    is expected) or the push succeeded; False only when a remote exists but the
+    push was rejected, so destructive callers (delivery cleanup) can stop."""
+    if not _has_remote(repo):
+        return True
+    proc = git(repo, "push", check=False)
+    if proc.returncode == 0:
+        return True
+    branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD", check=False).stdout.strip()
+    if branch and branch != "HEAD":
+        return git(repo, "push", "-u", "origin", branch, check=False).returncode == 0
+    return False
 
 
 def _write_stub(ticket_dir: Path, number_str: str, slug: str, title: str, who: str) -> None:
@@ -128,6 +147,19 @@ def _write_stub(ticket_dir: Path, number_str: str, slug: str, title: str, who: s
     )
 
 
+def _create_branch_and_worktree(repo: Path, full_slug: str) -> None:
+    """Create branch ticket/<full_slug> and its worktree .worktrees/<full_slug>.
+
+    Called only AFTER the winning claim push (create-after-push), so a
+    renumber-on-reject never leaves an orphaned branch or worktree behind.
+    Best-effort and idempotent: skip if the branch already exists (resume)."""
+    branch = f"ticket/{full_slug}"
+    if git(repo, "branch", "--list", branch, check=False).stdout.strip():
+        return
+    worktree = repo / ".worktrees" / full_slug
+    git(repo, "worktree", "add", str(worktree), "-b", branch, check=False)
+
+
 def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries: int = 5) -> str:
     tickets_root = repo / ".tickets"
     who = owner(repo)
@@ -135,8 +167,8 @@ def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries:
     if remote:
         git(repo, "fetch", "origin", check=False)
 
-    number_str = ""
-    for attempt in range(max_retries + 1):
+    full_slug = ""
+    for _attempt in range(max_retries + 1):
         number_str = format_number(next_number(tickets_root))
         full_slug = f"{number_str}-{slug}"
         ticket_dir = tickets_root / full_slug
@@ -144,11 +176,13 @@ def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries:
         git(repo, "add", "--", str(ticket_dir.relative_to(repo)))
         git(repo, "commit", "-m", f"chore(ticket): {number_str} claim")
         if not remote:
-            return full_slug
+            break
         push_proc = git(repo, "push", check=False)
         if push_proc.returncode == 0:
-            return full_slug
+            break
         # Someone claimed first. Rebase, drop our number, retry with a higher one.
+        # The number is dropped BEFORE any branch/worktree is created, so the
+        # renumber leaves nothing orphaned.
         git(repo, "reset", "--hard", "HEAD~1", check=False)
         pull_proc = git(repo, "pull", "--rebase", check=False)
         if pull_proc.returncode != 0:
@@ -156,7 +190,65 @@ def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries:
             raise RuntimeError(
                 f"claim: rebase failed while renumbering: {pull_proc.stderr.strip()}"
             )
-    raise RuntimeError(f"claim exhausted {max_retries} retries (last tried {number_str})")
+    else:
+        raise RuntimeError(f"claim exhausted {max_retries} retries (last tried {full_slug})")
+
+    # Create-after-push: only the winning number reaches here.
+    _create_branch_and_worktree(repo, full_slug)
+    return full_slug
+
+
+def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
+    """Deliver a ticket branch as a single squashed commit on the current branch.
+
+    Mirrors the archive pattern (OS mv + `git rm --cached` + `git add`) — never
+    `git mv`, which is unsound against the index `merge --squash` leaves. Folds the
+    `→ done` transition and the `completed/` archive into the one squash commit, so
+    a normally-delivered ticket adds exactly one commit at delivery."""
+    # 1. Stage the whole branch diff (code + branch's .tickets/<slug>/) — no commit,
+    #    and no merge commit, so commits-since-claim stays at one.
+    git(repo, "merge", "--squash", branch)
+
+    # 2. Archive: OS mv the (squash-staged) ticket dir from root into completed/.
+    completed = repo / ".tickets" / "completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    src = repo / ".tickets" / slug
+    dst = completed / slug
+    if src.is_dir() and not dst.exists():
+        src.rename(dst)
+
+    # 3. Rewrite status.md → done at the NEW path so the staged blob is `done`.
+    status_md = dst / "status.md"
+    if status_md.exists():
+        text = status_md.read_text(encoding="utf-8")
+        text = _rewrite_field(text, "status", "done")
+        text = _rewrite_field(text, "updated", date.today().isoformat())
+        status_md.write_text(text, encoding="utf-8")
+
+    # 4. Clear the squash-staged old path; stage the archived path. Code changes
+    #    staged by merge --squash remain staged.
+    git(repo, "rm", "-r", "--cached", "--", f".tickets/{slug}/", check=False)
+    git(repo, "add", "--", f".tickets/completed/{slug}/")
+
+    # 5. One commit: full code diff + completed/<slug>/ at done, no .tickets/<slug>/.
+    subject = f"feat: {slug} {title} (squash)"
+    git(repo, "commit", "-m", subject)
+
+    # 6. Publish FIRST. Only on a successful publish do we destroy the worktree and
+    #    branch — otherwise the squashed commit would survive only locally while its
+    #    source history is deleted. On a rejected push (e.g. another developer advanced
+    #    main between the squash and the push), stop with everything intact so the lead
+    #    can rebase and retry. `git branch -D` (not -d) because a squash leaves the
+    #    branch without merge ancestry, so git never considers it "fully merged".
+    if not _push_current_branch(repo):
+        raise RuntimeError(
+            f"deliver_squash: pushing the squashed commit to origin was rejected — "
+            f"leaving the worktree and branch {branch!r} intact. Rebase onto the "
+            f"updated main and retry the delivery."
+        )
+    git(repo, "worktree", "remove", "--force", str(repo / ".worktrees" / slug), check=False)
+    git(repo, "branch", "-D", branch, check=False)
+    return subject
 
 
 def _main(argv: list[str]) -> int:

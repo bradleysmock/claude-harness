@@ -30,18 +30,20 @@ def test_problem_claim_pushes() -> None:
     assert "git push" in c or "--push" in c
 
 
-# ── Task 6: build-ticket.md implementing ordering + branch-local churn ──────
-def test_build_sets_implementing_before_worktree() -> None:
-    c = read("context/flows/build-ticket.md")
-    impl = c.index("status: implementing")
-    wt = c.index("git worktree add")
-    assert impl < wt, "implementing must be committed to main before the worktree is forked"
+# ── Task 6: build-ticket.md resumes the claim worktree, branch-only churn ────
+# (Ticket 0003: the worktree is created at claim time, so /build resumes it and
+#  `implementing` is branch-only — it is no longer committed to main before a fork.)
+def test_build_resumes_claim_worktree_not_creates() -> None:
+    c = read("context/flows/build-ticket.md").lower()
+    assert "do not create" in c or "resume" in c
+    assert "already exist" in c
 
 
-def test_build_pushes_start_signal() -> None:
+def test_build_implementing_is_branch_only_and_pushed() -> None:
     c = read("context/flows/build-ticket.md")
-    seg = c[c.index("status: implementing"):c.index("git worktree add")]
-    assert "git push" in seg
+    assert "branch only" in c.lower()
+    # implementing is committed + pushed on the branch via the helper, never to main
+    assert "set-status XXXX implementing --push" in c
 
 
 def test_build_review_ready_commits_on_branch() -> None:
@@ -51,17 +53,17 @@ def test_build_review_ready_commits_on_branch() -> None:
     assert "git -C .worktrees/XXXX-<slug>" in c or "in the worktree" in c
 
 
-# ── Task 7: deliver-ticket.md — push transitions, document status-merge ──────
-def test_deliver_pushes_terminal_status() -> None:
+# ── Task 7: deliver-ticket.md — squash merge, folded done+archive ────────────
+def test_deliver_uses_squash_merge() -> None:
     c = read("context/flows/deliver-ticket.md")
-    seg = c[c.index('XXXX → done'):]
-    assert "git push" in seg[:400]
+    assert "git merge --squash" in c
+    assert "git merge --no-ff" not in c  # the old --no-ff path is gone
 
 
-def test_deliver_documents_status_merge() -> None:
+def test_deliver_documents_squash_status_resolution() -> None:
     c = read("context/flows/deliver-ticket.md").lower()
-    assert "status merge" in c
-    assert "no content conflict" in c or "no conflict" in c or "cleanly" in c
+    assert "squash" in c
+    assert "no conflict" in c or "cleanly" in c
 
 
 # ── Task 8: /abandon command + /cancel --abandon alias ──────────────────────
