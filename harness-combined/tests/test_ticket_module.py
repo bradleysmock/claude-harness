@@ -254,3 +254,65 @@ def test_deliver_squash_single_commit_with_done_archive(tmp_path: Path) -> None:
 
     # the merged branch was deleted as part of delivery
     assert not _branch_exists(repo, "ticket/0001-thing")
+
+
+def test_reopen_then_redeliver_adds_one_further_squash_commit(tmp_path: Path) -> None:
+    """FR-6 git-sim: a delivered (archived) ticket is reopened onto a fresh branch
+    forked from main HEAD, and a second deliver_squash adds exactly one more
+    squashed commit on main (completed/<slug>/status.md back at done)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    run("config", "user.email", "d@x.c")
+    run("config", "user.name", "d")
+
+    # Prior delivery already happened: main has completed/<slug>/ (done) + code.
+    completed = repo / ".tickets" / "completed" / "0001-thing"
+    completed.mkdir(parents=True)
+    (completed / "status.md").write_text(
+        "status: done\nticket: 0001\ntitle: Thing\nbranch: ticket/0001-thing\nowner: d@x.c\n",
+        encoding="utf-8",
+    )
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    run("add", "-A")
+    run("commit", "-qm", "feat: 0001-thing Thing (squash)")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+    delivered_rev = run("rev-parse", "HEAD")
+
+    # /reopen: fresh branch from main HEAD; restore the dir onto the branch.
+    run("checkout", "-qb", "ticket/0001-thing", main_branch)
+    (repo / ".tickets" / "completed" / "0001-thing").rename(repo / ".tickets" / "0001-thing")
+    tdir = repo / ".tickets" / "0001-thing"
+    (tdir / "status.md").write_text(
+        "status: solution\nticket: 0001\ntitle: Thing\nbranch: ticket/0001-thing\nowner: d@x.c\n",
+        encoding="utf-8",
+    )
+    run("rm", "-r", "--cached", "--", ".tickets/completed/0001-thing/")
+    run("add", "--", ".tickets/0001-thing/")
+    run("commit", "-qm", "chore(ticket): 0001 → solution (reopened)")
+    # further work on the reopened branch
+    (repo / "feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    (tdir / "status.md").write_text(
+        "status: review-ready\nticket: 0001\ntitle: Thing\nbranch: ticket/0001-thing\nowner: d@x.c\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "feat: more work")
+    run("checkout", "-q", main_branch)
+
+    ticket.deliver_squash(repo, "ticket/0001-thing", "0001-thing", "Thing")
+
+    # one further squash commit on main since the prior delivery, not a merge commit
+    assert run("rev-list", "--count", f"{delivered_rev}..HEAD") == "1"
+    assert run("rev-list", "--merges", "--count", f"{delivered_rev}..HEAD") == "0"
+    tree = run("ls-tree", "-r", "--name-only", "HEAD")
+    assert ".tickets/completed/0001-thing/status.md" in tree
+    assert ".tickets/0001-thing/status.md" not in tree
+    assert "status: done" in run("show", "HEAD:.tickets/completed/0001-thing/status.md")
+    assert "VALUE = 2" in run("show", "HEAD:feature.py")  # the reopened work landed

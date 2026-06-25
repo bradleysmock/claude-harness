@@ -45,7 +45,9 @@ The claim commit is the **only** `main` commit the ticket writes before delivery
 
 ## Phase 2 — Problem
 
-Write `.tickets/XXXX-<slug>/problem.md` (hard limit: 40 lines — use bullets, not prose):
+> **All Phase 2–4 artifact writes go into the worktree, on the branch.** Every `.tickets/XXXX-<slug>/...` path named in Phases 2–4 below is the worktree-qualified path `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/...`. Writing to `main`'s bare `.tickets/` path would leave the design uncommitted on `main` (the orphaned-metadata failure the guard catches) and violate the branch-only invariant. Commit + push them on the branch in Phase 5.
+
+Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/problem.md` (hard limit: 40 lines — use bullets, not prose):
 
 ```markdown
 # Problem Statement
@@ -71,7 +73,7 @@ Write `.tickets/XXXX-<slug>/problem.md` (hard limit: 40 lines — use bullets, n
 <Bullet list: explicit exclusions. Omit section if nothing is excluded.>
 ```
 
-Write `.tickets/XXXX-<slug>/status.md`:
+Update `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/status.md` (the claim stub is already there — edit it in place):
 
 ```
 status: solution
@@ -90,7 +92,7 @@ updated: YYYY-MM-DD
 
 Based on `problem.md`, derive requirements without asking the lead. Flag genuine blockers in the Open Questions section rather than stopping.
 
-Write `.tickets/XXXX-<slug>/requirements.md` (hard limit: 60 lines — omit sections that don't apply):
+Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md` (hard limit: 60 lines — omit sections that don't apply):
 
 ```markdown
 # Requirements
@@ -148,7 +150,7 @@ If either skip condition fires (or confidence is not high), the flow exits and P
 
 Draft the solution covering: approach, components, tech choices with rationale, test plan, tradeoffs, risks, and implementation order.
 
-Write `.tickets/XXXX-<slug>/solution.md` (hard limit: 80 lines — use tables and bullets, not prose; omit sections that don't apply):
+Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md` (hard limit: 80 lines — use tables and bullets, not prose; omit sections that don't apply):
 
 ```markdown
 # Solution
@@ -197,10 +199,10 @@ Update `status.md` to `status: solution`.
 
 ## Phase 5 — Critic Loop
 
-Before spawning the critic, verify that all three artifact files exist and are non-empty:
-- `.tickets/XXXX-<slug>/problem.md`
-- `.tickets/XXXX-<slug>/requirements.md`
-- `.tickets/XXXX-<slug>/solution.md`
+Before spawning the critic, verify that all three artifact files exist and are non-empty (in the worktree, where Phases 2–4 wrote them):
+- `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/problem.md`
+- `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md`
+- `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md`
 
 If any file is missing or empty, fix the write before proceeding.
 
@@ -210,11 +212,11 @@ Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
 > Ticket: **XXXX-<slug>**
 > Round: **1** (max 2)
 >
-> Follow `@${CLAUDE_PLUGIN_ROOT}/context/critic-brief.md`. The artifact files to review are:
+> Follow `@${CLAUDE_PLUGIN_ROOT}/context/critic-brief.md`. The artifact files to review are (in the worktree):
 >
-> - `.tickets/XXXX-<slug>/problem.md`
-> - `.tickets/XXXX-<slug>/requirements.md`
-> - `.tickets/XXXX-<slug>/solution.md`
+> - `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/problem.md`
+> - `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md`
+> - `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md`
 >
 > You are reviewing documents, not code — apply expert lenses at the design level. Add these design-specific evaluations on top of the standard brief:
 >

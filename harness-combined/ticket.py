@@ -118,18 +118,23 @@ def _has_remote(repo: Path) -> bool:
     return bool(git(repo, "remote", check=False).stdout.strip())
 
 
-def _push_current_branch(repo: Path) -> None:
-    """Push HEAD's branch. Branch-only ticket states live on a worktree branch
-    with no upstream yet — fall back to `push -u origin <branch>` in that case so
-    the first transition publishes the branch. No-op when there is no remote."""
+def _push_current_branch(repo: Path) -> bool:
+    """Push HEAD's branch and report whether it is safe to proceed.
+
+    Branch-only ticket states live on a worktree branch with no upstream yet —
+    fall back to `push -u origin <branch>` so the first transition publishes the
+    branch. Returns True when there is nothing to publish (no remote — local-only
+    is expected) or the push succeeded; False only when a remote exists but the
+    push was rejected, so destructive callers (delivery cleanup) can stop."""
     if not _has_remote(repo):
-        return
+        return True
     proc = git(repo, "push", check=False)
     if proc.returncode == 0:
-        return
+        return True
     branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD", check=False).stdout.strip()
     if branch and branch != "HEAD":
-        git(repo, "push", "-u", "origin", branch, check=False)
+        return git(repo, "push", "-u", "origin", branch, check=False).returncode == 0
+    return False
 
 
 def _write_stub(ticket_dir: Path, number_str: str, slug: str, title: str, who: str) -> None:
@@ -229,8 +234,18 @@ def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
     subject = f"feat: {slug} {title} (squash)"
     git(repo, "commit", "-m", subject)
 
-    # 6. Publish, then remove the worktree + delete the now-merged branch.
-    _push_current_branch(repo)
+    # 6. Publish FIRST. Only on a successful publish do we destroy the worktree and
+    #    branch — otherwise the squashed commit would survive only locally while its
+    #    source history is deleted. On a rejected push (e.g. another developer advanced
+    #    main between the squash and the push), stop with everything intact so the lead
+    #    can rebase and retry. `git branch -D` (not -d) because a squash leaves the
+    #    branch without merge ancestry, so git never considers it "fully merged".
+    if not _push_current_branch(repo):
+        raise RuntimeError(
+            f"deliver_squash: pushing the squashed commit to origin was rejected — "
+            f"leaving the worktree and branch {branch!r} intact. Rebase onto the "
+            f"updated main and retry the delivery."
+        )
     git(repo, "worktree", "remove", "--force", str(repo / ".worktrees" / slug), check=False)
     git(repo, "branch", "-D", branch, check=False)
     return subject

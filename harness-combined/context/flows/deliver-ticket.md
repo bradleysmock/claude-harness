@@ -42,7 +42,7 @@ Ready to deliver ticket XXXX:
   ↑ status → done and the archive are both folded into the single squash commit
   git push
   git worktree remove .worktrees/XXXX-<slug>
-  git branch -d <branch>
+  git branch -D <branch>      (-D, not -d: a squash leaves the branch without merge ancestry)
 Proceed? (yes/no)
 ```
 
@@ -69,10 +69,12 @@ git add -- .tickets/completed/XXXX-<slug>/
 # 5. ONE commit: full code diff + completed/XXXX-<slug>/ at done, and no .tickets/XXXX-<slug>/ entry
 git commit -m "feat: XXXX <title> (squash)"
 
-# 6. Publish, then remove the worktree + delete the now-merged branch
+# 6. Publish FIRST; only on a successful push remove the worktree + delete the branch
+#    (-D, not -d: a squash leaves the branch without merge ancestry, so git never
+#     treats it as "fully merged"). On a rejected push, stop with both intact and retry.
 git push
 git worktree remove .worktrees/XXXX-<slug>
-git branch -d <branch>
+git branch -D <branch>
 ```
 
 If the `git merge --squash` reports a conflict, report the error and stop without committing or cleaning up.

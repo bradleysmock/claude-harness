@@ -46,10 +46,16 @@ def _checkout_roots(start: Path) -> list[Path]:
         ["git", "-C", str(main_root), "worktree", "list", "--porcelain"],
         capture_output=True, text=True, check=False,
     )
+    # Resolve every path to one canonical form so identity comparisons and
+    # `relative_to` below are sound — `--git-common-dir` returns a resolved path
+    # (e.g. /private/var/... on macOS) while the porcelain listing may report the
+    # unresolved form (/var/...), which would otherwise alias the main root.
     roots: list[Path] = []
     for line in listing.stdout.splitlines():
         if line.startswith("worktree "):
-            roots.append(Path(line[len("worktree "):].strip()))
+            root = Path(line[len("worktree "):].strip()).resolve()
+            if root not in roots:
+                roots.append(root)
     if main_root not in roots:
         roots.insert(0, main_root)
     return roots
