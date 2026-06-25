@@ -27,11 +27,11 @@ If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, th
 
 3. **Remove the worktree** (if `.worktrees/XXXX-<slug>` exists).
    Run: `git worktree remove --force .worktrees/XXXX-<slug>`
-   The `--force` flag is needed because the worktree may have uncommitted changes. If this fails, warn the lead and continue.
+   The worktree exists from **claim time** (`/problem` Phase 1) for any ticket past claim, so expect it to be present. The `--force` flag is needed because it may have uncommitted changes. If this fails, warn the lead and continue.
 
 4. **Delete the branch** (if `git branch --list <branch>` shows it exists).
    Run: `git branch -D <branch>`
-   Use `-D` rather than `-d` because the branch may not be merged. If this fails, warn the lead and continue.
+   The branch `ticket/XXXX-<slug>` also exists from claim time. Use `-D` rather than `-d` because the branch is not merged. If this fails, warn the lead and continue.
 
 5. **Clear the active-ticket sentinel** if `.tickets/.active` exists and contains this ticket's slug.
    Run: `rm -f .tickets/.active`
@@ -39,13 +39,9 @@ If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, th
 6. **Release the ticket lock** if `.tickets/.ticket.lock` exists (guards against a crash mid-claim).
    Run: `rm -f .tickets/.ticket.lock`
 
-7. **Update ticket status.**
-   Set `status.md` to `status: cancelled` and update the `updated` date.
-
-   Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+7. **Update ticket status** via the helper (atomic edit + scoped commit + push — `cancelled` is a terminal `main` state). The worktree was removed in Step 3, so this runs against `main`:
    ```
-   git add .tickets/XXXX-<slug>/
-   git commit -m "chore(ticket): XXXX → cancelled"
+   python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX cancelled --push
    ```
 
    Under `--abandon`, set `abandoned` instead: `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX abandoned --push`.

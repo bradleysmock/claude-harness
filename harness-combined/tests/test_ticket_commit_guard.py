@@ -54,3 +54,41 @@ def test_untracked_new_ticket_dir_is_flagged(tmp_path: Path) -> None:
     new_dir.mkdir()
     (new_dir / "status.md").write_text("status: claimed\n", encoding="utf-8")
     assert any("0002-fresh" in f for f in guard.dirty_ticket_files(repo))
+
+
+def _add_worktree(repo: Path, tmp_path: Path, name: str, branch: str) -> Path:
+    wt = tmp_path / name
+    subprocess.run(
+        ["git", "-C", str(repo), "worktree", "add", "-q", str(wt), "-b", branch],
+        check=True,
+    )
+    return wt
+
+
+def test_worktree_uncommitted_metadata_is_flagged(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    wt = _add_worktree(repo, tmp_path, "wt", "ticket/0002-y")
+    # a branch-only ticket dir lives only in the worktree, uncommitted
+    (wt / ".tickets" / "0002-y").mkdir(parents=True)
+    (wt / ".tickets" / "0002-y" / "status.md").write_text("status: solution\n", encoding="utf-8")
+    # scanning from the main root discovers the worktree and flags it
+    flagged = guard.dirty_ticket_files(repo)
+    assert any("0002-y" in f for f in flagged)
+    # the finding is attributed to the worktree, not to main's bare .tickets/ path
+    assert all(not f.startswith(".tickets/0002-y") for f in flagged)
+
+
+def test_guard_correct_when_cwd_is_the_worktree(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    wt = _add_worktree(repo, tmp_path, "wt", "ticket/0003-z")
+    (wt / ".tickets" / "0003-z").mkdir(parents=True)
+    (wt / ".tickets" / "0003-z" / "status.md").write_text("status: implementing\n", encoding="utf-8")
+    # the turn's cwd IS the worktree (ticket dir absent on main); still flagged
+    flagged = guard.dirty_ticket_files(wt)
+    assert any("0003-z" in f for f in flagged)
+
+
+def test_clean_main_and_worktree_pass(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_worktree(repo, tmp_path, "wt", "ticket/0004-clean")
+    assert guard.dirty_ticket_files(repo) == []

@@ -31,7 +31,7 @@ Ticket number assignment must be atomic across developers. A claim is a small co
 
 1. Acquire the local lock `.tickets/.ticket.lock` (format `pid:epoch`) exactly as before — it serializes multiple agents on *this* machine and avoids wasted round-trips. Treat a lock whose timestamp is >60s old or whose pid is dead (`kill -0 <pid>` nonzero) as stale and delete it; otherwise `sleep 2` and retry up to 5 times, then report the conflict.
 
-2. Claim the number with the `ticket.py claim` helper (it scans both `.tickets/*` and `.tickets/completed/*` for the next number, writes the stub `status.md` with `status: claimed` and `owner:` from `git config user.email`, commits `chore(ticket): XXXX claim`, and — when an `origin` exists — pushes; on a rejected push it rebases, re-numbers, and retries up to 5 times):
+2. Claim the number with the `ticket.py claim` helper (it scans both `.tickets/*` and `.tickets/completed/*` for the next number, writes the stub `status.md` with `status: claimed`, `title`, `branch`, and `owner:` from `git config user.email`, commits `chore(ticket): XXXX claim`, and — when an `origin` exists — pushes; on a rejected push it rebases, re-numbers, and retries up to 5 times). **Only after the winning push** does it create the branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` — so a renumber-on-reject leaves no orphaned branch or worktree (create-after-push):
 
    `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" claim <slug> "<title>" --push`
 
@@ -39,7 +39,7 @@ Ticket number assignment must be atomic across developers. A claim is a small co
 
 3. Release the lock: `rm -f .tickets/.ticket.lock`.
 
-The ticket directory now exists with a `claimed` stub. Phases 2–4 fill in `problem.md`, `requirements.md`, and `solution.md`.
+The claim commit is the **only** `main` commit the ticket writes before delivery. The ticket directory now exists with a `claimed` stub on `main`, and the branch `ticket/XXXX-<slug>` + worktree `.worktrees/XXXX-<slug>` exist for the rest of the design and build. **Phases 2–4 write `problem.md`, `requirements.md`, and `solution.md` into the worktree (`.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/`) and commit+push them on the branch — never to `main`.**
 
 ---
 
@@ -226,17 +226,17 @@ Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
 
 Revise `solution.md` based on the critic's findings. If significant issues were raised, verify the revised file is fully written, then spawn a second critic round with `Round: 2`. **Maximum 2 rounds.**
 
-### Commit the design artifacts
+### Commit the design artifacts (on the branch)
 
-Once the critic loop is complete and `solution.md` is final, commit the ticket metadata to `main` (one commit for all three artifacts — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+Once the critic loop is complete and `solution.md` is final, commit the three artifacts **on the feature branch inside the worktree** and push — never to `main` (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). The claim commit was already the ticket's one pre-delivery `main` commit; the design lives on the branch and reaches `main` only via the delivery squash:
 
 ```
-git add .tickets/XXXX-<slug>/
-git commit -m "chore(ticket): XXXX design (status: solution)"
-git push    # publish the design so other developers see it; the claim commit was already pushed
+git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/
+git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX design (status: solution)"
+git -C .worktrees/XXXX-<slug> push    # publish the design on the branch for other developers
 ```
 
-If the lead requests changes at Checkpoint 1 and you revise the artifacts, commit the revision the same way before continuing.
+If the lead requests changes at Checkpoint 1 and you revise the artifacts, commit the revision the same way (on the branch) before continuing.
 
 ---
 
