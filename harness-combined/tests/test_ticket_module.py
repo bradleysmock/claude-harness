@@ -2,6 +2,8 @@
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import ticket
 
 
@@ -316,3 +318,59 @@ def test_reopen_then_redeliver_adds_one_further_squash_commit(tmp_path: Path) ->
     assert ".tickets/0001-thing/status.md" not in tree
     assert "status: done" in run("show", "HEAD:.tickets/completed/0001-thing/status.md")
     assert "VALUE = 2" in run("show", "HEAD:feature.py")  # the reopened work landed
+
+
+def test_deliver_squash_preserves_branch_and_worktree_on_rejected_push(tmp_path: Path) -> None:
+    """B-01 regression guard: when the publish is rejected (another developer
+    advanced origin/main between the squash and the push), deliver_squash must
+    raise and leave the branch + worktree intact — never destroy the only copy
+    of the squashed commit's source history."""
+    bare, dev = _init_remote_clone(tmp_path, "dev")
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(dev), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    # Claim stub on dev's main, pushed so origin and dev agree.
+    tdir = dev / ".tickets" / "0001-x"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: claimed\nticket: 0001\ntitle: X\nbranch: ticket/0001-x\nowner: dev@x.c\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "chore(ticket): 0001 claim")
+    run("push", "-q", "origin", "HEAD")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+
+    # Feature branch + worktree with code + branch-only review-ready.
+    worktree = dev / ".worktrees" / "0001-x"
+    run("worktree", "add", "-q", str(worktree), "-b", "ticket/0001-x")
+    (worktree / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(worktree), "add", "-A"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(worktree), "commit", "-qm", "feat: x"], check=True
+    )
+
+    # Another developer advances origin/main, so dev's delivery push is non-fast-forward.
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(bare), str(other)], check=True)
+    subprocess.run(["git", "config", "user.email", "o@x.c"], cwd=other, check=True)
+    subprocess.run(["git", "config", "user.name", "o"], cwd=other, check=True)
+    (other / "unrelated.txt").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(other), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(other), "commit", "-qm", "other work"], check=True)
+    subprocess.run(["git", "-C", str(other), "push", "-q", "origin", "HEAD"], check=True)
+
+    head_before = run("rev-parse", "HEAD")
+    with pytest.raises(RuntimeError):
+        ticket.deliver_squash(dev, "ticket/0001-x", "0001-x", "X")
+
+    # fail-closed: branch and worktree survive; the squash commit is preserved locally
+    assert _branch_exists(dev, "ticket/0001-x")
+    assert worktree.is_dir()
+    assert run("rev-parse", "HEAD") != head_before  # the local squash commit was made
+    assert main_branch  # sanity: we resolved the main branch name
