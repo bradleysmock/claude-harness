@@ -52,8 +52,9 @@ new_req, new_sol, announcements = remediate_mechanical(requirements_text, soluti
 
 - This applies imperative substitutions (`should`/`may`/`could` → `must`, one FR at
   a time, inline-code spans untouched — FR-4) and structural Test Plan edits
-  (append an FR-keyed row whose scenario cell cross-references the FR's existing
-  text; remove phantom rows — FR-3).
+  (append an FR-keyed row whose scenario cell is a pointer to the requirement —
+  `xref requirements.md FR-N`, no inlined prose, so the fix can never import a
+  placeholder into the gated artifact; remove phantom rows — FR-3).
 - **Announce every edit.** Print each line in `announcements` verbatim — one line
   per edit, for lead audit (NFR-1).
 - Write `new_req` / `new_sol` back to the ticket's `requirements.md` /

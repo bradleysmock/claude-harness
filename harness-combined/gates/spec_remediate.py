@@ -14,8 +14,8 @@ I/O — the authoritative re-score runs ``score-spec`` itself on the committed f
 The two mechanical fixers are deliberately dumb:
 
 * :func:`append_testplan_row` / :func:`remove_phantom_row` — structural Test Plan
-  edits keyed to an FR number; the appended scenario cell cross-references the FR's
-  *existing* requirements text, never synthesized prose.
+  edits keyed to an FR number; the appended scenario cell is a *pointer* to the FR
+  (``xref requirements.md FR-N``), never inlined or synthesized prose.
 * :func:`substitute_imperative` — literal ``should``/``may``/``could`` -> ``must``
   inside one FR, skipping inline-code spans, with no other rewording.
 
@@ -318,11 +318,15 @@ def substitute_imperative(requirements_text: str, fr_number: int) -> tuple[str, 
     return "\n".join(lines) + _suffix(requirements_text), announcement
 
 
-def append_testplan_row(solution_text: str, fr_number: int, fr_text: str) -> tuple[str, str]:
+def append_testplan_row(solution_text: str, fr_number: int) -> tuple[str, str]:
     """Append a structural Test Plan row keyed to ``fr_number``.
 
-    The scenario cell cross-references ``fr_text`` (the FR's existing requirements
-    text, passed in verbatim) — no prose is authored here. The Test Type cell is a
+    The scenario cell is a pure *pointer* to the requirement
+    (``xref requirements.md FR-N``); the FR's prose is deliberately **not** inlined.
+    Copying verbatim FR text into ``solution.md`` could re-trip score-spec's
+    "No placeholders" check — an FR may legitimately contain a ``<...>`` span or a
+    TODO/TBD keyword — so the structural fix must never manufacture a new BLOCK by
+    importing untrusted text into the gated artifact. The Test Type cell is a
     literal ``—`` placeholder, since a structural fix cannot invent a test type.
     Returns ``(new_text, announcement)``.
     """
@@ -336,12 +340,11 @@ def append_testplan_row(solution_text: str, fr_number: int, fr_text: str) -> tup
             last_row = i
     if last_row is None:
         return solution_text, ""
-    cell = " ".join(fr_text.split()).replace("|", r"\|")
-    row = f"| FR-{fr_number} | — | xref requirements.md FR-{fr_number}: {cell} |"
+    row = f"| FR-{fr_number} | — | xref requirements.md FR-{fr_number} |"
     lines.insert(last_row + 1, row)
     announcement = (
         f"spec-remediate: appended Test Plan row for FR-{fr_number} "
-        f"(cross-ref to requirements.md, no authored prose)"
+        f"(cross-ref pointer to requirements.md, no inlined prose)"
     )
     return "\n".join(lines) + _suffix(solution_text), announcement
 
@@ -383,8 +386,8 @@ def remediate_mechanical(
     Order: imperative substitutions (requirements) → append uncovered Test Plan
     rows → remove phantom rows (solution). Returns
     ``(new_requirements, new_solution, announcements)`` with one announcement per
-    edit (NFR-1). Detection runs against the post-substitution requirements so an
-    appended cross-reference quotes the corrected FR text.
+    edit (NFR-1). Coverage/phantom detection runs against the post-substitution
+    requirements so the FR set stays consistent across the single pass.
     """
     announcements: list[str] = []
     req = requirements_text
@@ -394,7 +397,7 @@ def remediate_mechanical(
             announcements.append(note)
     sol = solution_text
     for n in uncovered_fr_numbers(req, sol):
-        sol, note = append_testplan_row(sol, n, get_fr_text(req, n))
+        sol, note = append_testplan_row(sol, n)
         if note:
             announcements.append(note)
     for n in phantom_fr_numbers(req, sol):

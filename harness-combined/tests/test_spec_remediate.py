@@ -155,18 +155,23 @@ def test_nonimperative_ignores_backticked_tokens() -> None:
 # ── Mechanical fix: append / remove Test Plan rows (FR-3) ──────────────────────
 
 
-def test_append_testplan_row_covers_missing_fr_with_crossref() -> None:
-    new_solution, announcement = append_testplan_row(SOLUTION, 3, get_fr_text(REQUIREMENTS, 3))
+def test_append_testplan_row_covers_missing_fr_with_pointer() -> None:
+    new_solution, announcement = append_testplan_row(SOLUTION, 3)
     assert 3 in covered_fr_numbers(new_solution)
-    # Cross-reference to the FR's existing text — no authored prose.
-    assert "xref requirements.md FR-3" in new_solution
-    assert "Test-plan coverage must be fixed structurally only" in new_solution
+    # A pure pointer cross-reference — the FR's prose is never inlined.
+    assert "| FR-3 | — | xref requirements.md FR-3 |" in new_solution
     assert announcement.startswith("spec-remediate: appended Test Plan row for FR-3")
 
 
-def test_append_testplan_row_escapes_pipes_in_cell() -> None:
-    new_solution, _ = append_testplan_row(SOLUTION, 9, "value a | value b")
-    assert r"value a \| value b" in new_solution
+def test_append_testplan_row_never_inlines_fr_prose() -> None:
+    # Regression for critic round 1 (MAJOR): the structural fix must not import
+    # requirements text into solution.md, so it cannot manufacture a "No
+    # placeholders" BLOCK from an FR that legitimately contains a <...> span or a
+    # TODO/TBD keyword. The appended row is a fixed-format pointer with no FR text.
+    new_solution, _ = append_testplan_row(SOLUTION, 3)
+    appended = [ln for ln in new_solution.splitlines() if ln.startswith("| FR-3 ")][-1]
+    assert appended == "| FR-3 | — | xref requirements.md FR-3 |"
+    assert "structurally only" not in appended  # FR-3's prose did not leak in
 
 
 def test_remove_phantom_row_drops_only_the_phantom() -> None:
