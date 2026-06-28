@@ -26,7 +26,7 @@ Find the spec or task for this ticket:
 **If neither exists** — generate them inline before building (this replaces the old "run `/write-spec` first" hand-off):
 
 1. Perform **Steps 1–5** of `${CLAUDE_PLUGIN_ROOT}/context/flows/write-spec-ticket.md` (resolve + score-spec gate → read only the named files → choose single-spec vs DAG → write the spec/task files). **Skip that flow's Step 6 report** — you are continuing into the build, not handing off.
-2. **score-spec is a hard stop.** That flow's Step 1 runs the score-spec gate; if its verdict is **BLOCK**, stop here — **before any worktree is created** — show the failing checks, and tell the lead to fix the design artifacts (or run `/refine XXXX`) and re-run `/build XXXX`.
+2. **score-spec is a hard stop.** That flow's Step 1 runs the score-spec gate; if its verdict is **BLOCK**, stop here — **before any worktree is created** — show the failing checks, and tell the lead to fix the design artifacts (or run `/refine XXXX`) and re-run `/build XXXX`. This hard stop is the **fail-closed default**; it is overridden *only* when this flow runs as a sub-flow under `/autopilot`, whose Spec-BLOCK interception diverts to `autopilot-ticket.md` Step S instead (see `${CLAUDE_PLUGIN_ROOT}/context/spec-remediation.md`). Absent that interception — interactive `/build`, `/write-spec`, any other caller — the hard stop holds.
 3. **Status precondition** is enforced by that flow's Step 1: if `status` is not `solution`, it stops and directs the lead to run `/problem XXXX` first. Honor that stop.
 4. After the files are written, announce in one line: "No specs found — generated N spec(s)/task from `solution.md` (score-spec: PASS|WARN). Continuing to build."
 
