@@ -24,7 +24,7 @@
 | Idle time excluded | 2,265 h | sessions left open |
 | Output tokens (real work) | **18.3 M** | May 16–Jun 30 |
 | Cache-read tokens | **2.66 B** | May 16–Jun 30 |
-| Notional API-equivalent cost | **≈ $2,200** | May 16–Jun 30 |
+| Notional API-equivalent cost | **≈ $2,200** *(not billed — included plan)* | May 16–Jun 30 |
 
 ---
 
@@ -101,7 +101,7 @@ ToolSearch 337
 
 **Model mix** (by API turn): Sonnet 4.6 **65.8%**, Opus 4.8 **32.1%**, Opus 4.7 1.3%, Haiku 4.5 0.6%. Sonnet does the bulk (largely subagents); Opus carries lead reasoning.
 
-**Token shape:** cache reads are **96.3% of all input-side tokens** — extremely cache-efficient. Output (18.3 M) and cache *writes* (99.4 M) are the real cost drivers, not fresh input.
+**Token shape:** cache reads are **96.3% of all input-side tokens** — extremely cache-efficient. Output (18.3 M) and cache *writes* (99.4 M) dominate the *notional* cost, not fresh input — but on your included plan that cost isn't billed (see §6.1). Cache writes split **100% 1h on the main thread / 5m on subagents**, which is exactly what Claude Code does on included-usage auth.
 
 ---
 
@@ -117,7 +117,7 @@ ToolSearch 337
 
 Ordered by estimated payoff. Remember the 88% finding: **optimize round-trips and latency, not keystrokes.**
 
-1. **Cache *writes* are your largest avoidable input cost.** 99.4 M cache-creation tokens, billed at the 1-hour TTL (2×) seen in your data ≈ **~$770 of the ~$2,200**. If your bursts of activity are usually within ~5 minutes (they often are — median 6 prompts/session), the **5-minute TTL (1.25×)** is cheaper. Switching cache-write TTL where appropriate would cut roughly **$300** off this window alone. *Action: review where 1h caching is forced; default to 5m for interactive sessions, reserve 1h for genuinely long-gap workflows.*
+1. **Cache-write TTL — billing-sensitive, and on your plan it's a latency lever, not a cost lever.** Your **main-thread** cache writes are **100% 1-hour TTL**; the 5-minute writes in the data are **all from subagents** (Claude Code uses a 5m cache for subagents by default, regardless of billing). Claude Code auto-selects 1h main-thread caching for **included-usage auth** (a subscription or an enterprise seat with included usage) — which is what these sessions ran on. On that billing, **1h is correct**: it costs nothing extra and widens the warm-cache window, which *reduces* the recompute that drives your 120 h of waiting. So the ~$770 notional cache-write figure is **not a bill**, and forcing 5m would be strictly worse here. *Action (included plan): leave TTL at 1h; treat cache as a latency lever — keep model+effort constant per session, run `/compact` at task boundaries not mid-task, load MCP servers up front, prefer `/rewind`.* *Action (only if you also run work on a **metered** API/usage-based account): on that account, set `FORCE_PROMPT_CACHING_5M=1` for short interactive sessions and reserve `ENABLE_PROMPT_CACHING_1H=1` for genuinely long-gap workflows — there the 2× vs 1.25× write cost is real money.*
 
 2. **Output tokens (18.3 M) dominate real spend** and, more importantly, **drive the 120 h of waiting** — long generations are slow generations. *Action: use the **effort control** on Opus 4.8 (standard / extra / `xhigh`). Reserve `xhigh`/max for design and hard debugging; run routine `build`/`gate`/`deliver` at standard effort. Expect both lower cost and less waiting.*
 
@@ -169,6 +169,6 @@ Sourced from Anthropic primary pages and reputable press as of 2026-06-30. Verif
 - **Active time** = sum of inter-event gaps per session, with any gap > 300 s dropped as idle. Sensitive to that threshold; a 120 s cap would lower totals ~10–15%, a 600 s cap would raise them similarly.
 - **Waiting vs. prompting** split: a gap ending in an assistant/tool event counts as "waiting on Claude"; a gap ending in a typed prompt counts as "prompting/reading."
 - **Tokens** are de-duplicated by `requestId` to avoid counting streamed content blocks multiple times.
-- **Cost (~$2,200)** is a *notional API-equivalent* at public list prices, assuming the 1-hour cache-write TTL observed in your transcripts. If you're on a Max subscription, you are **not** billed this; it's a comparative figure for sizing efficiency wins. A 5-minute-TTL mix would bring it to ~$1,900.
+- **Cost (~$2,200)** is a *notional API-equivalent* at public list prices, computed from the **actual** cache-write TTL split in your transcripts (1h writes at 2× input, 5m at 1.25×). Your account runs on **included-usage billing** (subscription / enterprise seat — inferred from 100% 1h main-thread caching), so you are **not** billed this; it's a comparative figure for sizing efficiency wins. It would only be a real bill on a metered API / usage-based account.
 - Pre-May-16 transcripts are pruned, so token/time figures **undercount the full 5.5-month period** — they cover the most intense ~6 weeks only.
 ```
