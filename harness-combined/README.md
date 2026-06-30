@@ -149,11 +149,12 @@ Each of these three commands is a **thin controller** in `commands/`. It inspect
 
 ## Skills (intent-triggered)
 
-These five behaviors are skills rather than commands. Invoke them explicitly with `/<name>` or just describe the intent — the model will pick the right skill from the description.
+These six behaviors are skills rather than commands. Invoke them explicitly with `/<name>` or just describe the intent — the model will pick the right skill from the description.
 
 | Skill | Triggers on | Purpose |
 |---|---|---|
 | `suggest` | "what should we build next?", "what features are missing?", "suggest something" | Inventories current capabilities and open tickets, compares against comparable tools, surfaces up to 10 non-duplicate improvement ideas, emits `/problem`-ready lines for accepted suggestions. |
+| `usage-report` | "review my Claude Code usage", "where am I spending tokens/time", "how can I use Claude more efficiently" | Runs a deterministic analyzer over local `~/.claude` state and writes a dated report: usage patterns, an idle-excluded time estimate, strengths/weaknesses, and roadmap-tied recommendations. |
 | `review` | "review ticket 0003", "is 0007 ready to merge?" | Ticket-scoped post-build review against problem / requirements / solution. Sets `changes-requested` if must-fix found. |
 | `critique` | "critique my changes", "expert panel review of the auth route" | Free-form expert-panel critique of the current diff or specified files. Writes `CRITIQUE.md`. |
 | `status` | "what's open?", "where are we?" | Combined view of tickets + standalone runs + failure-memory presence. |
@@ -253,13 +254,15 @@ harness-combined/
 │   ├── refine.md          ← Solution refinement
 │   ├── cancel.md          ← Cancel ticket
 │   ├── ticket-status.md   ← Ticket summary
-│   └── init.md            ← Initialize both workflows
+│   ├── init.md            ← Initialize both workflows
+│   └── usage-report.md    ← Analyze own Claude Code usage
 ├── skills/
 │   ├── suggest/SKILL.md   ← Feature suggestion skill (eval-fixture.md for testing)
 │   ├── review/SKILL.md    ← Ticket-scoped post-build review
 │   ├── critique/SKILL.md  ← Expert-panel critique of a diff
 │   ├── status/SKILL.md    ← Combined tickets + spec/build view
-│   └── debug/SKILL.md     ← Postmortem for escalated runs
+│   ├── debug/SKILL.md     ← Postmortem for escalated runs
+│   └── usage-report/      ← Usage analysis (SKILL.md + analyze.py)
 ├── context/
 │   ├── critic-brief.md    ← Critic agent shared instructions
 │   ├── flows/             ← Mode-specific procedures loaded by /build, /write-spec, /deliver
