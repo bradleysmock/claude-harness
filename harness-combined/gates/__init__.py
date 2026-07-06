@@ -3,8 +3,111 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from models import GateError, GateResult
+
+try:  # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised only on Python < 3.11
+    import tomli as tomllib  # type: ignore[no-redef]
+
+
+GateType = Literal["lint", "typecheck", "test", "security"]
+
+#: Gate type -> the GateTimeoutConfig field holding its per-gate override.
+_TIMEOUT_FIELDS: dict[str, str] = {
+    "lint": "lint_timeout_seconds",
+    "typecheck": "typecheck_timeout_seconds",
+    "test": "test_timeout_seconds",
+    "security": "security_timeout_seconds",
+}
+
+
+@dataclass(frozen=True)
+class GateTimeoutConfig:
+    """Per-gate and global wall-clock ceilings loaded from ``.harness.toml``.
+
+    Fields are ``None`` when unset. Resolution precedence (``timeout_for``):
+    per-gate override > ``default_timeout_seconds`` > the caller's hardcoded
+    default. The hardcoded default is passed in per call rather than embedded
+    here because it varies by gate, language, and text-vs-dir mode; centralising
+    it would silently change behaviour when no config is present (FR-5).
+    """
+
+    default_timeout_seconds: int | None = None
+    lint_timeout_seconds: int | None = None
+    typecheck_timeout_seconds: int | None = None
+    test_timeout_seconds: int | None = None
+    security_timeout_seconds: int | None = None
+
+    def timeout_for(self, gate_type: GateType, default: int) -> int:
+        """Resolve the timeout for ``gate_type``: override > global > ``default``."""
+        override = getattr(self, _TIMEOUT_FIELDS[gate_type])
+        if override is not None:
+            return int(override)
+        if self.default_timeout_seconds is not None:
+            return self.default_timeout_seconds
+        return default
+
+    @classmethod
+    def load(cls, path: Path) -> GateTimeoutConfig:
+        """Parse the ``.harness.toml`` at ``path`` into a config.
+
+        Unknown keys are ignored. Float values are truncated to int. A
+        non-positive or non-numeric timeout raises ``ValueError``. Malformed TOML
+        raises ``ValueError`` wrapping ``tomllib.TOMLDecodeError`` with the
+        filename included.
+        """
+        try:
+            with open(path, "rb") as fh:
+                raw = tomllib.load(fh)
+        except tomllib.TOMLDecodeError as exc:
+            raise ValueError(f"Malformed TOML in {path}: {exc}") from exc
+
+        known = ("default_timeout_seconds", *_TIMEOUT_FIELDS.values())
+        values: dict[str, int] = {}
+        for key in known:
+            if key not in raw:
+                continue
+            value = raw[key]
+            # bool is an int subclass in Python but a distinct TOML type — reject it.
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"{path}: {key} must be a positive number, got {value!r}"
+                )
+            truncated = int(value)
+            if truncated <= 0:
+                raise ValueError(
+                    f"{path}: {key} must be a positive integer, got {value!r}"
+                )
+            values[key] = truncated
+        return cls(**values)
+
+    @classmethod
+    def from_directory(cls, directory: Path) -> GateTimeoutConfig | None:
+        """Load ``<directory>/.harness.toml``; return ``None`` when it is absent."""
+        path = directory / ".harness.toml"
+        if not path.exists():
+            return None
+        return cls.load(path)
+
+
+def _timeout_error(gate: str, timeout_s: int) -> GateResult:
+    """Shared failed ``GateResult`` for a gate that exceeded ``timeout_s`` seconds.
+
+    The message ``"<gate> gate timed out after <N> s"`` is a stable operator
+    contract; ``code="TIMEOUT"`` is the machine-readable signal. Shared by every
+    language module so the format cannot drift between them.
+    """
+    return GateResult(
+        gate=gate, passed=False,
+        errors=[GateError(
+            message=f"{gate} gate timed out after {timeout_s} s",
+            file=None, line=None, column=None, code="TIMEOUT", severity="error",
+        )],
+        duration_ms=timeout_s * 1000,
+    )
 
 
 @dataclass
@@ -75,20 +178,21 @@ def run_suite_for(
     implementation: str,
     tests: str,
     project_root: str,
+    config: GateTimeoutConfig | None = None,
 ) -> list[GateResult]:
     """Text mode: run gates on generated code in a temp dir (fail-fast)."""
     if language == "python":
         from gates.python import run_python_suite
-        return run_python_suite(implementation, tests, project_root)
+        return run_python_suite(implementation, tests, project_root, config=config)
     elif language == "typescript":
         from gates.typescript import run_typescript_suite
-        return run_typescript_suite(implementation, tests, project_root)
+        return run_typescript_suite(implementation, tests, project_root, config=config)
     elif language == "go":
         from gates.go import run_go_suite
-        return run_go_suite(implementation, tests, project_root)
+        return run_go_suite(implementation, tests, project_root, config=config)
     elif language == "rust":
         from gates.rust import run_rust_suite
-        return run_rust_suite(implementation, tests, project_root)
+        return run_rust_suite(implementation, tests, project_root, config=config)
     else:
         raise ValueError(f"Unsupported language: {language!r}")
 
@@ -134,20 +238,21 @@ def _language_suite_on_dir(
     language: str,
     directory: str,
     fail_fast: bool = True,
+    config: GateTimeoutConfig | None = None,
 ) -> list[GateResult]:
     """Dispatch to a single language's directory-mode gate suite."""
     if language == "python":
         from gates.python import run_python_suite_on_dir
-        results = run_python_suite_on_dir(directory, fail_fast=fail_fast)
+        results = run_python_suite_on_dir(directory, fail_fast=fail_fast, config=config)
     elif language == "typescript":
         from gates.typescript import run_typescript_suite_on_dir
-        results = run_typescript_suite_on_dir(directory, fail_fast=fail_fast)
+        results = run_typescript_suite_on_dir(directory, fail_fast=fail_fast, config=config)
     elif language == "go":
         from gates.go import run_go_suite_on_dir
-        results = run_go_suite_on_dir(directory, fail_fast=fail_fast)
+        results = run_go_suite_on_dir(directory, fail_fast=fail_fast, config=config)
     elif language == "rust":
         from gates.rust import run_rust_suite_on_dir
-        results = run_rust_suite_on_dir(directory, fail_fast=fail_fast)
+        results = run_rust_suite_on_dir(directory, fail_fast=fail_fast, config=config)
     else:
         raise ValueError(f"Unsupported language: {language!r}")
     return results
@@ -198,6 +303,7 @@ def run_suite_on_dir(
     *,
     standards_path: str | None = None,
     base_ref: str = "main",
+    config: GateTimeoutConfig | None = None,
 ) -> list[GateResult]:
     """Directory mode: language gates, then coverage and dep-audit phases.
 
@@ -205,9 +311,10 @@ def run_suite_on_dir(
     ``standards_path`` is provided (see :func:`_append_coverage_gate`), followed by
     a single post-language dep-audit phase. In fail-fast mode a failing language
     gate short-circuits before either extra phase runs. Callers that omit
-    ``standards_path`` keep the pre-coverage behaviour.
+    ``standards_path`` keep the pre-coverage behaviour. ``config`` carries the
+    optional per-gate timeout overrides threaded into the language suites.
     """
-    results = _language_suite_on_dir(language, directory, fail_fast=fail_fast)
+    results = _language_suite_on_dir(language, directory, fail_fast=fail_fast, config=config)
     if fail_fast and not all(r.passed for r in results):
         return results
     # Coverage runs after the language/test gates pass (FR-1), before dep-audit.

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from gates import ProcessResult
+from gates import GateTimeoutConfig, ProcessResult, _timeout_error
 from models import GateError, GateResult
 
 _CARGO_TOML = """\
@@ -55,15 +55,6 @@ def _exec(command: list[str], cwd: str | Path, timeout: int = 120) -> ProcessRes
     return ProcessResult(p.stdout, p.stderr, p.returncode)
 
 
-def _timeout_error(gate: str) -> GateResult:
-    return GateResult(
-        gate=gate, passed=False,
-        errors=[GateError(message="Timed out", file=None, line=None, column=None,
-                          code="TIMEOUT", severity="error")],
-        duration_ms=120000,
-    )
-
-
 def _parse_cargo_json(stdout: str) -> list[GateError]:
     errors = []
     for line in stdout.splitlines():
@@ -95,36 +86,40 @@ def _parse_cargo_json(stdout: str) -> list[GateError]:
 
 # ── Shared gate functions (work on any cwd) ───────────────────────────────────
 
-def _check_gate(cwd: str | Path) -> GateResult:
+def _check_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("typecheck", 120) if config else 120
     try:
-        result = _exec(["cargo", "check", "--message-format=json", "--quiet"], cwd)
+        result = _exec(["cargo", "check", "--message-format=json", "--quiet"], cwd, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("check")
+        return _timeout_error("check", timeout)
     errors = _parse_cargo_json(result.stdout)
     return GateResult(gate="check", passed=result.returncode == 0 and not errors,
                       errors=errors, duration_ms=int((time.monotonic() - start) * 1000))
 
 
-def _clippy_gate(cwd: str | Path) -> GateResult:
+def _clippy_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("lint", 120) if config else 120
     try:
         result = _exec(
-            ["cargo", "clippy", "--message-format=json", "--quiet", "--", "-D", "warnings"], cwd
+            ["cargo", "clippy", "--message-format=json", "--quiet", "--", "-D", "warnings"],
+            cwd, timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return _timeout_error("clippy")
+        return _timeout_error("clippy", timeout)
     errors = _parse_cargo_json(result.stdout)
     return GateResult(gate="clippy", passed=result.returncode == 0 and not errors,
                       errors=errors, duration_ms=int((time.monotonic() - start) * 1000))
 
 
-def _test_gate(cwd: str | Path) -> GateResult:
+def _test_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("test", 180) if config else 180
     try:
-        result = _exec(["cargo", "test", "--", "--nocapture"], cwd, timeout=180)
+        result = _exec(["cargo", "test", "--", "--nocapture"], cwd, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("test")
+        return _timeout_error("test", timeout)
     if result.returncode == 0:
         return GateResult(gate="test", passed=True, errors=[],
                           duration_ms=int((time.monotonic() - start) * 1000))
@@ -153,15 +148,16 @@ def _test_gate(cwd: str | Path) -> GateResult:
                       duration_ms=int((time.monotonic() - start) * 1000))
 
 
-def _audit_gate(cwd: str | Path) -> GateResult:
+def _audit_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     import shutil as _shutil
     if not _shutil.which("cargo-audit"):
         return GateResult(gate="audit", passed=True, errors=[], duration_ms=0)
     start = time.monotonic()
+    timeout = config.timeout_for("security", 120) if config else 120
     try:
-        result = _exec(["cargo", "audit", "--json"], cwd)
+        result = _exec(["cargo", "audit", "--json"], cwd, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("audit")
+        return _timeout_error("audit", timeout)
     errors = []
     try:
         report: dict[str, Any] = json.loads(result.stdout)
@@ -182,13 +178,16 @@ def _audit_gate(cwd: str | Path) -> GateResult:
 
 # ── Text mode suite ───────────────────────────────────────────────────────────
 
-def run_rust_suite(implementation: str, tests: str, project_root: str) -> list[GateResult]:
+def run_rust_suite(
+    implementation: str, tests: str, project_root: str,
+    config: GateTimeoutConfig | None = None,
+) -> list[GateResult]:
     """Text mode: check → clippy → test → audit (temp dir)."""
     env = _make_env(implementation, tests, project_root)
     results = []
     try:
         for gate_fn in [_check_gate, _clippy_gate, _test_gate, _audit_gate]:
-            result = gate_fn(env.root)
+            result = gate_fn(env.root, config)
             results.append(result)
             if not result.passed:
                 return results
@@ -200,12 +199,13 @@ def run_rust_suite(implementation: str, tests: str, project_root: str) -> list[G
 # ── Directory mode suite ──────────────────────────────────────────────────────
 
 def run_rust_suite_on_dir(
-    directory: str, fail_fast: bool = True
+    directory: str, fail_fast: bool = True,
+    config: GateTimeoutConfig | None = None,
 ) -> list[GateResult]:
     """Directory mode: check → clippy → test (actual project dir, no audit)."""
     results = []
     for gate_fn in [_check_gate, _clippy_gate, _test_gate]:
-        result = gate_fn(directory)
+        result = gate_fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

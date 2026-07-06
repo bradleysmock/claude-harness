@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from mcp.server.fastmcp import FastMCP
 
 from dag import DAGResolver
-from gates import run_suite_for, run_suite_on_dir
+from gates import GateTimeoutConfig, run_suite_for, run_suite_on_dir
 from gates.commit_lint import CommitLintConfig
 from gates.commit_lint import run as run_commit_lint
 from memory import SQLiteFailureMemory
@@ -160,7 +160,8 @@ def gate_run(implementation: str, tests: str, language: str, project_root: str) 
     Each error has: message, file, line, column, code, severity.
     """
     try:
-        results = run_suite_for(language, implementation, tests, project_root)
+        config = GateTimeoutConfig.from_directory(Path(project_root))
+        results = run_suite_for(language, implementation, tests, project_root, config=config)
         if all(r.passed for r in results):
             return json.dumps({
                 "passed": True,
@@ -186,6 +187,7 @@ def gate_run_on_dir(directory: str, language: str, project_root: str, fail_fast:
     Fail+fast: the failing gate result. Fail+full: {"passed": false, "language": ..., "gates": [...]}.
     """
     try:
+        config = GateTimeoutConfig.from_directory(Path(directory))
         if language == "auto":
             stacks = _detect_stacks(directory) or [_detect_language(directory)]
         else:
@@ -205,6 +207,7 @@ def gate_run_on_dir(directory: str, language: str, project_root: str, fail_fast:
             results = run_suite_on_dir(
                 stack, directory, fail_fast=fail_fast,
                 standards_path=standards_path, base_ref="main",
+                config=config,
             )
             aggregated.extend((stack, r) for r in results)
             if fail_fast and not all(r.passed for r in results):

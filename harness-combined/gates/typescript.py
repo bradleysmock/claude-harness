@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from gates import ProcessResult, append_tool_error_if_silent, find_config_root
+from gates import (
+    GateTimeoutConfig,
+    ProcessResult,
+    _timeout_error,
+    append_tool_error_if_silent,
+    find_config_root,
+)
 from models import GateError, GateResult
 
 _TSCONFIG = json.dumps({
@@ -107,15 +113,6 @@ def _rel(path: str, root: Path) -> str:
         return path
 
 
-def _timeout_error(gate: str) -> GateResult:
-    return GateResult(
-        gate=gate, passed=False,
-        errors=[GateError(message="Timed out", file=None, line=None, column=None,
-                          code="TIMEOUT", severity="error")],
-        duration_ms=60000,
-    )
-
-
 _TSC_PATTERN = re.compile(
     r"^(?P<file>[^(]+)\((?P<line>\d+),(?P<col>\d+)\):\s*"
     r"(?P<severity>error|warning)\s+(?P<code>TS\d+):\s*(?P<msg>.+)$"
@@ -157,12 +154,13 @@ def _parse_eslint_json(stdout: str, root: Path) -> list[GateError]:
 
 # ── Text mode gates ───────────────────────────────────────────────────────────
 
-def _type_check_gate_text(env: TypeScriptEnv) -> GateResult:
+def _type_check_gate_text(env: TypeScriptEnv, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("typecheck", 60) if config else 60
     try:
-        result = _exec(["npx", "--yes", "tsc", "--noEmit", "--pretty", "false"], env.root)
+        result = _exec(["npx", "--yes", "tsc", "--noEmit", "--pretty", "false"], env.root, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("type_check")
+        return _timeout_error("type_check", timeout)
     errors = _parse_tsc_errors(result.output, env.root)
     return GateResult(
         gate="type_check",
@@ -172,8 +170,9 @@ def _type_check_gate_text(env: TypeScriptEnv) -> GateResult:
     )
 
 
-def _lint_gate_text(env: TypeScriptEnv) -> GateResult:
+def _lint_gate_text(env: TypeScriptEnv, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("lint", 60) if config else 60
     try:
         result = _exec([
             "npx", "--yes", "eslint",
@@ -181,9 +180,9 @@ def _lint_gate_text(env: TypeScriptEnv) -> GateResult:
             "--format", "json",
             "--no-eslintrc",
             "--config", str(env.root / ".eslintrc.json"),
-        ], env.root)
+        ], env.root, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("lint")
+        return _timeout_error("lint", timeout)
     errors = _parse_eslint_json(result.stdout, env.root)
     return GateResult(
         gate="lint",
@@ -193,17 +192,18 @@ def _lint_gate_text(env: TypeScriptEnv) -> GateResult:
     )
 
 
-def _test_gate_text(env: TypeScriptEnv) -> GateResult:
+def _test_gate_text(env: TypeScriptEnv, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("test", 120) if config else 120
     try:
         result = _exec([
             "npx", "--yes", "jest",
             "--no-coverage",
             "--testPathPattern", "implementation.test.ts",
             "--config", str(env.root / "jest.config.json"),
-        ], env.root, timeout=120)
+        ], env.root, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("test")
+        return _timeout_error("test", timeout)
     if result.returncode == 0:
         return GateResult(gate="test", passed=True, errors=[],
                           duration_ms=int((time.monotonic() - start) * 1000))
@@ -238,14 +238,15 @@ def _test_gate_text(env: TypeScriptEnv) -> GateResult:
 
 
 def run_typescript_suite(
-    implementation: str, tests: str, project_root: str
+    implementation: str, tests: str, project_root: str,
+    config: GateTimeoutConfig | None = None,
 ) -> list[GateResult]:
     """Text mode: type_check → lint → tests (temp dir)."""
     env = _make_env(implementation, tests, project_root)
     results = []
     try:
         for gate_fn in [_type_check_gate_text, _lint_gate_text, _test_gate_text]:
-            result = gate_fn(env)
+            result = gate_fn(env, config)
             results.append(result)
             if not result.passed:
                 return results
@@ -296,13 +297,14 @@ def _changed_test_files(jest_root: Path, base: str = "main") -> list[str] | None
     ]
 
 
-def _type_check_gate_dir(directory: str) -> GateResult:
+def _type_check_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
     root = find_config_root(Path(directory), _TSCONFIG_NAMES)
+    timeout = config.timeout_for("typecheck", 60) if config else 60
     try:
-        result = _exec(["npx", "--yes", "tsc", "--noEmit", "--pretty", "false"], root)
+        result = _exec(["npx", "--yes", "tsc", "--noEmit", "--pretty", "false"], root, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("type_check")
+        return _timeout_error("type_check", timeout)
     errors = _parse_tsc_errors(result.output, root)
     append_tool_error_if_silent(errors, result.returncode, result.output)
     return GateResult(
@@ -313,15 +315,16 @@ def _type_check_gate_dir(directory: str) -> GateResult:
     )
 
 
-def _lint_gate_dir(directory: str) -> GateResult:
+def _lint_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
     root = find_config_root(Path(directory), _ESLINT_CONFIG_NAMES)
+    timeout = config.timeout_for("lint", 60) if config else 60
     try:
         result = _exec([
             "npx", "--yes", "eslint", ".", "--format", "json", "--ext", ".ts,.tsx",
-        ], root)
+        ], root, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("lint")
+        return _timeout_error("lint", timeout)
     errors = _parse_eslint_json(result.stdout, root)
     append_tool_error_if_silent(errors, result.returncode, result.output)
     return GateResult(
@@ -332,9 +335,10 @@ def _lint_gate_dir(directory: str) -> GateResult:
     )
 
 
-def _test_gate_dir(directory: str) -> GateResult:
+def _test_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
     root = find_config_root(Path(directory), _JEST_CONFIG_NAMES)
+    timeout = config.timeout_for("test", 180) if config else 180
     # Scope to the test files this ticket changed so an unrelated ticket's
     # (or broken pre-existing) test cannot fail the gate. Fail closed: if the
     # change set can't be determined, run the full suite rather than skip.
@@ -343,9 +347,9 @@ def _test_gate_dir(directory: str) -> GateResult:
     if scoped:
         cmd += scoped
     try:
-        result = _exec(cmd, root, timeout=180)
+        result = _exec(cmd, root, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("test")
+        return _timeout_error("test", timeout)
     if result.returncode == 0:
         return GateResult(gate="test", passed=True, errors=[],
                           duration_ms=int((time.monotonic() - start) * 1000))
@@ -380,12 +384,13 @@ def _test_gate_dir(directory: str) -> GateResult:
 
 
 def run_typescript_suite_on_dir(
-    directory: str, fail_fast: bool = True
+    directory: str, fail_fast: bool = True,
+    config: GateTimeoutConfig | None = None,
 ) -> list[GateResult]:
     """Directory mode: type_check → lint → tests (actual project dir)."""
     results = []
     for gate_fn in [_type_check_gate_dir, _lint_gate_dir, _test_gate_dir]:
-        result = gate_fn(directory)
+        result = gate_fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

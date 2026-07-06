@@ -13,7 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from gates import ProcessResult, append_tool_error_if_silent
+from gates import (
+    GateTimeoutConfig,
+    ProcessResult,
+    _timeout_error,
+    append_tool_error_if_silent,
+)
 from models import GateError, GateResult
 
 
@@ -68,15 +73,6 @@ def _rel(path: str, env: ExecutionEnvironment) -> str:
         return str(Path(path).relative_to(env.root))
     except ValueError:
         return path
-
-
-def _timeout_error(gate: str) -> GateResult:
-    return GateResult(
-        gate=gate, passed=False,
-        errors=[GateError(message="Timed out", file=None, line=None, column=None,
-                          code="TIMEOUT", severity="error")],
-        duration_ms=60000,
-    )
 
 
 _MYPY_PATTERN = re.compile(
@@ -174,17 +170,18 @@ def _syntax_gate(implementation: str, tests: str) -> GateResult:
     )
 
 
-def _type_check_gate(env: ExecutionEnvironment) -> GateResult:
+def _type_check_gate(env: ExecutionEnvironment, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("typecheck", 60) if config else 60
     try:
         result = _exec([
             sys.executable, "-m", "mypy",
             str(env.implementation_file),
             "--ignore-missing-imports", "--no-error-summary",
             "--show-column-numbers", "--no-color-output",
-        ], env)
+        ], env, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("type_check")
+        return _timeout_error("type_check", timeout)
     errors = _parse_mypy_output(result.output, env.root)
     if result.returncode != 0 and not errors:
         errors.append(GateError(
@@ -199,8 +196,9 @@ def _type_check_gate(env: ExecutionEnvironment) -> GateResult:
     )
 
 
-def _lint_gate(env: ExecutionEnvironment) -> GateResult:
+def _lint_gate(env: ExecutionEnvironment, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("lint", 60) if config else 60
     try:
         result = _exec([
             sys.executable, "-m", "ruff", "check",
@@ -208,9 +206,9 @@ def _lint_gate(env: ExecutionEnvironment) -> GateResult:
             "--output-format", "json",
             "--select", "E,F,W,I",
             "--ignore", "E501",
-        ], env)
+        ], env, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("lint")
+        return _timeout_error("lint", timeout)
     errors = _parse_ruff_json(result.stdout, env.root)
     if result.returncode != 0 and not errors:
         errors.append(GateError(
@@ -225,15 +223,16 @@ def _lint_gate(env: ExecutionEnvironment) -> GateResult:
     )
 
 
-def _test_gate(env: ExecutionEnvironment) -> GateResult:
+def _test_gate(env: ExecutionEnvironment, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("test", 120) if config else 120
     try:
         result = _exec([
             sys.executable, "-m", "pytest",
             str(env.test_file), "--tb=short", "--no-header", "-q",
-        ], env, timeout=120)
+        ], env, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("test")
+        return _timeout_error("test", timeout)
     if result.returncode == 0:
         return GateResult(gate="test", passed=True, errors=[],
                           duration_ms=int((time.monotonic() - start) * 1000))
@@ -268,16 +267,17 @@ def _test_gate(env: ExecutionEnvironment) -> GateResult:
                       duration_ms=int((time.monotonic() - start) * 1000))
 
 
-def _security_gate(env: ExecutionEnvironment) -> GateResult:
+def _security_gate(env: ExecutionEnvironment, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("security", 60) if config else 60
     try:
         result = _exec([
             sys.executable, "-m", "bandit",
             str(env.implementation_file),
             "-f", "json", "--severity-level", "medium",
-        ], env)
+        ], env, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("security")
+        return _timeout_error("security", timeout)
     errors = _parse_bandit_json(result.stdout, env.root)
     if result.returncode not in (0, 1) and not errors:
         errors.append(GateError(
@@ -293,7 +293,8 @@ def _security_gate(env: ExecutionEnvironment) -> GateResult:
 
 
 def run_python_suite(
-    implementation: str, tests: str, project_root: str
+    implementation: str, tests: str, project_root: str,
+    config: GateTimeoutConfig | None = None,
 ) -> list[GateResult]:
     """Text mode: syntax → type_check → lint → tests → security (temp dir)."""
     results = []
@@ -305,7 +306,7 @@ def run_python_suite(
     env = _make_env(implementation, tests, project_root)
     try:
         for gate_fn in [_type_check_gate, _lint_gate, _test_gate, _security_gate]:
-            result = gate_fn(env)
+            result = gate_fn(env, config)
             results.append(result)
             if not result.passed:
                 return results
@@ -317,19 +318,20 @@ def run_python_suite(
 
 # ── Directory mode gates ──────────────────────────────────────────────────────
 
-def _lint_gate_dir(directory: str) -> GateResult:
+def _lint_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
     """Directory mode lint — also catches syntax errors via ruff E999."""
     start = time.monotonic()
     root = Path(directory)
+    timeout = config.timeout_for("lint", 60) if config else 60
     try:
         result = _exec_dir([
             sys.executable, "-m", "ruff", "check", ".",
             "--output-format", "json",
             "--select", "E,F,W,I",
             "--ignore", "E501",
-        ], directory)
+        ], directory, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("lint")
+        return _timeout_error("lint", timeout)
     errors = _parse_ruff_json(result.stdout, root)
     append_tool_error_if_silent(errors, result.returncode, result.output)
     return GateResult(
@@ -340,17 +342,18 @@ def _lint_gate_dir(directory: str) -> GateResult:
     )
 
 
-def _type_check_gate_dir(directory: str) -> GateResult:
+def _type_check_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
     root = Path(directory)
+    timeout = config.timeout_for("typecheck", 60) if config else 60
     try:
         result = _exec_dir([
             sys.executable, "-m", "mypy", ".",
             "--ignore-missing-imports", "--no-error-summary",
             "--show-column-numbers", "--no-color-output",
-        ], directory)
+        ], directory, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("type_check")
+        return _timeout_error("type_check", timeout)
     errors = _parse_mypy_output(result.output, root)
     append_tool_error_if_silent(errors, result.returncode, result.output)
     return GateResult(
@@ -361,14 +364,15 @@ def _type_check_gate_dir(directory: str) -> GateResult:
     )
 
 
-def _test_gate_dir(directory: str) -> GateResult:
+def _test_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("test", 180) if config else 180
     try:
         result = _exec_dir([
             sys.executable, "-m", "pytest", "--tb=short", "--no-header", "-q",
-        ], directory, timeout=180)
+        ], directory, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("test")
+        return _timeout_error("test", timeout)
     if result.returncode == 0:
         return GateResult(gate="test", passed=True, errors=[],
                           duration_ms=int((time.monotonic() - start) * 1000))
@@ -403,9 +407,10 @@ def _test_gate_dir(directory: str) -> GateResult:
                       duration_ms=int((time.monotonic() - start) * 1000))
 
 
-def _security_gate_dir(directory: str) -> GateResult:
+def _security_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
     root = Path(directory)
+    timeout = config.timeout_for("security", 60) if config else 60
     bandit_cmd = [
         sys.executable, "-m", "bandit", "-r", ".",
         "-f", "json", "--severity-level", "medium",
@@ -414,9 +419,9 @@ def _security_gate_dir(directory: str) -> GateResult:
     if (root / "pyproject.toml").exists():
         bandit_cmd += ["-c", str(root / "pyproject.toml")]
     try:
-        result = _exec_dir(bandit_cmd, directory)
+        result = _exec_dir(bandit_cmd, directory, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("security")
+        return _timeout_error("security", timeout)
     errors = _parse_bandit_json(result.stdout, root)
     append_tool_error_if_silent(errors, result.returncode, result.output, success_codes=(0, 1))
     return GateResult(
@@ -428,12 +433,13 @@ def _security_gate_dir(directory: str) -> GateResult:
 
 
 def run_python_suite_on_dir(
-    directory: str, fail_fast: bool = True
+    directory: str, fail_fast: bool = True,
+    config: GateTimeoutConfig | None = None,
 ) -> list[GateResult]:
     """Directory mode: lint → type_check → tests → security (actual project dir)."""
     results = []
     for gate_fn in [_lint_gate_dir, _type_check_gate_dir, _test_gate_dir, _security_gate_dir]:
-        result = gate_fn(directory)
+        result = gate_fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

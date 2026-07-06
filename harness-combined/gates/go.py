@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from gates import ProcessResult
+from gates import GateTimeoutConfig, ProcessResult, _timeout_error
 from models import GateError, GateResult
 
 _GO_MOD = "module harness/temp\n\ngo 1.21\n"
@@ -62,48 +62,42 @@ def _parse_go_errors(output: str) -> list[GateError]:
     return errors
 
 
-def _timeout_error(gate: str) -> GateResult:
-    return GateResult(
-        gate=gate, passed=False,
-        errors=[GateError(message="Timed out", file=None, line=None, column=None,
-                          code="TIMEOUT", severity="error")],
-        duration_ms=60000,
-    )
-
-
 # ── Text mode gates ───────────────────────────────────────────────────────────
 
-def _build_gate(cwd: str | Path) -> GateResult:
+def _build_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("typecheck", 60) if config else 60
     try:
-        result = _exec(["go", "build", "./..."], cwd)
+        result = _exec(["go", "build", "./..."], cwd, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("build")
+        return _timeout_error("build", timeout)
     errors = _parse_go_errors(result.output)
     return GateResult(gate="build", passed=result.returncode == 0 and not errors,
                       errors=errors, duration_ms=int((time.monotonic() - start) * 1000))
 
 
-def _vet_gate(cwd: str | Path) -> GateResult:
+def _vet_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("lint", 60) if config else 60
     try:
-        result = _exec(["go", "vet", "./..."], cwd)
+        result = _exec(["go", "vet", "./..."], cwd, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("vet")
+        return _timeout_error("vet", timeout)
     errors = _parse_go_errors(result.output)
     return GateResult(gate="vet", passed=result.returncode == 0 and not errors,
                       errors=errors, duration_ms=int((time.monotonic() - start) * 1000))
 
 
-def _staticcheck_gate(cwd: str | Path) -> GateResult:
+def _staticcheck_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     import shutil as _shutil
     if not _shutil.which("staticcheck"):
         return GateResult(gate="staticcheck", passed=True, errors=[], duration_ms=0)
     start = time.monotonic()
+    timeout = config.timeout_for("lint", 60) if config else 60
     try:
-        result = _exec(["staticcheck", "./..."], cwd)
+        result = _exec(["staticcheck", "./..."], cwd, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("staticcheck")
+        return _timeout_error("staticcheck", timeout)
     errors = []
     for line in result.output.splitlines():
         m = _STATICCHECK_PATTERN.match(line.strip())
@@ -119,12 +113,13 @@ def _staticcheck_gate(cwd: str | Path) -> GateResult:
                       errors=errors, duration_ms=int((time.monotonic() - start) * 1000))
 
 
-def _test_gate(cwd: str | Path) -> GateResult:
+def _test_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     start = time.monotonic()
+    timeout = config.timeout_for("test", 120) if config else 120
     try:
-        result = _exec(["go", "test", "-race", "-v", "./..."], cwd, timeout=120)
+        result = _exec(["go", "test", "-race", "-v", "./..."], cwd, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return _timeout_error("test")
+        return _timeout_error("test", timeout)
     if result.returncode == 0:
         return GateResult(gate="test", passed=True, errors=[],
                           duration_ms=int((time.monotonic() - start) * 1000))
@@ -160,13 +155,16 @@ def _test_gate(cwd: str | Path) -> GateResult:
                       duration_ms=int((time.monotonic() - start) * 1000))
 
 
-def run_go_suite(implementation: str, tests: str, project_root: str) -> list[GateResult]:
+def run_go_suite(
+    implementation: str, tests: str, project_root: str,
+    config: GateTimeoutConfig | None = None,
+) -> list[GateResult]:
     """Text mode: build → vet → staticcheck → test (temp dir)."""
     env = _make_env(implementation, tests, project_root)
     results = []
     try:
         for gate_fn in [_build_gate, _vet_gate, _staticcheck_gate, _test_gate]:
-            result = gate_fn(env.root)
+            result = gate_fn(env.root, config)
             results.append(result)
             if not result.passed:
                 return results
@@ -178,12 +176,13 @@ def run_go_suite(implementation: str, tests: str, project_root: str) -> list[Gat
 # ── Directory mode gates ──────────────────────────────────────────────────────
 
 def run_go_suite_on_dir(
-    directory: str, fail_fast: bool = True
+    directory: str, fail_fast: bool = True,
+    config: GateTimeoutConfig | None = None,
 ) -> list[GateResult]:
     """Directory mode: build → vet → test (actual project dir, no temp env)."""
     results = []
     for gate_fn in [_build_gate, _vet_gate, _test_gate]:
-        result = gate_fn(directory)
+        result = gate_fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

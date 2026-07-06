@@ -359,7 +359,7 @@ def _no_dep_audit(monkeypatch):
 def test_run_suite_appends_coverage_after_language_gates(monkeypatch, _no_dep_audit):
     import gates as gates_pkg
     monkeypatch.setattr("gates.python.run_python_suite_on_dir",
-                        lambda directory, fail_fast=True: [
+                        lambda directory, fail_fast=True, config=None: [
                             GateResult(gate="test", passed=True, errors=[], duration_ms=1)])
     monkeypatch.setattr("gates.coverage.run_coverage_gate",
                         lambda d, lang, sp, br: GateResult(
@@ -372,7 +372,7 @@ def test_run_suite_appends_coverage_after_language_gates(monkeypatch, _no_dep_au
 def test_run_suite_no_coverage_without_standards(monkeypatch, _no_dep_audit):
     import gates as gates_pkg
     monkeypatch.setattr("gates.python.run_python_suite_on_dir",
-                        lambda directory, fail_fast=True: [
+                        lambda directory, fail_fast=True, config=None: [
                             GateResult(gate="test", passed=True, errors=[], duration_ms=1)])
     results = gates_pkg.run_suite_on_dir("python", "/proj")
     assert all(r.gate != "coverage" for r in results)
@@ -381,7 +381,7 @@ def test_run_suite_no_coverage_without_standards(monkeypatch, _no_dep_audit):
 def test_run_suite_skips_coverage_for_go(monkeypatch, _no_dep_audit):
     import gates as gates_pkg
     monkeypatch.setattr("gates.go.run_go_suite_on_dir",
-                        lambda directory, fail_fast=True: [
+                        lambda directory, fail_fast=True, config=None: [
                             GateResult(gate="build", passed=True, errors=[], duration_ms=1)])
     results = gates_pkg.run_suite_on_dir(
         "go", "/proj", standards_path="/proj/.tickets/_standards.md")
@@ -391,7 +391,7 @@ def test_run_suite_skips_coverage_for_go(monkeypatch, _no_dep_audit):
 def test_run_suite_skips_coverage_when_prior_gate_failed(monkeypatch, _no_dep_audit):
     import gates as gates_pkg
     monkeypatch.setattr("gates.python.run_python_suite_on_dir",
-                        lambda directory, fail_fast=True: [
+                        lambda directory, fail_fast=True, config=None: [
                             GateResult(gate="lint", passed=False, errors=[], duration_ms=1)])
     results = gates_pkg.run_suite_on_dir(
         "python", "/proj", standards_path="/proj/.tickets/_standards.md")
@@ -409,7 +409,7 @@ def test_server_forwards_standards_path_from_gated_dir(monkeypatch, tmp_path):
     project_root.mkdir()
     captured: dict = {}
 
-    def _fake_suite(stack, directory, fail_fast=True, *, standards_path=None, base_ref="main"):
+    def _fake_suite(stack, directory, fail_fast=True, *, standards_path=None, base_ref="main", config=None):
         captured["standards_path"] = standards_path
         captured["base_ref"] = base_ref
         return [GateResult(gate="test", passed=True, errors=[], duration_ms=1)]
