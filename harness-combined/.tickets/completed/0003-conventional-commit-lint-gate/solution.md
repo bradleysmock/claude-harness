@@ -58,6 +58,7 @@ to invoke `commit_lint` in Step 1.5 (after validation, before confirm).
 | D2-04       | Unit        | `allowed_types: []` (empty list) in `_standards.md` → falls back to defaults + warning |
 | D-02        | Unit        | Default-branch resolution failure → `passed: false`, BASE_BRANCH_UNKNOWN |
 | FR-8        | Unit        | `context/flows/deliver-ticket.md` contains substring `commit_lint`    |
+| FR-1 | — | xref requirements.md FR-1 |
 
 ## Tradeoffs
 

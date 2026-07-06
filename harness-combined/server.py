@@ -22,6 +22,8 @@ from mcp.server.fastmcp import FastMCP
 
 from dag import DAGResolver
 from gates import run_suite_for, run_suite_on_dir
+from gates.commit_lint import CommitLintConfig
+from gates.commit_lint import run as run_commit_lint
 from memory import SQLiteFailureMemory
 from models import Spec, Task, TaskSpec
 
@@ -219,6 +221,33 @@ def gate_run_on_dir(directory: str, language: str, project_root: str, fail_fast:
         return json.dumps({"error": str(e)})
     except (OSError, ImportError, RuntimeError) as e:
         return json.dumps({"error": f"Gate execution failed: {e}"})
+
+
+@mcp.tool()
+def commit_lint(branch: str, project_root: str, require_scope: bool = False) -> str:
+    """
+    Lint every commit on `branch` that is not reachable from the base branch
+    (default `main`) against the conventional-commit format `type(scope): subject`.
+
+    require_scope=True additionally fails commits that omit the `(scope)`.
+    Allowed types and require_scope may be overridden by a `## Commit Lint` block
+    in `.tickets/_standards.md`.
+
+    Returns JSON: the GateResult — {"gate": "commit_lint", "passed": bool,
+    "errors": [{message, file, line, column, code, severity}], "duration_ms": N}.
+    Each failing commit is one error whose `file` is the 7-char SHA and whose
+    `message` is "<short-sha>: <subject>". Fails closed (passed=false) on an
+    invalid branch name, an unresolved base branch, or a git error.
+    """
+    try:
+        result = run_commit_lint(branch, project_root, CommitLintConfig(require_scope=require_scope))
+        return json.dumps(result.to_dict(), indent=2)
+    except FileNotFoundError:
+        return json.dumps({"error": "git executable not found on PATH"})
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        # subprocess.SubprocessError (incl. TimeoutExpired) is not an OSError —
+        # catch it explicitly so a git hang can't surface as an unhandled crash.
+        return json.dumps({"error": f"commit_lint failed: {type(e).__name__}"})
 
 
 @mcp.tool()

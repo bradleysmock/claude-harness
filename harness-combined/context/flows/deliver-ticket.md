@@ -20,6 +20,21 @@ Resolve status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN_ROOT}/cont
 - Run `git branch --list <branch>` to confirm the branch exists.
 - Run `git status` to confirm the main repo working tree is clean.
 
+## Step 1.5 — Conventional-commit lint gate
+
+Before offering delivery, lint every commit the branch adds on top of `main`. Call the MCP tool:
+
+```
+commit_lint(branch, project_root)          # add require_scope=True to also require a (scope)
+```
+
+The tool runs `git log main..<branch>` and validates each subject against `type(scope): subject` (allowed types default to the conventional-commit set; merge commits are skipped). It reads `allowed_types` / `require_scope` overrides from a `## Commit Lint` block in `.tickets/_standards.md` when present.
+
+- **`passed: true`** → continue to Step 2.
+- **`passed: false`** → **stop before the confirm prompt.** Print each error's `message` (`<short-sha>: <subject>`) so the lead sees exactly which commits are malformed, and tell them to fix the commit messages (e.g. `git rebase -i main` to reword) and re-run `/deliver XXXX`. Do **not** proceed to Step 3. A `BASE_BRANCH_UNKNOWN` or `GIT_ERROR` code also blocks (fail closed) — surface it and stop.
+
+This gate is independent of `/deliver` and can be run standalone (e.g. in CI) by invoking `commit_lint` directly.
+
 ## Step 2 — Check for file conflicts with other review-ready tickets
 
 Get changed files: `git diff --name-only main....<branch>`
