@@ -82,6 +82,7 @@ Add a new `sarif.py` module that converts `list[GateResult]` to a SARIF 2.1.0 JS
 | FR-10 fail  | Integration | `gate_run_on_dir(..., emit_sarif=True)` write failure → `sarif_write_failed: true` in JSON response     |
 | FR-8        | Integration | `/gate XXXX --sarif` end-to-end: `results.sarif` present, `gate-findings.md` unchanged                  |
 | AC-5        | Integration | `sarif-tools validate .harness/results.sarif` exits 0 on fixture output                                 |
+| FR-7 | — | xref requirements.md FR-7 |
 
 ## Tradeoffs
 
