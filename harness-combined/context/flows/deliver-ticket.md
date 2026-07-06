@@ -168,6 +168,8 @@ Note: gates ran on the pre-rebase branch — consider re-running /build XXXX to 
 
 ## Step 3 — Confirm
 
+**Read smoke-test config once here** (reused in Step 4b — do **not** re-read `_standards.md` there). From `.tickets/_standards.md`: `smoke_test_command` (absent/empty → the whole smoke phase is skipped), `smoke_test_mode` (`auto-revert` default | `warn-only`), and `smoke_test_timeout` (integer seconds, default 60; > 300 → cap at 300 with a visible warning; non-integer/zero/negative → skip the smoke test with a visible warning echoing the invalid value). When a `smoke_test_command` is configured, add its command, mode, and timeout to the confirmation block below so the lead sees what will run before approving.
+
 Surface the Step 2b divergence result on the `Branch:` line — `up to date` when N == 0, or `rebased (was N behind)` when a `--rebase` succeeded. Delivery only reaches Step 3 on those two paths; every Step 2b halt (divergence without `--rebase`, invalid target name, mid-rebase state, or a rebase conflict) stops before this prompt. When a rebase occurred, include the gate-invalidation notice from sub-step 2b-6 immediately below the branch line.
 
 ```
@@ -178,6 +180,7 @@ Ready to deliver ticket XXXX:
   status.md → done
   mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/   (archive)
   ↑ status → done and the archive are both folded into the single squash commit
+  [smoke test: <smoke_test_command>  (mode <smoke_test_mode>, timeout <smoke_test_timeout>s)]   ← only when configured (Step 4b)
   git push
   git worktree remove .worktrees/XXXX-<slug>
   git branch -D <branch>      (-D, not -d: a squash leaves the branch without merge ancestry)
@@ -191,6 +194,9 @@ Stop if the user says no.
 A delivered ticket adds **exactly one** commit to `main`. Run the sequence below — encapsulated and unit-tested as `ticket.py deliver_squash()` (it asserts the one-commit invariant). It mirrors the archive pattern (OS `mv` + `git rm -r --cached` + `git add`, **never** `git mv`, which is unsound against the index `merge --squash` leaves):
 
 ```
+# 0. Record the pre-merge SHA (used by Step 4b's smoke-test revert report; distinct from the merge-commit SHA)
+pre_merge_sha=$(git rev-parse HEAD)
+
 # 1. Stage the whole branch diff (code + the branch's .tickets/XXXX-<slug>/) — no commit, no merge commit
 git merge --squash <branch>
 
@@ -207,13 +213,11 @@ git add -- .tickets/completed/XXXX-<slug>/
 # 5. ONE commit: full code diff + completed/XXXX-<slug>/ at done, and no .tickets/XXXX-<slug>/ entry
 git commit -m "feat: XXXX <title> (squash)"
 
-# 6. Publish FIRST; only on a successful push remove the worktree + delete the branch
-#    (-D, not -d: a squash leaves the branch without merge ancestry, so git never
-#     treats it as "fully merged"). On a rejected push, stop with both intact and retry.
-git push
-git worktree remove .worktrees/XXXX-<slug>
-git branch -D <branch>
+# 6. Record the merge-commit SHA (the revert target for a smoke-test failure in Step 4b)
+merge_commit_sha=$(git rev-parse HEAD)
 ```
+
+Publish and cleanup (the old sub-step: `git push`, `git worktree remove`, `git branch -D`) are deferred to **Step 4c** so they run only after Step 4b's smoke test passes — leaving the branch and worktree intact if it fails.
 
 If the `git merge --squash` reports a conflict, report the error and stop without committing or cleaning up.
 
@@ -222,6 +226,33 @@ If the `git merge --squash` reports a conflict, report the error and stop withou
 **Idempotency:** If `.tickets/completed/XXXX-<slug>/` already exists and `.tickets/XXXX-<slug>/` is absent, the ticket is already archived — skip the mv and continue with the commit.
 
 **Partial-move guard:** If both `.tickets/XXXX-<slug>/` and `.tickets/completed/XXXX-<slug>/` exist simultaneously, warn the lead — treat the root copy as authoritative and proceed with the mv from root.
+
+## Step 4b — Post-merge smoke test
+
+Runs after the Step 4 commit (both SHAs captured) and **before Step 4c publish/cleanup**, so the branch and worktree survive a failure for rework. Uses the config read once in Step 3 — do **not** re-read `_standards.md`. Skip this whole step when `smoke_test_command` is absent/empty, or when `smoke_test_timeout` is non-integer/zero/negative (skip + visible warning echoing the invalid value; cap at 300 with a warning when higher, default 60).
+
+**Concurrency guard first:** read `.tickets/.active`; if it names a ticket other than this one, halt with `DELIVERY HALTED — another delivery is in progress (<active-ticket>); resolve before retrying` — run no smoke test and no revert.
+
+**Run** `shlex.split(smoke_test_command)` as a subprocess with `shell=False` in the repo root, started in its own process group (`os.setsid()`), capturing stdout+stderr. If the split contains shell metacharacters (`|`, `>`, `<`, `&&`, `;`), warn that they are passed as **literal arguments** — do not abort. Pass an explicit env allowlist dict (never `None`): the keys `PATH`, `HOME`, `SHELL`, `TERM`, `USER`, `LANG`, plus every `os.environ` key matching `re.match(r"^LC_", k)` — sensitive vars like `AWS_SECRET_ACCESS_KEY` / `DATABASE_URL` are excluded.
+
+**Timeout:** after `smoke_test_timeout` seconds, `os.killpg(os.getpgid(proc.pid), signal.SIGTERM)`, wait ≤ 5 s for the group to exit, then escalate to `SIGKILL` — no `sleep`-polling; total window ≤ `timeout + 10` s. Treat a timeout as a non-zero exit.
+
+**Exit 0** → continue to Step 4c; Steps 5–10 proceed unchanged.
+
+**Non-zero exit / timeout** — branch on `smoke_test_mode`:
+
+- **auto-revert** (default): `git revert -m 1 --no-edit <merge_commit_sha>`. Only after it exits 0: set `status: implementing`, commit that transition to main, **leave the branch and worktree intact (skip Step 4c)**, and emit `SMOKE TEST FAILED — main reverted to <pre_merge_sha>` plus the captured output truncated to 2000 chars. If `git revert` exits non-zero, emit `AUTO-REVERT FAILED — main is in merged state; manual intervention required: git revert -m 1 --no-edit <merge_commit_sha>` and halt without proceeding to Steps 5–10.
+- **warn-only**: store the failure signal in a local variable **before** cleanup, then run Step 4c and Steps 5–10 normally, and append a `SMOKE TEST FAILED` block (with the captured output) to the Step 8 report so it survives the branch and worktree deletion.
+
+## Step 4c — Publish and clean up
+
+Reached when Step 4b passed, was skipped (no smoke test configured), or ran in `warn-only` mode. It is **not** run on an `auto-revert` failure (branch + worktree stay intact for rework). Publish first; only on a successful push remove the worktree and delete the branch (`-D`, not `-d`: a squash leaves the branch without merge ancestry). On a rejected push, stop with both intact and retry.
+
+```
+git push
+git worktree remove .worktrees/XXXX-<slug>
+git branch -D <branch>
+```
 
 ## Step 5 — Candidate learnings (present, then append accepted)
 

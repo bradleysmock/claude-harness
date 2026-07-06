@@ -98,6 +98,14 @@ The `## Language` and `## Test strategy` sections are required — the harness v
 
 - (e.g.) User input that reaches a subprocess must use an argv list, never a shell string.
 - (e.g.) Auth tokens never appear in logs or error responses.
+
+## Post-merge smoke test
+
+Uncomment to have `/deliver` run a smoke test against `main` after the squash-merge. All three are optional; leave them commented to skip the smoke phase entirely.
+
+# smoke_test_command: pytest -q     # run via shlex.split + shell=False, so | > < && ; pass as LITERAL arguments (no pipes/redirects). Trusted, lead-curated value — no allow-list beyond the split. Absent or empty → smoke phase skipped.
+# smoke_test_mode: auto-revert      # auto-revert (default): git revert the merge commit on failure, keeping branch + worktree for rework. warn-only: finish delivery but report the failure in the final report.
+# smoke_test_timeout: 60            # integer seconds; default 60, max 300 (higher is capped with a warning; non-integer, zero, or negative skips the smoke test with a warning).
 ```
 
 #### `.tickets/_learnings.md`
