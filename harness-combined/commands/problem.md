@@ -51,6 +51,61 @@ The claim commit is the **only** `main` commit the ticket writes before delivery
 
 ---
 
+## Phase 1.5 — Template & Custom-Section Resolution
+
+Before writing the Phase 2–4 artifacts, resolve the ticket category and load any
+per-category template and lead-defined custom sections. This phase is **purely
+additive**: when neither a matching template nor a `## Custom Sections` block is
+present, the artifacts are written from the generic scaffold exactly as before —
+output is byte-identical to the pre-feature baseline (no regression). All logic
+lives in the pure helper module `ticket_templates.py`; this phase only
+orchestrates it.
+
+**1. Resolve the category.**
+- If the invocation passed `--type <category>`, validate it with
+  `ticket_templates.validate_type(raw)`. Only `bug`, `feature`, and `refactor`
+  are accepted (case-insensitive); `chore` and `docs` are reserved extension
+  points, not active here. An invalid or out-of-allow-list value (including any
+  path-traversal attempt such as `../../escape`) is **rejected** — fall back to
+  the generic scaffold with a warning and load no template. No filesystem path is
+  ever constructed from an unvalidated `--type` value.
+- If `--type` is absent, infer the category from the request description with
+  `ticket_templates.infer_category(description)`. A low-confidence or ambiguous
+  result applies **no** template (generic scaffold).
+
+**2. Load the per-category template.** When a category resolved, call
+`ticket_templates.load_template(category, ".tickets/_templates")`. It reads
+`.tickets/_templates/<category>.md`, re-validates the category internally
+(defense in depth), and returns its `## <Section>` stubs — or an empty list when
+the file is missing, empty, or unparseable (a warning is logged and the ticket is
+still created with the generic scaffold, never crashing). Template sections are
+injected into `problem.md` only.
+
+**3. Load custom sections.** Call
+`ticket_templates.load_custom_sections(".tickets/_standards.md")`. It parses the
+**first** `## Custom Sections` block (later occurrences ignored) and returns the
+accepted `### <Stub>` sections. A stub is dropped (with a warning) when its
+heading collides with a reserved scaffold heading, when its body exceeds 10
+lines, or when more than 5 stubs are supplied. Accepted custom sections are
+injected into **all three** artifacts — `problem.md`, `requirements.md`, and
+`solution.md`.
+
+**4. Inject additively and enforce limits.** For each artifact, append the
+resolved sections after the last standard scaffold section with
+`ticket_templates.merge_sections(scaffold, sections)` — injection is **additive**
+and never reorders or overwrites the reserved scaffold headings. Then enforce the
+per-artifact line limit with `ticket_templates.enforce_line_limit(document,
+limit)` using `problem.md` = 40, `requirements.md` = 60, `solution.md` = 80. When
+a section is truncated, surface the returned truncated-section names to the lead.
+
+**5. Record the category.** The `type:` field in `status.md` (see the Phase 2
+block below) is produced by `ticket_templates.format_type_field(category,
+inferred)`: `type: <category>` when supplied via `--type`,
+`type: <category> (inferred)` when inferred from the description, and
+`type: generic` when no category applies.
+
+---
+
 ## Phase 2 — Problem
 
 > **All Phase 2–4 artifact writes go into the worktree, on the branch.** Every `.tickets/XXXX-<slug>/...` path named in Phases 2–4 below is the worktree-qualified path `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/...`. Writing to `main`'s bare `.tickets/` path would leave the design uncommitted on `main` (the orphaned-metadata failure the guard catches) and violate the branch-only invariant. Commit + push them on the branch in Phase 5.
@@ -87,6 +142,7 @@ Update `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/status.md` (the claim stub i
 status: solution
 ticket: XXXX
 title: <title>
+type: <category | category (inferred) | generic>
 effort: small
 branch: ticket/XXXX-<slug>
 owner: <git config user.email>
@@ -98,13 +154,22 @@ updated: YYYY-MM-DD
 The `effort` field takes `small` | `medium` | `large` and feeds the Effort column in
 `/ticket-list`; leave it at `small` unless the scope clearly warrants otherwise.
 
+The `type` field records the category resolved in Phase 1.5 via
+`ticket_templates.format_type_field` — `type: <category>` when supplied via
+`--type`, `type: <category> (inferred)` when inferred from the description, and
+`type: generic` when no category applies. It gives traceability for template
+drift (a renamed template file leaves the `type:` visible while no template is
+applied).
+
 ---
 
 ## Phase 3 — Requirements
 
 Based on `problem.md`, derive requirements without asking the lead. Flag genuine blockers in the Open Questions section rather than stopping.
 
-Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md` (hard limit: 60 lines — omit sections that don't apply):
+Any custom sections resolved in Phase 1.5 are injected into `requirements.md`
+additively (appended after the last standard section, enforcing the 60-line
+limit). Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md` (hard limit: 60 lines — omit sections that don't apply):
 
 ```markdown
 # Requirements
@@ -162,7 +227,9 @@ If either skip condition fires (or confidence is not high), the flow exits and P
 
 Draft the solution covering: approach, components, tech choices with rationale, test plan, tradeoffs, risks, and implementation order.
 
-Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md` (hard limit: 80 lines — use tables and bullets, not prose; omit sections that don't apply):
+Any custom sections resolved in Phase 1.5 are injected into `solution.md`
+additively (appended after the last standard section, enforcing the 80-line
+limit). Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md` (hard limit: 80 lines — use tables and bullets, not prose; omit sections that don't apply):
 
 ```markdown
 # Solution
