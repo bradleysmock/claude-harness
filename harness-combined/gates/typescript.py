@@ -13,6 +13,7 @@ from typing import Any
 from gates import (
     GateTimeoutConfig,
     ProcessResult,
+    _run_override_gate,
     _timeout_error,
     append_tool_error_if_silent,
     find_config_root,
@@ -390,11 +391,23 @@ def _test_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> G
 def run_typescript_suite_on_dir(
     directory: str, fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
+    overrides: dict[str, list[str]] | None = None,
 ) -> list[GateResult]:
-    """Directory mode: type_check → lint → tests (actual project dir)."""
+    """Directory mode: type_check → lint → tests (actual project dir).
+
+    An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
+    with the operator-supplied one; absent keys run the default gate.
+    """
     results = []
-    for gate_fn in [_type_check_gate_dir, _lint_gate_dir, _test_gate_dir]:
-        result = gate_fn(directory, config)
+    gates: list[tuple[str, Any]] = [
+        ("type_check", _type_check_gate_dir), ("lint", _lint_gate_dir),
+        ("test", _test_gate_dir),
+    ]
+    for name, gate_fn in gates:
+        if overrides and name in overrides:
+            result = _run_override_gate(name, overrides[name], directory, config)
+        else:
+            result = gate_fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

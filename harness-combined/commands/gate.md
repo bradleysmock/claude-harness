@@ -14,18 +14,18 @@ Read each ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN
    ```
    gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root, fail_fast=False)
    ```
-   This runs all gates (no fail-fast) and returns the complete picture including passed gates.
+   This runs all gates (no fail-fast) for **every** detected language stack and returns the complete picture including passed gates. On a polyglot repo (e.g. Python backend + TypeScript frontend) the response carries a `languages` list and a pre-rendered `findings_md` body.
 
-3. **Write `.tickets/XXXX-<slug>/gate-findings.md`**:
+3. **Write `.tickets/XXXX-<slug>/gate-findings.md`**. When the response includes `findings_md`, write it verbatim under the header. Otherwise render the same structure yourself:
 
    ```markdown
    # Gate Findings — XXXX-<slug>
 
    **Run at**: YYYY-MM-DD HH:MM
    **Worktree**: .worktrees/XXXX-<slug>
-   **Language detected**: <language>
+   **Languages detected**: <language(s), comma-separated>
 
-   ## <gate-name>
+   ## <language> / <gate-name>
 
    **Status**: PASS | FAIL
    **Duration**: NNNms
@@ -36,9 +36,11 @@ Read each ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN
    <"clean" if no errors>
    ```
 
-   One section per gate in the order they ran.
+   One section per gate, per language, in the order they ran. Section headings are `## <language> / <gate-name>` when more than one language is detected; with a single language the heading is the bare `## <gate-name>` and the header reads `**Language detected**: <language>` (singular) — this preserves the pre-polyglot single-language report shape.
 
-4. **Print summary line**: `gate: <language>=<PASS|FAIL: gate-names-failing>`
+4. **Print summary line**: one `<language>=<PASS|FAIL: gate-names-failing>` token per detected language, e.g. `gate: python=PASS typescript=FAIL: lint`. With a single language this collapses to the original `gate: <language>=<PASS|FAIL: gate-names-failing>`. A gate that fails in **any** language makes the overall run non-zero.
+
+   If the response is a `CONFIG_ERROR` (a malformed `[gates]` override block in `_standards.md`), report it as a failing run and surface the `CONFIG_ERROR` finding — the gate fails closed and does **not** fall back to the default commands.
 
 ## Notes
 

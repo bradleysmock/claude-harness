@@ -72,8 +72,9 @@ def test_find_config_root_falls_back_to_directory(tmp_path: Path) -> None:
 # ── FR-7: auto-detect never collapses a polyglot repo to one stack ─────────────
 
 def test_detect_stacks_reports_every_present_stack(tmp_path: Path) -> None:
+    # FR-1: detection is manifest-only — a Python descriptor, not a bare *.py file.
     (tmp_path / "package.json").write_text("{}")
-    (tmp_path / "app.py").write_text("x = 1\n")
+    (tmp_path / "pyproject.toml").write_text("")
     stacks = _detect_stacks(str(tmp_path))
     assert "typescript" in stacks
     assert "python" in stacks
@@ -84,7 +85,7 @@ def test_detect_stacks_finds_subdir_markers(tmp_path: Path) -> None:
     (tmp_path / "web" / "tsconfig.json").write_text("{}")
     (tmp_path / "api").mkdir()
     (tmp_path / "api" / "Cargo.toml").write_text("")
-    (tmp_path / "main.py").write_text("x = 1\n")
+    (tmp_path / "pyproject.toml").write_text("")  # FR-1: manifest, not a raw .py
     assert {"rust", "typescript", "python"}.issubset(set(_detect_stacks(str(tmp_path))))
 
 

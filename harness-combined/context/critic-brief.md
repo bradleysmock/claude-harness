@@ -26,7 +26,7 @@ Announce in your first line which panels are active.
 
 ## Step 2 — Read gate findings (code review only)
 
-For **code review** mode, check whether `.tickets/XXXX-<slug>/gate-findings.md` exists. If it does, read it. The automated gates already cover:
+For **code review** mode, check whether `.tickets/XXXX-<slug>/gate-findings.md` exists. If it does, read it. Its sections are headed `## <gate-name>` in a single-language repo and `## <language> / <gate-name>` in a polyglot repo (where a `**Languages detected**` header lists every detected stack) — the language prefix tells you which stack each finding belongs to. The automated gates already cover:
 
 - syntax errors, type errors, lint violations (ruff / mypy / equivalent per language)
 - basic SAST (bandit): hardcoded secrets, `shell=True`, weak crypto

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from gates import GateTimeoutConfig, ProcessResult, _timeout_error
+from gates import GateTimeoutConfig, ProcessResult, _run_override_gate, _timeout_error
 from models import GateError, GateResult
 
 # Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
@@ -205,11 +205,22 @@ def run_rust_suite(
 def run_rust_suite_on_dir(
     directory: str, fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
+    overrides: dict[str, list[str]] | None = None,
 ) -> list[GateResult]:
-    """Directory mode: check → clippy → test (actual project dir, no audit)."""
+    """Directory mode: check → clippy → test (actual project dir, no audit).
+
+    An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
+    with the operator-supplied one; absent keys run the default gate.
+    """
     results = []
-    for gate_fn in [_check_gate, _clippy_gate, _test_gate]:
-        result = gate_fn(directory, config)
+    gates: list[tuple[str, Any]] = [
+        ("check", _check_gate), ("clippy", _clippy_gate), ("test", _test_gate),
+    ]
+    for name, gate_fn in gates:
+        if overrides and name in overrides:
+            result = _run_override_gate(name, overrides[name], directory, config)
+        else:
+            result = gate_fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

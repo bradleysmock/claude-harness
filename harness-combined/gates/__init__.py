@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -173,6 +174,51 @@ def find_config_root(directory: Path, names: tuple[str, ...]) -> Path:
     return directory
 
 
+def _run_override_gate(
+    gate_name: str,
+    argv: list[str],
+    directory: str,
+    config: GateTimeoutConfig | None = None,
+) -> GateResult:
+    """Run an operator-supplied override command for one gate.
+
+    ``argv`` is a validated argument list (see :mod:`gates.config`) run **without a
+    shell**, so the default gate command is replaced wholesale. Because the command
+    is arbitrary, its pass/fail is driven by the exit code: a non-zero exit yields a
+    single ``TOOL_ERROR`` finding (via :func:`append_tool_error_if_silent`) rather
+    than a silent pass. A missing executable degrades to the same ``TOOL_ERROR``
+    contract instead of crashing the suite (FR-9).
+    """
+    start = time.monotonic()
+    timeout = 180
+    if config is not None and config.default_timeout_seconds is not None:
+        timeout = config.default_timeout_seconds
+    try:
+        p = subprocess.run(
+            argv, cwd=directory, capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return _timeout_error(gate_name, timeout)
+    except OSError as exc:  # e.g. the override's executable is not installed
+        return GateResult(
+            gate=gate_name, passed=False,
+            errors=[GateError(
+                message=f"override command failed to start: {exc}",
+                file=None, line=None, column=None, code="TOOL_ERROR", severity="error",
+            )],
+            duration_ms=int((time.monotonic() - start) * 1000),
+        )
+    output = (p.stdout + "\n" + p.stderr).strip()
+    errors: list[GateError] = []
+    append_tool_error_if_silent(errors, p.returncode, output)
+    return GateResult(
+        gate=gate_name,
+        passed=p.returncode == 0 and not errors,
+        errors=errors,
+        duration_ms=int((time.monotonic() - start) * 1000),
+    )
+
+
 def run_suite_for(
     language: str,
     implementation: str,
@@ -239,20 +285,27 @@ def _language_suite_on_dir(
     directory: str,
     fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
+    overrides: dict[str, list[str]] | None = None,
 ) -> list[GateResult]:
-    """Dispatch to a single language's directory-mode gate suite."""
+    """Dispatch to a single language's directory-mode gate suite.
+
+    ``overrides`` (gate-name -> replacement argv) is forwarded to the language
+    suite only when non-empty, so existing suite stand-ins that predate the
+    parameter keep working.
+    """
+    extra = {"overrides": overrides} if overrides else {}
     if language == "python":
         from gates.python import run_python_suite_on_dir
-        results = run_python_suite_on_dir(directory, fail_fast=fail_fast, config=config)
+        results = run_python_suite_on_dir(directory, fail_fast=fail_fast, config=config, **extra)
     elif language == "typescript":
         from gates.typescript import run_typescript_suite_on_dir
-        results = run_typescript_suite_on_dir(directory, fail_fast=fail_fast, config=config)
+        results = run_typescript_suite_on_dir(directory, fail_fast=fail_fast, config=config, **extra)
     elif language == "go":
         from gates.go import run_go_suite_on_dir
-        results = run_go_suite_on_dir(directory, fail_fast=fail_fast, config=config)
+        results = run_go_suite_on_dir(directory, fail_fast=fail_fast, config=config, **extra)
     elif language == "rust":
         from gates.rust import run_rust_suite_on_dir
-        results = run_rust_suite_on_dir(directory, fail_fast=fail_fast, config=config)
+        results = run_rust_suite_on_dir(directory, fail_fast=fail_fast, config=config, **extra)
     else:
         raise ValueError(f"Unsupported language: {language!r}")
     return results
@@ -304,6 +357,7 @@ def run_suite_on_dir(
     standards_path: str | None = None,
     base_ref: str = "main",
     config: GateTimeoutConfig | None = None,
+    overrides: dict[str, list[str]] | None = None,
 ) -> list[GateResult]:
     """Directory mode: language gates, then coverage and dep-audit phases.
 
@@ -312,9 +366,12 @@ def run_suite_on_dir(
     a single post-language dep-audit phase. In fail-fast mode a failing language
     gate short-circuits before either extra phase runs. Callers that omit
     ``standards_path`` keep the pre-coverage behaviour. ``config`` carries the
-    optional per-gate timeout overrides threaded into the language suites.
+    optional per-gate timeout overrides threaded into the language suites;
+    ``overrides`` carries the operator's per-gate *command* overrides.
     """
-    results = _language_suite_on_dir(language, directory, fail_fast=fail_fast, config=config)
+    results = _language_suite_on_dir(
+        language, directory, fail_fast=fail_fast, config=config, overrides=overrides,
+    )
     if fail_fast and not all(r.passed for r in results):
         return results
     # Coverage runs after the language/test gates pass (FR-1), before dep-audit.

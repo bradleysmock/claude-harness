@@ -24,9 +24,18 @@ from dag import DAGResolver
 from gates import GateTimeoutConfig, run_suite_for, run_suite_on_dir
 from gates.commit_lint import CommitLintConfig
 from gates.commit_lint import run as run_commit_lint
+from gates.config import ConfigError, load_gate_overrides
 from gates.doctor import DoctorError, format_report, run_doctor
 from memory import SQLiteFailureMemory
-from models import Spec, Task, TaskSpec
+from models import (
+    GateError,
+    GateResult,
+    LanguageResult,
+    Spec,
+    StackName,
+    Task,
+    TaskSpec,
+)
 
 mcp = FastMCP("harness")
 
@@ -125,27 +134,116 @@ def _detect_language(directory: str) -> str:
     return "python"  # default
 
 
-def _detect_stacks(directory: str) -> list[str]:
-    """Detect EVERY language stack present, so a polyglot worktree is never
-    silently gated as a single language. Markers mirror `_detect_language` but
-    also look one level down (e.g. Rust in `api/`, TS in `web/`)."""
-    d = Path(directory)
-    stacks: list[str] = []
-    if (d / "go.mod").exists():
-        stacks.append("go")
-    if (d / "Cargo.toml").exists() or any(d.glob("*/Cargo.toml")):
-        stacks.append("rust")
-    if (
-        (d / "tsconfig.json").exists() or (d / "package.json").exists()
-        or any(d.glob("*/tsconfig.json")) or any(d.glob("*/package.json"))
-    ):
-        stacks.append("typescript")
-    if (
-        (d / "pyproject.toml").exists() or (d / "setup.py").exists()
-        or (d / "setup.cfg").exists() or any(d.rglob("*.py"))
-    ):
-        stacks.append("python")
-    return stacks
+# Manifest files that mark each stack. Detection is manifest-only (FR-1): loose
+# source files (e.g. bare *.py) no longer trigger a stack — operators declare a
+# project descriptor. Order mirrors StackName's canonical ordering.
+_STACK_MANIFESTS: dict[StackName, tuple[str, ...]] = {
+    StackName.PYTHON: ("pyproject.toml", "setup.py", "setup.cfg"),
+    StackName.TYPESCRIPT: ("package.json", "tsconfig.json"),
+    StackName.GO: ("go.mod",),
+    StackName.RUST: ("Cargo.toml",),
+}
+
+# Vendored / cache directories are never scanned for manifests — both for speed
+# (NFR-2: node_modules alone holds thousands of package.json files) and to avoid
+# false positives from a dependency's own manifests.
+_SCAN_SKIP = {"node_modules", ".git", ".venv", "venv", "dist", "target", "__pycache__"}
+
+
+def _scan_roots(directory: str) -> list[Path]:
+    """The resolved root plus each immediate, contained, non-vendored subdirectory.
+
+    Exactly one level deep is scanned (FR-1). A subdirectory is included only if it
+    resolves to a path still under the resolved root — a symlink escaping the root
+    is skipped (path-containment guard) so a link out of the worktree can't drag an
+    unrelated project's manifests into detection.
+    """
+    root = Path(directory).resolve()
+    roots = [root]
+    try:
+        children = sorted(root.iterdir())
+    except OSError:
+        return roots
+    for child in children:
+        if child.name in _SCAN_SKIP:
+            continue
+        try:
+            if not child.is_dir():
+                continue
+            resolved = child.resolve()
+            resolved.relative_to(root)  # containment: raises ValueError if it escapes
+        except (OSError, ValueError):
+            continue
+        roots.append(resolved)
+    return roots
+
+
+def _detect_stacks(directory: str) -> list[StackName]:
+    """Detect every language stack present via a uniform root + one-level manifest
+    scan, so a polyglot worktree is never silently gated as a single language.
+
+    Manifest-only (FR-1): a stack is present iff one of its manifest files sits in
+    the root or an immediate (contained, non-vendored) subdirectory. Returns
+    StackName members in canonical order, each at most once. Deeper trees, raw
+    source files, and symlinked-out subdirectories are ignored.
+    """
+    roots = _scan_roots(directory)
+    detected: list[StackName] = []
+    for stack in StackName:  # canonical order
+        manifests = _STACK_MANIFESTS[stack]
+        if any((r / m).exists() for r in roots for m in manifests):
+            detected.append(stack)
+    return detected
+
+
+def _format_polyglot_findings(results: list[LanguageResult], directory: str) -> str:
+    """Render aggregated gate results as the ``gate-findings.md`` body.
+
+    Pure and independently unit-testable — the pinned reference for the heading
+    format the critic reads. With more than one language it prefixes a
+    ``**Languages detected**`` header and labels each section
+    ``## {language} / {gate}``; with a single language it emits neither the plural
+    header nor the language prefix (``## {gate}``), preserving the pre-polyglot
+    single-language report shape (FR-8). ``directory`` is accepted for interface
+    stability with callers that annotate the report with the gated path.
+    """
+    multi = len(results) > 1
+    lines: list[str] = []
+    if multi:
+        langs = ", ".join(str(lr.language) for lr in results)
+        lines += [f"**Languages detected**: {langs}", ""]
+    for lr in results:
+        for gr in lr.results:
+            lines.append(f"## {lr.language} / {gr.gate}" if multi else f"## {gr.gate}")
+            lines += ["", f"**Status**: {'PASS' if gr.passed else 'FAIL'}",
+                      f"**Duration**: {gr.duration_ms}ms", ""]
+            if gr.errors:
+                for e in gr.errors:
+                    where = e.file or "?"
+                    loc = f"{where}:{e.line}" if e.line is not None else where
+                    lines.append(f"- `{loc}` [`{e.code}`]: {e.message}")
+            else:
+                lines.append("clean")
+            lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _config_error_payload(exc: ConfigError, standards_path: str) -> str:
+    """Fail-closed response for a malformed ``[gates]`` override block.
+
+    Returns ``passed: false`` with a single ``CONFIG_ERROR`` finding and does
+    **not** fall back to the default gate commands — a misconfigured override must
+    never silently pass as if it were absent.
+    """
+    finding = GateResult(
+        gate="config", passed=False,
+        errors=[GateError(
+            message=str(exc), file=standards_path, line=None, column=None,
+            code="CONFIG_ERROR", severity="error",
+        )],
+        duration_ms=0,
+    )
+    return json.dumps({"passed": False, "gates": [finding.to_dict()]}, indent=2)
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -189,47 +287,72 @@ def gate_run_on_dir(directory: str, language: str, project_root: str, fail_fast:
     """
     try:
         config = GateTimeoutConfig.from_directory(Path(directory))
-        if language == "auto":
-            stacks = _detect_stacks(directory) or [_detect_language(directory)]
-        else:
-            stacks = [language]
-        # Gate every detected stack; a polyglot worktree must not pass by
-        # gating only one language (FR-7). Single explicit language keeps the
-        # original response shape for back-compat with /build.
         # The coverage gate reads its thresholds from `.tickets/_thresholds.yaml`
         # and writes its `gate-findings.json` sidecar into `.tickets/<active-slug>/`.
         # Both must resolve against the *directory being gated* (the worktree/branch),
         # NOT `project_root` (the main repo) — otherwise the sidecar the gate writes
         # and the branch copy the `/deliver` preflight reads would never coincide.
-        # The server only locates the standards file; it never parses thresholds.
+        # The same `_standards.md` also carries the operator's [gates] command
+        # overrides. A malformed override block fails closed (CONFIG_ERROR) — it
+        # must never silently fall back to the default commands.
         standards_path = str(Path(directory) / ".tickets" / "_standards.md")
-        aggregated: list[tuple[str, Any]] = []
+        try:
+            overrides_map = load_gate_overrides(standards_path)
+        except ConfigError as exc:
+            return _config_error_payload(exc, standards_path)
+
+        # Normalise to StackName so detected and explicit stacks share one type.
+        # An unknown explicit language raises ValueError here (caught below), the
+        # same fail path as an unsupported language reaching the suite dispatch.
+        if language == "auto":
+            stacks: list[StackName] = _detect_stacks(directory) or [
+                StackName(_detect_language(directory))
+            ]
+        else:
+            stacks = [StackName(language)]
+        # Gate every detected stack; a polyglot worktree must not pass by
+        # gating only one language (FR-2/FR-4). A single explicit language keeps
+        # the original response shape for back-compat with /build (FR-8).
+        lang_results: list[LanguageResult] = []
         for stack in stacks:
-            results = run_suite_on_dir(
-                stack, directory, fail_fast=fail_fast,
-                standards_path=standards_path, base_ref="main",
-                config=config,
+            overrides = overrides_map.get(str(stack))
+            kwargs: dict[str, Any] = dict(
+                fail_fast=fail_fast, standards_path=standards_path,
+                base_ref="main", config=config,
             )
-            aggregated.extend((stack, r) for r in results)
+            # Forward overrides only when present so suites/fakes without the
+            # parameter keep working.
+            if overrides:
+                kwargs["overrides"] = overrides
+            results = run_suite_on_dir(stack, directory, **kwargs)
+            lang_results.append(LanguageResult(stack, results))
             if fail_fast and not all(r.passed for r in results):
                 failed = next(r for r in results if not r.passed)
                 payload = failed.to_dict()
-                payload["language"] = stack
+                payload["language"] = str(stack)
                 return json.dumps(payload, indent=2)
-        if all(r.passed for _, r in aggregated):
-            if len(stacks) == 1:
-                return json.dumps({"passed": True, "language": stacks[0]})
-            return json.dumps({"passed": True, "languages": stacks})
-        if len(stacks) == 1:
+
+        tagged = [(lr.language, r) for lr in lang_results for r in lr.results]
+        single = len(stacks) == 1
+        if all(r.passed for _, r in tagged):
+            if single:
+                return json.dumps({"passed": True, "language": str(stacks[0])})
             return json.dumps({
-                "language": stacks[0],
-                "gates": [r.to_dict() for _, r in aggregated],
+                "passed": True,
+                "languages": [str(s) for s in stacks],
+                "findings_md": _format_polyglot_findings(lang_results, directory),
+            })
+        if single:
+            return json.dumps({
+                "language": str(stacks[0]),
+                "gates": [r.to_dict() for _, r in tagged],
                 "passed": False,
             }, indent=2)
         return json.dumps({
-            "languages": stacks,
-            "gates": [{**r.to_dict(), "language": st} for st, r in aggregated],
+            "languages": [str(s) for s in stacks],
+            "gates": [{**r.to_dict(), "language": str(st)} for st, r in tagged],
             "passed": False,
+            "findings_md": _format_polyglot_findings(lang_results, directory),
         }, indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)})

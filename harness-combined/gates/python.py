@@ -16,6 +16,7 @@ from typing import Any
 from gates import (
     GateTimeoutConfig,
     ProcessResult,
+    _run_override_gate,
     _timeout_error,
     append_tool_error_if_silent,
 )
@@ -441,11 +442,23 @@ def _security_gate_dir(directory: str, config: GateTimeoutConfig | None = None) 
 def run_python_suite_on_dir(
     directory: str, fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
+    overrides: dict[str, list[str]] | None = None,
 ) -> list[GateResult]:
-    """Directory mode: lint → type_check → tests → security (actual project dir)."""
+    """Directory mode: lint → type_check → tests → security (actual project dir).
+
+    An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
+    with the operator-supplied one; absent keys run the default gate.
+    """
     results = []
-    for gate_fn in [_lint_gate_dir, _type_check_gate_dir, _test_gate_dir, _security_gate_dir]:
-        result = gate_fn(directory, config)
+    gates: list[tuple[str, Any]] = [
+        ("lint", _lint_gate_dir), ("type_check", _type_check_gate_dir),
+        ("test", _test_gate_dir), ("security", _security_gate_dir),
+    ]
+    for name, gate_fn in gates:
+        if overrides and name in overrides:
+            result = _run_override_gate(name, overrides[name], directory, config)
+        else:
+            result = gate_fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

@@ -1,7 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
+
+
+class StackName(StrEnum):
+    """Canonical vocabulary for the language stacks the gate engine supports.
+
+    A ``StrEnum`` so each member compares equal to — and hashes like — its plain
+    string value (``StackName.PYTHON == "python"``). That keeps it a drop-in for
+    the existing ``language: str`` gate dispatch: ``run_suite_on_dir(StackName.X)``
+    and ``run_suite_on_dir("x")`` behave identically, and a set of members is
+    interchangeable with a set of the equivalent strings. Declaration order is the
+    canonical ordering used when reporting detected stacks.
+    """
+
+    PYTHON = "python"
+    TYPESCRIPT = "typescript"
+    GO = "go"
+    RUST = "rust"
 
 
 @dataclass
@@ -37,6 +55,26 @@ class GateResult:
             "passed": self.passed,
             "errors": [e.to_dict() for e in self.errors],
             "duration_ms": self.duration_ms,
+        }
+
+
+@dataclass
+class LanguageResult:
+    """A single language's gate results, tagged with the stack that produced them.
+
+    The polyglot aggregation layer builds one of these per detected stack so the
+    findings formatter can label each section by language without threading the
+    stack name alongside a bare ``list[GateResult]``.
+    """
+
+    language: StackName
+    results: list[GateResult]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            # ``str(...)`` yields the plain value ("python"), never the enum repr.
+            "language": str(self.language),
+            "results": [r.to_dict() for r in self.results],
         }
 
 
