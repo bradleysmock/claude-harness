@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -92,12 +93,12 @@ def run_suite_for(
         raise ValueError(f"Unsupported language: {language!r}")
 
 
-def run_suite_on_dir(
+def _language_suite_on_dir(
     language: str,
     directory: str,
     fail_fast: bool = True,
 ) -> list[GateResult]:
-    """Directory mode: run gates on actual project files (worktree or project dir)."""
+    """Dispatch to a single language's directory-mode gate suite."""
     if language == "python":
         from gates.python import run_python_suite_on_dir
         return run_python_suite_on_dir(directory, fail_fast=fail_fast)
@@ -112,3 +113,62 @@ def run_suite_on_dir(
         return run_rust_suite_on_dir(directory, fail_fast=fail_fast)
     else:
         raise ValueError(f"Unsupported language: {language!r}")
+
+
+def _dep_audit_model_result(directory: str) -> GateResult:
+    """Run the dependency-audit gate and adapt its module-local result into the
+    shared ``models.GateResult`` shape the suite consumers expect.
+
+    The dep-audit gate is advisory infrastructure — if it faults it degrades to a
+    passing warning, never breaking the whole suite.
+    """
+    start = time.monotonic()
+    try:
+        from gates.dep_audit import run_dep_audit_gate
+        local = run_dep_audit_gate(directory)
+        errors = [
+            GateError(
+                message=f"{f.package + ': ' if f.package else ''}{f.message}",
+                file="gate-findings.md", line=None, column=None,
+                code=f.advisory_id,
+                severity="error" if f.severity == "BLOCKER" else "warning",
+            )
+            for f in local.findings
+        ]
+        return GateResult(
+            gate="dep-audit", passed=local.passed, errors=errors,
+            duration_ms=int((time.monotonic() - start) * 1000),
+        )
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, AttributeError) as exc:
+        # dep-audit is advisory infrastructure; a fault in it degrades to a
+        # passing warning rather than breaking the whole gate suite.
+        return GateResult(
+            gate="dep-audit", passed=True,
+            errors=[GateError(
+                message=f"dependency audit degraded ({exc})",
+                file=None, line=None, column=None,
+                code="DEP_AUDIT_ERROR", severity="warning",
+            )],
+            duration_ms=int((time.monotonic() - start) * 1000),
+        )
+
+
+def run_suite_on_dir(
+    language: str,
+    directory: str,
+    fail_fast: bool = True,
+) -> list[GateResult]:
+    """Directory mode: language gates, then a single post-language dep-audit phase.
+
+    The dep-audit phase runs once, after the language-specific phases, with no
+    per-language branching. In fail-fast mode a failing language gate
+    short-circuits before dep-audit runs. The phase is skipped entirely when
+    gate config disables it (FR-10 — selective skip).
+    """
+    results = _language_suite_on_dir(language, directory, fail_fast=fail_fast)
+    if fail_fast and not all(r.passed for r in results):
+        return results
+    from gates.dep_audit import dep_audit_enabled
+    if dep_audit_enabled(directory):
+        results.append(_dep_audit_model_result(directory))
+    return results

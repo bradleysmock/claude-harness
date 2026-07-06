@@ -13,3 +13,7 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# dep-audit gate writes its FR-4 report to the project root; keep the transient
+# root copy out of git (the canonical report lives under .tickets/XXXX-<slug>/).
+/gate-findings.md
