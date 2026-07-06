@@ -49,10 +49,105 @@ Suggested merge order: <reasoning>
 
 This is a warning, not a stop.
 
+## Step 2b — Pre-deliver rebase guard
+
+Before the confirmation prompt, verify the ticket branch is not behind its delivery target. This closes the same gap GitHub's "require branch up to date before merging" closes: a gate-clean branch can still merge a stale baseline into `main`. This step runs after Step 2 (file-conflict check) and before Step 3 (Confirm). The `--rebase` flag referenced below is read from the `/deliver` invocation `$ARGUMENTS`. The whole check uses **local git state only** — no network calls.
+
+### Sub-step 2b-1 — Resolve and validate the target branch
+
+Read the delivery target from `status.md` if it names one; otherwise default to `main`. Validate the resolved name against:
+
+```
+^[a-zA-Z0-9][a-zA-Z0-9_.-]*(/[a-zA-Z0-9][a-zA-Z0-9_.-]*)*$
+```
+
+This permits remote-tracking names like `origin/main` while rejecting path traversal (`../evil`), `.hidden` leading-dot segments, and flag-like leading dashes. If validation fails, **halt before invoking any git command**:
+
+```
+Delivery target branch name is invalid — check status.md.
+```
+
+### Sub-step 2b-2 — Divergence check
+
+Run, with both refs passed as **discrete quoted positional arguments** (never interpolated into an `eval` string or `bash -c`):
+
+```
+git rev-list --count "$target_branch"..."$branch"
+```
+
+The three-dot form counts commits on `$target_branch` not reachable from `$branch` — exactly "how far behind." Capture both the output (`N`) and the exit code.
+
+- **git exits non-zero** (ref not found or other git error): halt with `Divergence check failed — confirm that <target> exists locally (git fetch may be required).`
+- **exit 0 and N == 0**: mark status `up to date` and proceed to Step 3 — regardless of whether `--rebase` was passed.
+- **exit 0 and N > 0 and `--rebase` NOT passed**: print the warning and **halt delivery**:
+
+  ```
+  Warning: branch is N commit(s) behind <target>. Pass --rebase to auto-rebase before delivering, or rebase manually.
+  ```
+
+- **exit 0 and N > 0 and `--rebase` passed**: continue to sub-step 2b-3.
+
+### Sub-step 2b-3 — Pre-rebase state check
+
+Resolve `$worktree_path` (`.worktrees/XXXX-<slug>`) **once** and reuse the same variable in 2b-4 to avoid a TOCTOU on the path. Before attempting a rebase, check for an in-progress rebase. `$worktree_path` is a **linked** worktree, so its `.git` is a *file* (`gitdir: …/.git/worktrees/<slug>`) and the rebase state dirs live under the resolved per-worktree git dir — **not** at `$worktree_path/.git/`. Ask git to resolve the real marker paths with `rev-parse --git-path` (which dereferences the linked-worktree git dir correctly) and test for the canonical in-progress-rebase directories:
+
+```
+rebase_merge="$(git -C "$worktree_path" rev-parse --git-path rebase-merge)"
+rebase_apply="$(git -C "$worktree_path" rev-parse --git-path rebase-apply)"
+[[ -d "$rebase_merge" || -d "$rebase_apply" ]]
+```
+
+`rebase-merge` covers interactive/merge rebases; `rebase-apply` covers am-based rebases — together they are what `git status` uses to detect a rebase in progress. **Do not** test the bare `"$worktree_path/.git/REBASE_HEAD"` path: for a linked worktree `.git` is a file, so that path can never exist and the guard would silently no-op (fail open) — letting 2b-4 collide with the existing rebase and 2b-5 destroy it with a spurious `rebase --abort`.
+
+If either directory exists, **halt delivery** and attempt no rebase:
+
+```
+Worktree is already in a mid-rebase state — resolve or abort the existing rebase manually before delivering.
+```
+
+This guard is intentionally independent of the Step 7 mid-rebase handling (which rebases *other* in-flight worktrees after merge); do not extract a shared helper.
+
+### Sub-step 2b-4 — Execute the rebase
+
+Run (discrete quoted positional arguments):
+
+```
+git -C "$worktree_path" rebase "$target_branch"
+```
+
+If rebase exits zero: mark status `rebased (was N behind)` and continue to Step 3, carrying the gate-invalidation notice from 2b-6.
+
+### Sub-step 2b-5 — Conflict-abort path
+
+If the rebase exits non-zero:
+
+1. Run `git -C "$worktree_path" rebase --abort` and capture its exit code.
+2. If `rebase --abort` **succeeds** (exit 0):
+
+   ```
+   Rebase failed with conflicts — delivery halted. Rebase was aborted; worktree is clean. Resolve conflicts manually then re-deliver.
+   ```
+
+3. If `rebase --abort` **fails** (non-zero): report **both** the original rebase error and the abort failure, and instruct the operator: `Run git -C .worktrees/XXXX-<slug> rebase --abort manually to clean up.`
+
+In **all** conflict cases, do **not** proceed to Step 3.
+
+### Sub-step 2b-6 — Gate-invalidation notice
+
+When the rebase succeeded (2b-4 path), pass this note to the Step 3 confirmation block:
+
+```
+Note: gates ran on the pre-rebase branch — consider re-running /build XXXX to re-validate before merging.
+```
+
 ## Step 3 — Confirm
+
+Surface the Step 2b divergence result on the `Branch:` line — `up to date` when N == 0, or `rebased (was N behind)` when a `--rebase` succeeded. Delivery only reaches Step 3 on those two paths; every Step 2b halt (divergence without `--rebase`, invalid target name, mid-rebase state, or a rebase conflict) stops before this prompt. When a rebase occurred, include the gate-invalidation notice from sub-step 2b-6 immediately below the branch line.
 
 ```
 Ready to deliver ticket XXXX:
+  Branch:  up to date | rebased (was N behind)      (from Step 2b)
+  [Note: gates ran on the pre-rebase branch — consider re-running /build XXXX to re-validate.]   ← only after a successful rebase
   git merge --squash <branch>      (one squashed commit — no per-branch-commit history, no merge commit)
   status.md → done
   mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/   (archive)
