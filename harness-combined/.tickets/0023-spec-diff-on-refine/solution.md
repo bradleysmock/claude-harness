@@ -48,6 +48,7 @@ Add a new `PreToolUse` hook (`pre_ticket_diff.py`) that intercepts `Write`/`Edit
 | FR-2        | Integration | Hook stderr includes diff text when invoked with `Write` to a `.tickets/` path with differing content |
 | FR-2        | Integration | Hook produces no output for `Write` when target file does not exist |
 | FR-2        | Integration | Hook produces diff reflecting net file change when invoked with `Edit` tool call on a `.tickets/` file |
+| FR-3 | — | xref requirements.md FR-3 |
 
 ## Tradeoffs
 
