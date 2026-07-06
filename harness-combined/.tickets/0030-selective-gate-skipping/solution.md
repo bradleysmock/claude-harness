@@ -76,6 +76,7 @@ Example scope patterns per language:
 | Polyglot worktree | Integration | Dir with `.py` + `.ts` files; `changed_files` contains only `.ts` files → Python gates skip, TS gates run; outer response includes `any_skipped: true` |
 | NFR-1 (perf budget) | Unit | `has_scope_match` with 10,000-entry `changed_files` and 5 patterns completes in < 10 ms |
 | R2-01 (input cap) | Unit | `gate_run_on_dir` with `changed_files` list of > 10,000 entries returns an error response |
+| FR-9 | — | xref requirements.md FR-9 |
 
 ## Tradeoffs
 
