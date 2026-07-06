@@ -26,10 +26,11 @@ def test_dep_audit_is_appended_last_as_model_result():
          mock.patch("gates.dep_audit.run_dep_audit_gate",
                     return_value=DepResult(True, [DepError("WARNING", "x", "p", "m")])):
         results = run_suite_on_dir("python", "/proj", fail_fast=False)
-    assert isinstance(results[-1], ModelResult)
-    assert results[-1].gate == "dep-audit"
-    assert results[-1].passed is True
-    assert results[-1].errors[0].severity == "warning"
+    dep = next(r for r in results if r.gate == "dep-audit")
+    assert isinstance(dep, ModelResult)
+    assert dep.gate == "dep-audit"
+    assert dep.passed is True
+    assert dep.errors[0].severity == "warning"
 
 
 def test_blocker_maps_to_failed_error_result():
@@ -37,7 +38,7 @@ def test_blocker_maps_to_failed_error_result():
          mock.patch("gates.dep_audit.run_dep_audit_gate",
                     return_value=DepResult(False, [DepError("BLOCKER", "1065", "lodash", "pp")])):
         results = run_suite_on_dir("python", "/proj", fail_fast=False)
-    dep = results[-1]
+    dep = next(r for r in results if r.gate == "dep-audit")
     assert dep.passed is False
     assert any(e.severity == "error" and e.code == "1065" for e in dep.errors)
 
@@ -47,7 +48,8 @@ def test_warning_only_passes():
          mock.patch("gates.dep_audit.run_dep_audit_gate",
                     return_value=DepResult(True, [DepError("WARNING", "freshness", "", "stale")])):
         results = run_suite_on_dir("python", "/proj", fail_fast=False)
-    assert results[-1].passed is True
+    dep = next(r for r in results if r.gate == "dep-audit")
+    assert dep.passed is True
 
 
 def test_fail_fast_short_circuits_before_dep_audit():
@@ -79,7 +81,7 @@ def test_dep_audit_fault_degrades_to_passing_warning():
     with mock.patch("gates._language_suite_on_dir", return_value=_lang_ok()), \
          mock.patch("gates.dep_audit.run_dep_audit_gate", side_effect=RuntimeError("boom")):
         results = run_suite_on_dir("python", "/proj", fail_fast=False)
-    dep = results[-1]
+    dep = next(r for r in results if r.gate == "dep-audit")
     assert dep.gate == "dep-audit"
     assert dep.passed is True
     assert dep.errors[0].severity == "warning"

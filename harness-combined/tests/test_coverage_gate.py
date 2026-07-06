@@ -366,7 +366,11 @@ def test_run_suite_appends_coverage_after_language_gates(monkeypatch, _no_dep_au
                             gate="coverage", passed=True, errors=[], duration_ms=1))
     results = gates_pkg.run_suite_on_dir(
         "python", "/proj", standards_path="/proj/.tickets/_standards.md")
-    assert results[-1].gate == "coverage"
+    # Coverage is appended after the language gates (the trailing sast phase now
+    # runs last, so assert order rather than final position).
+    order = [r.gate for r in results]
+    assert "coverage" in order
+    assert order.index("coverage") > order.index("test")
 
 
 def test_run_suite_no_coverage_without_standards(monkeypatch, _no_dep_audit):

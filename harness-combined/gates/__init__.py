@@ -379,4 +379,33 @@ def run_suite_on_dir(
     from gates.dep_audit import dep_audit_enabled
     if dep_audit_enabled(directory):
         results.append(_dep_audit_model_result(directory))
+    # SAST runs last so it never blocks lint/typecheck (ticket 0025, FR-7). In
+    # fail-fast mode a failing prior gate already short-circuited above — the
+    # solution's documented fail-fast bypass.
+    _append_sast_gate(results, directory)
     return results
+
+
+def _append_sast_gate(results: list[GateResult], directory: str) -> None:
+    """Append the SAST phase (Semgrep + Bandit) as the final directory-mode gate.
+
+    In directory mode the scanned worktree also owns its ``.semgrep.yml`` /
+    ``bandit.ini`` configs, so ``project_root`` and the scan target are the same
+    path. Mirrors the dep-audit precedent: an unexpected infrastructure fault
+    degrades to a passing warning rather than breaking the whole suite; a genuine
+    BLOCKER finding or tool invocation error still fails the gate via
+    ``run_sast_gate``'s own ``passed`` flag.
+    """
+    try:
+        from gates.sast import run_sast_gate
+        results.append(run_sast_gate(directory, directory))
+    except (ImportError, OSError, ValueError, RuntimeError, TypeError, AttributeError) as exc:
+        results.append(GateResult(
+            gate="sast", passed=True,
+            errors=[GateError(
+                message=f"sast gate degraded ({exc})",
+                file=None, line=None, column=None,
+                code="SAST_GATE_ERROR", severity="warning",
+            )],
+            duration_ms=0,
+        ))

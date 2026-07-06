@@ -150,6 +150,24 @@ Three hooks enforce quality at write-time and turn-end:
 | Go         | build → vet → tests                   | build → vet → staticcheck → tests                 |
 | Rust       | check → clippy → tests                | check → clippy → tests → audit                    |
 
+In **directory mode**, after the language suite (and the coverage and dep-audit
+phases) a final **`sast`** phase runs: Semgrep across all languages plus Bandit
+for Python, with severity-tiered results (HIGH → BLOCKER fails the gate;
+MEDIUM/LOW → MAJOR/MINOR warnings). It reads a project-owned `.semgrep.yml` /
+`bandit.ini` when present (contained within the project root) and otherwise falls
+back to Semgrep's `p/default` ruleset with a floating-ruleset warning. When
+neither tool is installed the phase skips cleanly and passes with a "SAST
+skipped" warning. Findings are written to `gate-findings.md` under a
+`# SAST — gate-findings` section in the shared bullet format. The `sast` phase is
+the severity-tiered, full-directory security scan; it **complements** the per-file
+Bandit run in `post_write_gate` (fast write-time feedback) rather than replacing
+it.
+
+> **Fail-fast bypass (known limitation):** because the directory suite is
+> fail-fast and `sast` runs last, a failing lint/type/test gate short-circuits
+> the run before `sast` executes. Fix earlier-phase failures to surface SAST
+> findings. Pin `.semgrep.yml` to avoid `p/default` rule churn.
+
 ---
 
 ## Gate/Repair Loop
