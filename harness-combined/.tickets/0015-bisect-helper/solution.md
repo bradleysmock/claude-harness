@@ -46,6 +46,7 @@ Implement `/bisect` as a new command file (`commands/bisect.md`) that drives `gi
 | FR-11 | Integration | Output format matches exactly (`LC_ALL=en_US.UTF-8`); SHA present; title from `status.md title:` field; "XXXX" (no title) when status.md absent; "not linked" when no ticket match |
 | FR-12 | Integration | Cleanup: `git bisect reset` fires on success (exit-1 from bisect run), on setup error, on SIGINT simulation; no "We are not bisecting" stderr; repo HEAD matches pre-bisect ref after each |
 | NFR-2 (injection) | Unit | Ticket number "0010; echo pwned" errors at validation step, never reaches git log |
+| FR-9 | — | xref requirements.md FR-9 |
 
 ## Tradeoffs
 
