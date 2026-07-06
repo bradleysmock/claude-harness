@@ -45,6 +45,10 @@ Add a new `requirements-review` skill at `skills/requirements-review/SKILL.md`. 
 | FR-9 (missing requirements.md) | Integration | Ticket dir exists but requirements.md absent | Error message in response; no `requirements-findings.md` created |
 | FR-7 (read-only) | Integration | Hash problem.md and requirements.md before + after invocation | Hashes unchanged |
 | Path containment | Integration | Pass `"0016/../../../etc"` as ticket number | Error message; no file reads outside `.tickets/` |
+| FR-2 | — | xref requirements.md FR-2 |
+| FR-4 | — | xref requirements.md FR-4 |
+| FR-5 | — | xref requirements.md FR-5 |
+| FR-8 | — | xref requirements.md FR-8 |
 
 ## Tradeoffs
 

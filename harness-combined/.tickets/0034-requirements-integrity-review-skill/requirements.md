@@ -9,7 +9,7 @@
 2. The system must read `problem.md` and `requirements.md` for the specified ticket before producing any output.
 3. The system must evaluate requirements across four named dimensions:
    - **Completeness** — every problem claim and impact item in `problem.md` maps to at least one FR in `requirements.md`. (Example defect: problem states "X fails silently" but no FR addresses silent failure handling.)
-   - **Testability** — every AC is binary pass/fail verifiable with a measurable threshold. (Example defect: AC says "should feel responsive" with no latency target.)
+   - **Testability** — every AC is binary pass/fail verifiable with a measurable threshold. (Example defect: AC says "must feel responsive" with no latency target.)
    - **Coverage** — every success criterion from `problem.md` § Success Criteria is addressed by at least one AC in `requirements.md`. (Example defect: success criterion "a clean ticket produces a short no-findings summary" has no corresponding AC.)
    - **Consistency** — no FR contradicts another FR, and no AC contradicts its corresponding FR. (Example defect: FR-1 states "the system must X", FR-4 states "the system must never X".)
 4. The system must write findings to `.tickets/XXXX-<slug>/requirements-findings.md`.
