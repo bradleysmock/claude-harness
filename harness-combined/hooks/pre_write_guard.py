@@ -19,6 +19,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# _common is a sibling module; the line above puts this hook's directory on
+# sys.path so the import resolves both when run as a script and when a test
+# loads this file via importlib.
+from _common import extract_file_path  # noqa: E402 — sibling import, path set above
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -376,14 +383,17 @@ def find_violations(file_path: str, content: str) -> list[Violation]:
 
 
 def extract_proposed_content(tool_name: str, tool_input: dict) -> tuple[str, str] | None:
+    # Path extraction is shared with pre_ticket_diff via _common.extract_file_path;
+    # the `or ""` preserves this hook's original empty-path fallback exactly.
+    file_path = extract_file_path(tool_name, tool_input) or ""
     if tool_name == "Write":
-        return tool_input.get("file_path", ""), tool_input.get("content", "")
+        return file_path, tool_input.get("content", "")
     if tool_name == "Edit":
-        return tool_input.get("file_path", ""), tool_input.get("new_string", "")
+        return file_path, tool_input.get("new_string", "")
     if tool_name == "MultiEdit":
         edits = tool_input.get("edits", [])
         combined = "\n".join(edit.get("new_string", "") for edit in edits)
-        return tool_input.get("file_path", ""), combined
+        return file_path, combined
     return None
 
 

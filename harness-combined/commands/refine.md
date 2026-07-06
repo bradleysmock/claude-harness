@@ -1,5 +1,7 @@
 Iterate on the solution design before implementation. Manual escape hatch for additional refinement passes.
 
+> When this overwrites an existing ticket artifact, the `pre_ticket_diff` hook automatically prints a unified diff of the pending change before the write (set `HARNESS_NO_DIFF=1` to suppress).
+
 The default (below) is the **interactive** mode the lead invokes. Autopilot's
 Step S calls `/refine` in a distinct **non-interactive** mode — see "Autopilot
 (non-interactive) mode" at the end; that mode suppresses every interactive step

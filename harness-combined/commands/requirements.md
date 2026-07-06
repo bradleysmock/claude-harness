@@ -1,5 +1,7 @@
 Gather and document requirements for a ticket. Manual escape hatch — the automated `/problem` flow runs this internally.
 
+> When this overwrites an existing `requirements.md`, the `pre_ticket_diff` hook automatically prints a unified diff of the pending change before the write (set `HARNESS_NO_DIFF=1` to suppress).
+
 ## Ticket Resolution
 
 If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/` if not found. Otherwise scan `.tickets/` for tickets with `status: problem` or `status: requirements`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
