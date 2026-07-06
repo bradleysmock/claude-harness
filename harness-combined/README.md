@@ -141,6 +141,7 @@ Each of these three commands is a **thin controller** in `commands/`. It inspect
 | Command | Purpose |
 |---|---|
 | `/gate XXXX` | Manual structured gate run → `gate-findings.md` |
+| `/bisect --good <ticket-or-ref> [--bad <ticket-or-ref>] [--run <cmd>]` | Ticket-aware `git bisect`: finds the regression commit and names the ticket that introduced it. Output uses a UTF-8 em-dash: `Regression introduced in commit <sha> — part of ticket XXXX (<title>)`. |
 | `/cancel XXXX` | Abandon ticket: remove worktree, delete branch |
 | `/ticket-status` | Open tickets with implementation order |
 | `/init` | Initialize the pipeline in the current project |
