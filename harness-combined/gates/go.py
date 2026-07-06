@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from gates import GateTimeoutConfig, ProcessResult, _run_override_gate, _timeout_error
+from gates._scope import SKIP_REASON, GateSpec, has_scope_match
 from models import GateError, GateResult
 
 # Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
@@ -179,23 +180,40 @@ def run_go_suite(
 
 # ── Directory mode gates ──────────────────────────────────────────────────────
 
+#: Source globs that make the Go suite relevant.
+_GO_SCOPE = ["*.go", "go.mod", "go.sum"]
+
+
 def run_go_suite_on_dir(
     directory: str, fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
+    changed_files: list[str] | None = None,
 ) -> list[GateResult]:
     """Directory mode: build → vet → test (actual project dir, no temp env).
 
     An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
-    with the operator-supplied one; absent keys run the default gate.
+    with the operator-supplied one; absent keys run the default gate. When
+    ``changed_files`` is supplied, a gate whose scope patterns do not overlap it is
+    skipped — a passing ``skipped=True`` result — instead of run (ticket 0030).
     """
     results = []
-    gates = [("build", _build_gate), ("vet", _vet_gate), ("test", _test_gate)]
-    for name, gate_fn in gates:
+    gates: list[tuple[str, GateSpec]] = [
+        ("build", GateSpec(_build_gate, _GO_SCOPE)),
+        ("vet", GateSpec(_vet_gate, _GO_SCOPE)),
+        ("test", GateSpec(_test_gate, _GO_SCOPE)),
+    ]
+    for name, gate_spec in gates:
+        if not has_scope_match(changed_files, gate_spec.scope_patterns):
+            results.append(GateResult(
+                gate=name, passed=True, errors=[], duration_ms=0,
+                skipped=True, skip_reason=SKIP_REASON,
+            ))
+            continue
         if overrides and name in overrides:
             result = _run_override_gate(name, overrides[name], directory, config)
         else:
-            result = gate_fn(directory, config)
+            result = gate_spec.fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

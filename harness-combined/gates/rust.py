@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from gates import GateTimeoutConfig, ProcessResult, _run_override_gate, _timeout_error
+from gates._scope import SKIP_REASON, GateSpec, has_scope_match
 from models import GateError, GateResult
 
 # Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
@@ -202,25 +203,40 @@ def run_rust_suite(
 
 # ── Directory mode suite ──────────────────────────────────────────────────────
 
+#: Source globs that make the Rust suite relevant.
+_RUST_SCOPE = ["*.rs", "Cargo.toml", "Cargo.lock"]
+
+
 def run_rust_suite_on_dir(
     directory: str, fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
+    changed_files: list[str] | None = None,
 ) -> list[GateResult]:
     """Directory mode: check → clippy → test (actual project dir, no audit).
 
     An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
-    with the operator-supplied one; absent keys run the default gate.
+    with the operator-supplied one; absent keys run the default gate. When
+    ``changed_files`` is supplied, a gate whose scope patterns do not overlap it is
+    skipped — a passing ``skipped=True`` result — instead of run (ticket 0030).
     """
     results = []
-    gates: list[tuple[str, Any]] = [
-        ("check", _check_gate), ("clippy", _clippy_gate), ("test", _test_gate),
+    gates: list[tuple[str, GateSpec]] = [
+        ("check", GateSpec(_check_gate, _RUST_SCOPE)),
+        ("clippy", GateSpec(_clippy_gate, _RUST_SCOPE)),
+        ("test", GateSpec(_test_gate, _RUST_SCOPE)),
     ]
-    for name, gate_fn in gates:
+    for name, gate_spec in gates:
+        if not has_scope_match(changed_files, gate_spec.scope_patterns):
+            results.append(GateResult(
+                gate=name, passed=True, errors=[], duration_ms=0,
+                skipped=True, skip_reason=SKIP_REASON,
+            ))
+            continue
         if overrides and name in overrides:
             result = _run_override_gate(name, overrides[name], directory, config)
         else:
-            result = gate_fn(directory, config)
+            result = gate_spec.fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

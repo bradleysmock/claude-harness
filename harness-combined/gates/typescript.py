@@ -18,6 +18,7 @@ from gates import (
     append_tool_error_if_silent,
     find_config_root,
 )
+from gates._scope import SKIP_REASON, GateSpec, has_scope_match
 from models import GateError, GateResult
 
 # Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
@@ -388,26 +389,40 @@ def _test_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> G
                       duration_ms=int((time.monotonic() - start) * 1000))
 
 
+#: Source globs that make the TypeScript/JavaScript suite relevant.
+_TS_SCOPE = ["*.ts", "*.tsx", "*.js", "*.jsx"]
+
+
 def run_typescript_suite_on_dir(
     directory: str, fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
+    changed_files: list[str] | None = None,
 ) -> list[GateResult]:
     """Directory mode: type_check → lint → tests (actual project dir).
 
     An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
-    with the operator-supplied one; absent keys run the default gate.
+    with the operator-supplied one; absent keys run the default gate. When
+    ``changed_files`` is supplied, a gate whose scope patterns do not overlap it is
+    skipped — a passing ``skipped=True`` result — instead of run (ticket 0030).
     """
     results = []
-    gates: list[tuple[str, Any]] = [
-        ("type_check", _type_check_gate_dir), ("lint", _lint_gate_dir),
-        ("test", _test_gate_dir),
+    gates: list[tuple[str, GateSpec]] = [
+        ("type_check", GateSpec(_type_check_gate_dir, _TS_SCOPE)),
+        ("lint", GateSpec(_lint_gate_dir, _TS_SCOPE)),
+        ("test", GateSpec(_test_gate_dir, _TS_SCOPE)),
     ]
-    for name, gate_fn in gates:
+    for name, gate_spec in gates:
+        if not has_scope_match(changed_files, gate_spec.scope_patterns):
+            results.append(GateResult(
+                gate=name, passed=True, errors=[], duration_ms=0,
+                skipped=True, skip_reason=SKIP_REASON,
+            ))
+            continue
         if overrides and name in overrides:
             result = _run_override_gate(name, overrides[name], directory, config)
         else:
-            result = gate_fn(directory, config)
+            result = gate_spec.fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results

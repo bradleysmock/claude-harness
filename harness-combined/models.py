@@ -48,14 +48,26 @@ class GateResult:
     passed: bool
     errors: list[GateError]
     duration_ms: int
+    #: True when the gate was skipped because its file scope did not overlap the
+    #: caller-supplied changed files (ticket 0030). A skipped gate is not a
+    #: failure — ``passed`` stays True — so it never trips the fail-fast loop.
+    skipped: bool = False
+    skip_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "gate": self.gate,
             "passed": self.passed,
             "errors": [e.to_dict() for e in self.errors],
             "duration_ms": self.duration_ms,
         }
+        # Surface the skip fields only for an actually-skipped gate so the JSON /
+        # artifact contract stays byte-for-byte identical for every caller that
+        # never passes ``changed_files`` (no silent schema drift).
+        if self.skipped:
+            d["skipped"] = True
+            d["skip_reason"] = self.skip_reason
+        return d
 
 
 @dataclass

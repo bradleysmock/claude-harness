@@ -10,17 +10,19 @@ Read each ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN
 
 1. **Determine worktree path** from `status.md`: read the `branch` field (e.g. `ticket/XXXX-<slug>`), strip the `ticket/` prefix, resolve `.worktrees/XXXX-<slug>` relative to project root. Confirm the directory exists.
 
-2. **Run structured gates** via the MCP tool:
-   ```
-   gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root, fail_fast=False)
-   ```
-   This runs all gates (no fail-fast) for **every** detected language stack and returns the complete picture including passed gates. On a polyglot repo (e.g. Python backend + TypeScript frontend) the response carries a `languages` list and a pre-rendered `findings_md` body.
+2. **Compute the changed-file set** (selective gate skipping, ticket 0030). In the worktree, run `git diff --name-only HEAD` to list the files changed against the last commit. On a non-zero exit (no `HEAD` yet, e.g. an initial commit), fall back to `git diff --name-only --cached`; if that also fails (git unavailable), use `changed_files=None`. `None` means "diff unknown — run every gate", preserving the pre-0030 behaviour exactly. An empty result (a diff that lists no files) is also treated as run-all. Only pass a **non-empty** list to enable skipping.
 
-3. **Annotate known-flaky failures (in-memory, before writing)**: when the gate run produced any failures, load `.harness/flaky-report.json` and call `flaky_detect.annotate_failures(failures, report_path)`. Matching failures (a failure whose test matches a flaky test in the report) are labelled `known flaky (X/N)` **in-memory**, before `gate-findings.md` is written, so the whole file is a single atomic write (no TOCTOU window between reading the report and writing findings).
+3. **Run structured gates** via the MCP tool, passing the computed `changed_files`:
+   ```
+   gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root, fail_fast=False, changed_files=<list-or-None>)
+   ```
+   This runs all gates (no fail-fast) for **every** detected language stack and returns the complete picture including passed gates. When `changed_files` is a non-empty list, a gate whose file-scope patterns do not overlap it is **skipped** (a passing result with `skipped: true` and `skip_reason: "no relevant changes"`) rather than run; the outer response then carries `"any_skipped": true`. On a polyglot repo (e.g. Python backend + TypeScript frontend) the response carries a `languages` list and a pre-rendered `findings_md` body.
+
+4. **Annotate known-flaky failures (in-memory, before writing)**: when the gate run produced any failures, load `.harness/flaky-report.json` and call `flaky_detect.annotate_failures(failures, report_path)`. Matching failures (a failure whose test matches a flaky test in the report) are labelled `known flaky (X/N)` **in-memory**, before `gate-findings.md` is written, so the whole file is a single atomic write (no TOCTOU window between reading the report and writing findings).
 
    **Fail closed**: if `.harness/flaky-report.json` is absent, unreadable, or unparseable, `annotate_failures` returns every failure unchanged — all failures remain hard blockers — and the error is logged. A missing or malformed flaky report never downgrades a failure. (When the run used the pre-rendered `findings_md` body, apply the annotation to that body's failure lines before writing it verbatim.)
 
-4. **Write `.tickets/XXXX-<slug>/gate-findings.md`** (a single write, using the in-memory annotated failures from step 3). When the response includes `findings_md`, write it verbatim under the header. Otherwise render the same structure yourself:
+5. **Write `.tickets/XXXX-<slug>/gate-findings.md`** (a single write, using the in-memory annotated failures from step 4). When the response includes `findings_md`, write it verbatim under the header. Otherwise render the same structure yourself:
 
    ```markdown
    # Gate Findings — XXXX-<slug>
@@ -31,7 +33,7 @@ Read each ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN
 
    ## <language> / <gate-name>
 
-   **Status**: PASS | FAIL
+   **Status**: PASS | FAIL | SKIP
    **Duration**: NNNms
 
    <For each failing error:>
@@ -40,9 +42,9 @@ Read each ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN
    <"clean" if no errors>
    ```
 
-   One section per gate, per language, in the order they ran. Section headings are `## <language> / <gate-name>` when more than one language is detected; with a single language the heading is the bare `## <gate-name>` and the header reads `**Language detected**: <language>` (singular) — this preserves the pre-polyglot single-language report shape. A failure annotated in step 3 carries its `known flaky (X/N)` label inline in the message.
+   A gate the run skipped (`skipped: true` in its result) renders with `**Status**: SKIP` and a `**Reason**: <skip_reason>` line (e.g. `no relevant changes`) in place of the error list — it is not a failure and never makes the run non-zero. One section per gate, per language, in the order they ran. Section headings are `## <language> / <gate-name>` when more than one language is detected; with a single language the heading is the bare `## <gate-name>` and the header reads `**Language detected**: <language>` (singular) — this preserves the pre-polyglot single-language report shape. A failure annotated in step 4 carries its `known flaky (X/N)` label inline in the message.
 
-5. **Print summary line**: one `<language>=<PASS|FAIL: gate-names-failing>` token per detected language, e.g. `gate: python=PASS typescript=FAIL: lint`. With a single language this collapses to the original `gate: <language>=<PASS|FAIL: gate-names-failing>`. A gate that fails in **any** language makes the overall run non-zero.
+6. **Print summary line**: one `<language>=<PASS|FAIL: gate-names-failing>` token per detected language, e.g. `gate: python=PASS typescript=FAIL: lint`. With a single language this collapses to the original `gate: <language>=<PASS|FAIL: gate-names-failing>`. A gate that fails in **any** language makes the overall run non-zero.
 
    If the response is a `CONFIG_ERROR` (a malformed `[gates]` override block in `_standards.md`), report it as a failing run and surface the `CONFIG_ERROR` finding — the gate fails closed and does **not** fall back to the default commands.
 

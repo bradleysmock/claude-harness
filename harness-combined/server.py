@@ -39,6 +39,13 @@ from models import (
 
 mcp = FastMCP("harness")
 
+#: Upper bound on the ``changed_files`` list gate_run_on_dir will scope with. A
+#: larger diff degrades to "run all gates" (treated as None) so the
+#: O(files × patterns) scope-match loop stays within the 10 ms budget (ticket 0030,
+#: NFR-4). A real diff this large means "almost everything changed" anyway, so
+#: running every gate is the correct safe-fail.
+MAX_CHANGED_FILES = 10_000
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -214,10 +221,15 @@ def _format_polyglot_findings(results: list[LanguageResult], directory: str) -> 
         lines += [f"**Languages detected**: {langs}", ""]
     for lr in results:
         for gr in lr.results:
+            # A skipped gate is passing but never ran — it must render as SKIP with
+            # its reason, not PASS/clean, so gate-findings.md is honest (FR-8).
+            status = "SKIP" if gr.skipped else ("PASS" if gr.passed else "FAIL")
             lines.append(f"## {lr.language} / {gr.gate}" if multi else f"## {gr.gate}")
-            lines += ["", f"**Status**: {'PASS' if gr.passed else 'FAIL'}",
+            lines += ["", f"**Status**: {status}",
                       f"**Duration**: {gr.duration_ms}ms", ""]
-            if gr.errors:
+            if gr.skipped:
+                lines.append(f"**Reason**: {gr.skip_reason}")
+            elif gr.errors:
                 for e in gr.errors:
                     where = e.file or "?"
                     loc = f"{where}:{e.line}" if e.line is not None else where
@@ -275,17 +287,36 @@ def gate_run(implementation: str, tests: str, language: str, project_root: str) 
 
 
 @mcp.tool()
-def gate_run_on_dir(directory: str, language: str, project_root: str, fail_fast: bool = True) -> str:
+def gate_run_on_dir(
+    directory: str,
+    language: str,
+    project_root: str,
+    fail_fast: bool = True,
+    changed_files: list[str] | None = None,
+) -> str:
     """
     Run gates against a project directory (worktree or project root).
     language: "auto" to detect from marker files, or "python"/"typescript"/"go"/"rust".
     fail_fast=True (default): stop at first failure — use during /build repair loop.
     fail_fast=False: run all gates regardless — use for /gate to write gate-findings.md.
 
+    changed_files (ticket 0030): optional list of changed relative paths (e.g. from
+    `git diff --name-only HEAD`). When provided, a gate whose file-scope patterns
+    do not overlap the list is skipped (a passing, skipped result) rather than run.
+    None (the default) or an empty list runs every gate — identical to prior
+    behaviour. A list longer than MAX_CHANGED_FILES (10,000) is treated as None
+    (run all gates) so the O(files × patterns) match loop stays within the perf
+    budget. server.py never calls git; the caller computes the diff.
+
     Returns JSON. Pass: {"passed": true, "language": ...}.
     Fail+fast: the failing gate result. Fail+full: {"passed": false, "language": ..., "gates": [...]}.
+    When any gate was skipped, the outer response also carries "any_skipped": true.
     """
     try:
+        # Cap the diff set: an oversize list degrades to None (run all gates) — a
+        # safe-fail that pays full gate time rather than risking a slow match loop.
+        if changed_files is not None and len(changed_files) > MAX_CHANGED_FILES:
+            changed_files = None
         config = GateTimeoutConfig.from_directory(Path(directory))
         # The coverage gate reads its thresholds from `.tickets/_thresholds.yaml`
         # and writes its `gate-findings.json` sidecar into `.tickets/<active-slug>/`.
@@ -324,36 +355,65 @@ def gate_run_on_dir(directory: str, language: str, project_root: str, fail_fast:
             # parameter keep working.
             if overrides:
                 kwargs["overrides"] = overrides
+            # Forward the diff set only when supplied so the same forward-compat
+            # holds and the None default preserves prior behaviour exactly.
+            if changed_files is not None:
+                kwargs["changed_files"] = changed_files
             results = run_suite_on_dir(stack, directory, **kwargs)
             lang_results.append(LanguageResult(stack, results))
             if fail_fast and not all(r.passed for r in results):
                 failed = next(r for r in results if not r.passed)
                 payload = failed.to_dict()
                 payload["language"] = str(stack)
+                # Surface any_skipped so a fail-fast run that skipped a prior gate
+                # still tells the caller a scope skip happened (FR-7).
+                if any(r.skipped for lr in lang_results for r in lr.results):
+                    payload["any_skipped"] = True
                 return json.dumps(payload, indent=2)
 
         tagged = [(lr.language, r) for lr in lang_results for r in lr.results]
         single = len(stacks) == 1
+        # any_skipped distinguishes an all-skipped run from an all-passed one, and
+        # is added only when a skip actually occurred so the response shape is
+        # byte-for-byte unchanged for every caller that omits changed_files (FR-7).
+        any_skipped = any(r.skipped for _, r in tagged)
         if all(r.passed for _, r in tagged):
             if single:
-                return json.dumps({"passed": True, "language": str(stacks[0])})
-            return json.dumps({
+                payload = {"passed": True, "language": str(stacks[0])}
+                if any_skipped:
+                    payload["any_skipped"] = True
+                    # A single-language run shares one scope across its gates, so an
+                    # all-pass run with skips means every gate was skipped. The bare
+                    # payload carries no per-gate data, so add the rendered body —
+                    # otherwise /gate cannot write the required SKIP entries (FR-8).
+                    payload["findings_md"] = _format_polyglot_findings(lang_results, directory)
+                return json.dumps(payload)
+            payload = {
                 "passed": True,
                 "languages": [str(s) for s in stacks],
                 "findings_md": _format_polyglot_findings(lang_results, directory),
-            })
+            }
+            if any_skipped:
+                payload["any_skipped"] = True
+            return json.dumps(payload)
         if single:
-            return json.dumps({
+            payload = {
                 "language": str(stacks[0]),
                 "gates": [r.to_dict() for _, r in tagged],
                 "passed": False,
-            }, indent=2)
-        return json.dumps({
+            }
+            if any_skipped:
+                payload["any_skipped"] = True
+            return json.dumps(payload, indent=2)
+        payload = {
             "languages": [str(s) for s in stacks],
             "gates": [{**r.to_dict(), "language": str(st)} for st, r in tagged],
             "passed": False,
             "findings_md": _format_polyglot_findings(lang_results, directory),
-        }, indent=2)
+        }
+        if any_skipped:
+            payload["any_skipped"] = True
+        return json.dumps(payload, indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)})
     except (OSError, ImportError, RuntimeError) as e:

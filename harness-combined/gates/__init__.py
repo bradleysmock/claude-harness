@@ -4,7 +4,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from models import GateError, GateResult
 
@@ -286,14 +286,21 @@ def _language_suite_on_dir(
     fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
+    changed_files: list[str] | None = None,
 ) -> list[GateResult]:
     """Dispatch to a single language's directory-mode gate suite.
 
     ``overrides`` (gate-name -> replacement argv) is forwarded to the language
     suite only when non-empty, so existing suite stand-ins that predate the
-    parameter keep working.
+    parameter keep working. ``changed_files`` is forwarded only when supplied
+    (not ``None``) for the same back-compat reason — a suite fake without the
+    parameter keeps working, and the default ``None`` preserves prior behaviour.
     """
-    extra = {"overrides": overrides} if overrides else {}
+    extra: dict[str, Any] = {}
+    if overrides:
+        extra["overrides"] = overrides
+    if changed_files is not None:
+        extra["changed_files"] = changed_files
     if language == "python":
         from gates.python import run_python_suite_on_dir
         results = run_python_suite_on_dir(directory, fail_fast=fail_fast, config=config, **extra)
@@ -358,6 +365,7 @@ def run_suite_on_dir(
     base_ref: str = "main",
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
+    changed_files: list[str] | None = None,
 ) -> list[GateResult]:
     """Directory mode: language gates, then coverage and dep-audit phases.
 
@@ -368,9 +376,13 @@ def run_suite_on_dir(
     ``standards_path`` keep the pre-coverage behaviour. ``config`` carries the
     optional per-gate timeout overrides threaded into the language suites;
     ``overrides`` carries the operator's per-gate *command* overrides.
+    ``changed_files`` (ticket 0030) is forwarded to the language suite so a gate
+    whose scope does not overlap the diff is skipped; the coverage/dep-audit/SAST
+    phases are unaffected — they still run only after the language gates pass.
     """
     results = _language_suite_on_dir(
-        language, directory, fail_fast=fail_fast, config=config, overrides=overrides,
+        language, directory, fail_fast=fail_fast, config=config,
+        overrides=overrides, changed_files=changed_files,
     )
     if fail_fast and not all(r.passed for r in results):
         return results

@@ -20,6 +20,7 @@ from gates import (
     _timeout_error,
     append_tool_error_if_silent,
 )
+from gates._scope import SKIP_REASON, GateSpec, has_scope_match
 from models import GateError, GateResult
 
 # Tools this gate invokes via subprocess. Single source of truth consumed by
@@ -439,26 +440,43 @@ def _security_gate_dir(directory: str, config: GateTimeoutConfig | None = None) 
     )
 
 
+#: Source globs that make the Python suite relevant — a change touching none of
+#: these lets each Python gate be skipped when ``changed_files`` is supplied.
+_PY_SCOPE = ["*.py", "*.pyi"]
+
+
 def run_python_suite_on_dir(
     directory: str, fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
+    changed_files: list[str] | None = None,
 ) -> list[GateResult]:
     """Directory mode: lint → type_check → tests → security (actual project dir).
 
     An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
-    with the operator-supplied one; absent keys run the default gate.
+    with the operator-supplied one; absent keys run the default gate. When
+    ``changed_files`` is supplied, a gate whose scope patterns do not overlap it is
+    skipped — a passing ``skipped=True`` result — instead of run (ticket 0030). A
+    skipped gate keeps ``passed=True`` so it never trips the fail-fast loop.
     """
     results = []
-    gates: list[tuple[str, Any]] = [
-        ("lint", _lint_gate_dir), ("type_check", _type_check_gate_dir),
-        ("test", _test_gate_dir), ("security", _security_gate_dir),
+    gates: list[tuple[str, GateSpec]] = [
+        ("lint", GateSpec(_lint_gate_dir, _PY_SCOPE)),
+        ("type_check", GateSpec(_type_check_gate_dir, _PY_SCOPE)),
+        ("test", GateSpec(_test_gate_dir, _PY_SCOPE)),
+        ("security", GateSpec(_security_gate_dir, _PY_SCOPE)),
     ]
-    for name, gate_fn in gates:
+    for name, gate_spec in gates:
+        if not has_scope_match(changed_files, gate_spec.scope_patterns):
+            results.append(GateResult(
+                gate=name, passed=True, errors=[], duration_ms=0,
+                skipped=True, skip_reason=SKIP_REASON,
+            ))
+            continue
         if overrides and name in overrides:
             result = _run_override_gate(name, overrides[name], directory, config)
         else:
-            result = gate_fn(directory, config)
+            result = gate_spec.fn(directory, config)
         results.append(result)
         if not result.passed and fail_fast:
             return results
