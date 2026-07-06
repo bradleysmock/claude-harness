@@ -9,6 +9,12 @@ Merge the ticket's worktree branch into main, remove the worktree, and record le
 
 **Sub-flow note:** this flow may run as a sub-flow under `/autopilot`. If a checklist already exists for this run (autopilot created it), follow the convention's one-list-per-run rule — adopt that existing list and advance its delivery stages, do **not** create a second one.
 
+## The `--pr` flag (optional)
+
+`/deliver XXXX --pr` opts into GitHub PR creation. When the flag is present, this flow pushes the ticket branch to the remote and opens a GitHub PR (Step 3.5) **after** the confirmation prompt but **before** the local squash-merge (Step 4). The PR title comes from the ticket title; the PR body is assembled from the ticket's `solution.md` and `requirements.md`. PR creation is a **complement** to the local merge, never a replacement — the squash-merge in Step 4 remains the delivery mechanism.
+
+**When `--pr` is not passed, this flow behaves exactly as before** — no push, no PR, byte-for-byte identical to the standard delivery path. Step 3.5 is skipped entirely, and the Step 3 confirmation prompt does not list the push/PR lines.
+
 ## Step 1 — Resolve and validate
 
 Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md`.
@@ -166,16 +172,73 @@ When the rebase succeeded (2b-4 path), pass this note to the Step 3 confirmation
 Note: gates ran on the pre-rebase branch — consider re-running /build XXXX to re-validate before merging.
 ```
 
+## gh_guard (named block)
+
+Availability, authentication, existing-PR, and failure-classification guard for `--pr` delivery. **Input:** the ticket `branch` name and ticket number. **Output:** one of three decisions — `skip` (proceed to merge with no PR), `existing <url>` (an open PR already covers this branch — print the URL and proceed to merge), or `stop <message>` (an unexpected failure — halt delivery). PR creation is **one attempt, no retry** (NFR-2). This block is a documented seam — its input/output contract is testable without running the full deliver flow.
+
+**NFR-1 (5-second bound) is enforced, not merely asserted:** wrap the auth and existing-PR probes in `timeout 5 …` so a hung `gh auth status` (which makes a token-validation network call) or a slow `gh pr view` cannot stall delivery. A `timeout`-killed probe exits non-zero and is treated exactly like the corresponding negative result — for `gh auth status` that means "not authenticated → skip + warn + continue" (fail-safe: a slow network never blocks the local merge).
+
+Run the checks in order; act on the first that matches:
+
+1. **Not installed** — `command -v gh` exits non-zero → **skip** with a warning (`gh not installed — skipping PR creation`) and continue the deliver flow.
+2. **Not authenticated** — `timeout 5 gh auth status` exits non-zero (a non-zero status, or a timeout kill) → **skip** with a warning (`gh not authenticated — skipping PR creation`) and **continue** the deliver flow.
+3. **PR already open (pre-check)** — read the branch's PR state without failing on absence:
+   ```
+   pr_state=$(timeout 5 gh pr view "$branch" --json state --jq '.state' 2>/dev/null)
+   ```
+   If `pr_state` is exactly the literal string `"OPEN"`, an open PR already exists → fetch its url (`timeout 5 gh pr view "$branch" --json url --jq '.url'`), print it, **skip** `gh pr create`, and continue to the merge. A `"CLOSED"` or `"MERGED"` state (or an empty result — no PR) is **not** treated as an existing open PR; fall through to creation.
+4. **Create + classify** — the caller (Step 3.5) runs `gh pr create` once. Classify its exit:
+   - Exit 0 → PR created; print the returned url and continue.
+   - Non-zero **and** stderr matches the duplicate pattern `already exists` or `already has` (a TOCTOU race — a PR was opened between the pre-check and create) → treat as case 3: fetch the url via `timeout 5 gh pr view`, print it, and continue to the merge (**not** a hard stop).
+   - Non-zero with **no** duplicate match → **stop**: report the error and print recovery instructions noting the branch is **already pushed** (`the branch is already pushed to origin; open a PR manually with gh pr create, or re-run /deliver XXXX --pr`). This recovery message must distinguish a PR-creation failure from a push failure (the push is handled in Step 3.5).
+
+| Condition | Detection | Action |
+|---|---|---|
+| Not installed | `command -v gh` != 0 | skip + warn, continue |
+| Not authenticated | `gh auth status` != 0 | skip + warn, continue |
+| PR already open | state == `"OPEN"` | print url, skip create, continue |
+| TOCTOU duplicate | `gh pr create` != 0, stderr ~ `already exists`/`already has` | fetch + print url, continue |
+| Any other failure | `gh pr create` != 0, no dup match | stop + report + recovery |
+
+## pr_body_builder (named block)
+
+Assembles the PR body from the ticket's design artifacts. **Input:** the ticket directory path (`$ticket_dir` = `.tickets/XXXX-<slug>/`) and ticket number. **Output:** the path to a temp file holding the assembled body. The body is built into a `mktemp` file with a `trap` cleanup, eliminating the predictable-name race.
+
+```
+BODY_FILE=$(mktemp) || { echo "mktemp failed — aborting before push" >&2; exit 1; }
+trap 'rm -f "$BODY_FILE"' EXIT
+```
+
+If `mktemp` fails, **abort before the branch is pushed** — nothing has been pushed at this point, so there is nothing to unwind.
+
+**Approach summary** — extract the `## Approach` section from `solution.md` with awk. No `END` block is used: awk's `exit` skips the `END` action in some implementations, so an `END` block is prohibited here.
+```
+approach=$(awk '/^## Approach$/{found=1;next} found && /^## /{exit} found{print}' "$ticket_dir/solution.md")
+```
+If `approach` is empty (the section is absent or `solution.md` is missing), use the literal placeholder `(No Approach section found in solution.md)` — do not error.
+
+**Acceptance Criteria checklist** — read the `## Acceptance Criteria` section from `requirements.md` and render each item as a Markdown checkbox `- [ ] …`, taking the **first non-blank line** of each item so a multi-line AC item yields exactly one checklist entry (no malformed indented continuations). If the section is absent or empty, emit a single placeholder line `- [ ] (No Acceptance Criteria section found in requirements.md)` — do not error.
+
+**Ticket reference** — append a `Ticket: XXXX` line so the PR links back to the ticket number.
+
+Write the Approach summary + AC checklist + `Ticket:` reference to `"$BODY_FILE"`, then hand its path to the caller for `gh pr create --body-file "$BODY_FILE"`.
+
+**Same-shell lifetime (important):** the `trap … EXIT` fires when the shell process that registered it exits. `pr_body_builder` and the caller's `gh pr create --body-file "$BODY_FILE"` (Step 3.5 steps 3–4) **must run in the same shell session** — do **not** execute the builder in a command substitution `$( … )` or a separate subshell, or the `EXIT` trap fires and deletes `"$BODY_FILE"` before `gh pr create` can read it. Run steps 2–4 of Step 3.5 (build → push → create) as one shell invocation so cleanup happens only after the PR is created (or after the flow aborts). `mktemp`'s unpredictable name and the `EXIT` trap together guarantee no leaked temp file and no predictable-name race.
+
 ## Step 3 — Confirm
 
 **Read smoke-test config once here** (reused in Step 4b — do **not** re-read `_standards.md` there). From `.tickets/_standards.md`: `smoke_test_command` (absent/empty → the whole smoke phase is skipped), `smoke_test_mode` (`auto-revert` default | `warn-only`), and `smoke_test_timeout` (integer seconds, default 60; > 300 → cap at 300 with a visible warning; non-integer/zero/negative → skip the smoke test with a visible warning echoing the invalid value). When a `smoke_test_command` is configured, add its command, mode, and timeout to the confirmation block below so the lead sees what will run before approving.
 
 Surface the Step 2b divergence result on the `Branch:` line — `up to date` when N == 0, or `rebased (was N behind)` when a `--rebase` succeeded. Delivery only reaches Step 3 on those two paths; every Step 2b halt (divergence without `--rebase`, invalid target name, mid-rebase state, or a rebase conflict) stops before this prompt. When a rebase occurred, include the gate-invalidation notice from sub-step 2b-6 immediately below the branch line.
 
+**When `--pr` is present**, include the two PR lines below (`git push origin <branch>` and `gh pr create …`) in the planned-actions list so the lead sees that the branch will be pushed and a GitHub PR opened (Step 3.5) **before** the local merge. When `--pr` is absent, omit both lines — the prompt is unchanged from the standard path.
+
 ```
 Ready to deliver ticket XXXX:
   Branch:  up to date | rebased (was N behind)      (from Step 2b)
   [Note: gates ran on the pre-rebase branch — consider re-running /build XXXX to re-validate.]   ← only after a successful rebase
+  [git push origin <branch>                                       ← only with --pr (Step 3.5): push before opening the PR]
+  [gh pr create --title "<ticket title>" --body-file <tmp-body>   ← only with --pr (Step 3.5): open the GitHub PR before the local merge]
   git merge --squash <branch>      (one squashed commit — no per-branch-commit history, no merge commit)
   status.md → done
   mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/   (archive)
@@ -188,6 +251,26 @@ Proceed? (yes/no)
 ```
 
 Stop if the user says no.
+
+## Step 3.5 — Push branch and open PR (`--pr` only)
+
+Runs **only when `--pr` was passed**, after the Step 3 confirmation and **before** the Step 4 squash-merge. When `--pr` is absent, **skip this entire step** — delivery proceeds directly from Step 3 to Step 4, unchanged. PR creation is a complement to the local merge, never a replacement.
+
+**Source the PR title first.** Read the ticket title into `TICKET_TITLE` from the branch's `status.md` `title:` field (authoritative), falling back to the `**Title**:` line in `problem.md` if `status.md` has no title. Keep it as a shell variable — it is passed to the PR-create call as a double-quoted argument in step 4, never interpolated into a command string. If no title can be read, use the ticket number (`Ticket 0028`) as the title rather than passing an empty `--title`.
+
+1. **Run the `gh_guard` availability + auth pre-checks.** If the guard returns **skip** (gh missing or unauthenticated), print its warning and go straight to Step 4 — the ticket still delivers normally. If it returns **existing `<url>`** (an open PR already covers the branch), print the url and go to Step 4.
+2. **Build the PR body** with the `pr_body_builder` named block, producing `"$BODY_FILE"`. This is done **before the push** so that a `mktemp` failure aborts while the branch is still unpushed — matching the spec's "mktemp fails → abort before push" and leaving nothing to unwind. Steps 2–4 run in one shell session (the `pr_body_builder` `EXIT` trap must survive until step 4 — see its Same-shell lifetime note).
+3. **Push the branch.** The PR must reference the pushed branch, so the push happens before PR creation and before the local merge:
+   ```
+   git push origin "$branch"
+   ```
+   If the push fails, **stop** and report it as a **push failure** — distinct from a PR-creation failure. No PR was attempted and the local merge has not run, so the operator can retry `/deliver XXXX --pr` after resolving the remote issue.
+4. **Create the PR — one attempt** (`gh_guard` case 4). Pass the ticket title as a double-quoted shell variable — **never** assembled via string concatenation (CLAUDE.md "No shell concatenation"), so a title containing `"`, `$`, `` ` ``, or `;` is safe:
+   ```
+   gh pr create --title "$TICKET_TITLE" --body-file "$BODY_FILE" --head "$branch"
+   ```
+   Classify the exit via the `gh_guard` create-and-classify rules: exit 0 → print the PR url; a TOCTOU duplicate (stderr matches `already exists`/`already has`) → fetch and print the existing url and continue; any other non-zero exit → **stop** with recovery instructions (the branch is already pushed). A PR-creation failure here is reported differently from the push failure in step 2.
+5. On **skip / existing / created**, continue to Step 4 (the local squash-merge).
 
 ## Step 4 — Squash-merge: fold `→ done` + archive into one commit
 
