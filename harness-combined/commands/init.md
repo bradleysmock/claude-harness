@@ -62,6 +62,12 @@ Project-specific engineering standards. The harness loads this file as context a
 
 Replace each section's bullets with what actually applies to this project. Delete sections that don't apply. Add new sections as needed. Keep entries short — one or two sentences per rule.
 
+The `## Language` and `## Test strategy` sections are required — the harness validator halts `/problem` and `/build` until both are filled with real content.
+
+## Language
+
+- (e.g.) Python 3.12 is the implementation language and runtime; type annotations on every public boundary.
+
 ## Code style
 
 - (e.g.) Python: black + ruff, 100-character lines, type annotations on every public boundary.
@@ -78,7 +84,7 @@ Replace each section's bullets with what actually applies to this project. Delet
 - (e.g.) Routes are thin: validation + delegation only. Business logic lives under `src/services/`.
 - (e.g.) All external IO goes through an adapter; never call third-party APIs from inside business logic.
 
-## Testing
+## Test strategy
 
 - (e.g.) Integration tests hit a real Postgres via testcontainers, never SQLite mocks.
 - (e.g.) Behavior coverage is enforced; line coverage is not.

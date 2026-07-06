@@ -1,0 +1,7 @@
+# Operator-owned required-section list for the _standards.md validator.
+#
+# Extend this list to require additional sections in .tickets/_standards.md
+# without modifying harness source. Each entry is matched case-insensitively as
+# a substring of a Markdown heading at any level (h1–h6). Delete this file to
+# fall back to the built-in DEFAULT_REQUIRED_SECTIONS.
+required_sections = ["language", "test strategy"]

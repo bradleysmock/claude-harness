@@ -11,6 +11,14 @@ Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, and `M
 
 ## Step 0 — Detect spec, task, or free-form description
 
+**Standards gate (fail-closed).** Before any spec generation or `_standards.md` context load, if `.tickets/_standards.md` exists, validate it first:
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/validators/standards_validator.py" .tickets/_standards.md
+```
+
+A non-zero exit **halts** the build — show the validator's stderr (the missing or stubbed sections) and stop; do not generate or gate any code until `.tickets/_standards.md` is filled in. This call runs **before** any `_standards.md` context load, so stub content never enters context on a failing run.
+
 Decide by what `$ARGUMENTS` is and whether a file matches:
 
 - **Existing spec file** — `.harness/specs/$ARGUMENTS.py` exists → **spec path** (below).

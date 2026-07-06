@@ -1,5 +1,13 @@
 Entry point for new work. Runs the full pre-implementation pipeline autonomously and stops at checkpoint 1 for lead approval.
 
+**Standards gate (fail-closed).** Before loading any standards context, if `.tickets/_standards.md` exists, validate it first:
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/validators/standards_validator.py" .tickets/_standards.md
+```
+
+A non-zero exit **halts** the pipeline — show the validator's stderr (the missing or stubbed sections) and stop; do not run any generative phase until `.tickets/_standards.md` is filled in. This call runs **before** the `@.tickets/_standards.md` load below, so stub content never enters context on a failing run.
+
 If `.tickets/_standards.md` exists, load it via @.tickets/_standards.md as context — project engineering standards.
 If `.tickets/_learnings.md` exists, load it via @.tickets/_learnings.md as context — past must-fix patterns the lead has captured.
 

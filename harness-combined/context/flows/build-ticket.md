@@ -34,6 +34,14 @@ Find the spec or task for this ticket:
 
 Then load lead-curated context (both the specs-exist and just-generated paths):
 
+**Standards gate (fail-closed).** Before the `@.tickets/_standards.md` include below, if `.tickets/_standards.md` exists, validate it first:
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/validators/standards_validator.py" .tickets/_standards.md
+```
+
+A non-zero exit **halts** the build — show the validator's stderr (the missing or stubbed sections) and stop. This call runs **before** the `@.tickets/_standards.md` include, so stub content never enters context on a failing run.
+
 If `.tickets/_standards.md` exists, load it via `@.tickets/_standards.md`.
 If `.tickets/_learnings.md` exists, load it via `@.tickets/_learnings.md`.
 

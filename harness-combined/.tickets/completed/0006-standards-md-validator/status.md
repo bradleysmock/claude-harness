@@ -1,5 +1,5 @@
-status: solution
+status: done
 ticket: 0006
 title: _standards.md schema validator
 branch: ticket/0006-standards-md-validator
-updated: 2026-06-21
+updated: 2026-07-06
