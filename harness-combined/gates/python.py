@@ -21,6 +21,12 @@ from gates import (
 )
 from models import GateError, GateResult
 
+# Tools this gate invokes via subprocess. Single source of truth consumed by
+# gates/doctor.py to build its probe registry (ticket 0022). Every name here
+# must appear in a subprocess argument list below; the doctor CI invariant test
+# enforces that structurally (AST), so keep this in sync when tooling changes.
+REQUIRED_TOOLS: list[str] = ["mypy", "ruff", "bandit"]
+
 
 @dataclass
 class ExecutionEnvironment:

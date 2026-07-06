@@ -19,6 +19,10 @@ from gates import (
 )
 from models import GateError, GateResult
 
+# Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
+# the doctor contract). Every name must appear in a subprocess argument list.
+REQUIRED_TOOLS: list[str] = ["tsc", "eslint"]
+
 _TSCONFIG = json.dumps({
     "compilerOptions": {
         "target": "ES2020",

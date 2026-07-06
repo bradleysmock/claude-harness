@@ -24,6 +24,7 @@ from dag import DAGResolver
 from gates import GateTimeoutConfig, run_suite_for, run_suite_on_dir
 from gates.commit_lint import CommitLintConfig
 from gates.commit_lint import run as run_commit_lint
+from gates.doctor import DoctorError, format_report, run_doctor
 from memory import SQLiteFailureMemory
 from models import Spec, Task, TaskSpec
 
@@ -539,6 +540,29 @@ def harness_status(project_root: str) -> str:
             lines.append(f"? {f.name} [unreadable]")
 
     return "\n".join(lines)
+
+
+@mcp.tool()
+def doctor(project_root: str = "") -> str:
+    """
+    Diagnose gate-tool readiness for a project (ticket 0022).
+
+    Scans `project_root` (default: the current working directory) for language
+    manifests, then probes each detected language's required gate tools with
+    `<tool> --version` under a 5-second timeout. Never modifies the project or
+    installs anything.
+
+    Returns JSON `{"output": str, "any_missing": bool}` — `output` is the
+    human-readable per-language table; `any_missing` is True when any required
+    tool is missing or timed out, so the caller can signal non-zero status for
+    CI preflight. On an invalid `project_root` (not a directory, or outside the
+    allowed root) returns `{"error": str}` before any probe runs.
+    """
+    try:
+        report = run_doctor(project_root)
+    except DoctorError as e:
+        return json.dumps({"error": str(e)})
+    return json.dumps({"output": format_report(report), "any_missing": report.any_missing})
 
 
 if __name__ == "__main__":

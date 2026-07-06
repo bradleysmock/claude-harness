@@ -11,6 +11,10 @@ from pathlib import Path
 from gates import GateTimeoutConfig, ProcessResult, _timeout_error
 from models import GateError, GateResult
 
+# Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
+# the doctor contract). Every name must appear in a subprocess argument list.
+REQUIRED_TOOLS: list[str] = ["go", "staticcheck"]
+
 _GO_MOD = "module harness/temp\n\ngo 1.21\n"
 
 _GO_ERROR = re.compile(

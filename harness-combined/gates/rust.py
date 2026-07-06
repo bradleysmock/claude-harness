@@ -12,6 +12,10 @@ from typing import Any
 from gates import GateTimeoutConfig, ProcessResult, _timeout_error
 from models import GateError, GateResult
 
+# Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
+# the doctor contract). Every name must appear in a subprocess argument list.
+REQUIRED_TOOLS: list[str] = ["cargo", "clippy"]
+
 _CARGO_TOML = """\
 [package]
 name = "harness-temp"
