@@ -43,6 +43,7 @@ Extend `deliver-ticket.md` (Step 7) to parse `gate-findings.md` and emit formatt
 | FR-9 stub | Integration | `_learnings.md` absent → stub created; entry appended |
 | FR-10 no-overwrite | Integration | Pre-existing content in `_learnings.md` intact after append |
 | FR-5 empty db | Integration | Sparse memory.db (no pattern ≥2) → "No recurring patterns found" |
+| FR-11 | — | xref requirements.md FR-11 |
 
 ## Tradeoffs
 
