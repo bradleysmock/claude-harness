@@ -71,6 +71,33 @@ task = Task(
 )
 ```
 
-## Step 6 — Report
+## Step 6 — Generate the spec coverage map
 
-Tell the user: "Specs written. Run `/build XXXX` to implement."
+As the **final step** after the spec (and task) files are written, regenerate
+`spec-coverage.md` so it reflects the current spec state. This maps every Functional
+Requirement and Acceptance Criterion in `requirements.md` to the spec(s) that cover it,
+and lists any requirement no spec covers.
+
+Invoke `spec_coverage.py` as an **argument-list subprocess** (never a shell string — the ticket
+slug and paths must not be interpolated into a shell command):
+
+```python
+import subprocess, sys
+subprocess.run(
+    [sys.executable, "spec_coverage.py", ticket_dir_str, specs_dir_str, project_root_str],
+    check=True,
+)
+```
+
+- `ticket_dir_str` → `.tickets/XXXX-<slug>` (or its `.worktrees/...` copy when resolving via a worktree).
+- `specs_dir_str` → `.harness/specs`.
+- `project_root_str` → the plugin/project root that contains `spec_coverage.py`.
+
+This **overwrites** `spec-coverage.md` on every `/write-spec` run, so the map always
+reflects the specs that currently exist. Read the counts from `spec_coverage.py`'s stdout
+(`covered=N uncovered=M`) and surface them to the lead — call out any uncovered FRs/ACs
+so the lead can decide whether a spec is missing before `/build`.
+
+## Step 7 — Report
+
+Tell the user: "Specs written; `spec-coverage.md` regenerated (covered=N, uncovered=M). Run `/build XXXX` to implement."

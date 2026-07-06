@@ -39,6 +39,30 @@ If `.tickets/_learnings.md` exists, load it via `@.tickets/_learnings.md`.
 
 Both are lead-curated. The model treats them as hard constraints, not suggestions. The machine's BM25 failure trail (`.harness/memory.db`) is consulted only by `memory(action="retrieve", ...)` during repair — it never feeds back into these files automatically.
 
+**Spec-coverage warning (non-blocking).** Before executing specs, check whether any
+requirement is left uncovered. If `spec-coverage.md` exists in the ticket directory,
+invoke `spec_coverage.py --warning-only` as an **argument-list subprocess** (never a shell
+string — no slug/path interpolation) and print its stdout if non-empty:
+
+```python
+import subprocess, sys
+result = subprocess.run(
+    [sys.executable, "spec_coverage.py", "--warning-only", ticket_dir_str, project_root_str],
+    check=True,
+    capture_output=True,
+    text=True,
+)
+if result.stdout.strip():
+    print(result.stdout)  # lists uncovered FRs/ACs
+```
+
+`--warning-only` reads the **pre-written** `spec-coverage.md` only — it does not re-parse
+the spec files. The warning is **non-blocking**: print it (so the lead sees which FRs/ACs
+have no covering spec) and then proceed with the build regardless. This check is
+**backward compatible** — if `spec-coverage.md` does **not** exist (e.g. a ticket predating
+the coverage map, or one whose specs were hand-written), skip it silently: no warning, no
+error, no change in behavior.
+
 ## Step 2 — Resume the claim worktree (do not create one)
 
 The branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` already exist — they were created at claim time (`/problem` Phase 1), and the design artifacts live on the branch. **Resume** that worktree; do not fork a new one. Only if the worktree is somehow absent (e.g. a fresh clone, or a ticket claimed before branch-at-claim) recreate it from the existing branch:
