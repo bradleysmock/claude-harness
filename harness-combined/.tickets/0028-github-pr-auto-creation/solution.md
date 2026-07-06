@@ -59,6 +59,7 @@ Named blocks have documented input/output contracts — testable without running
 | FR-13 TOCTOU | Integration | Dup stderr → URL fetched, merge proceeds (not stop) |
 | FR-14 | Integration | `--pr` in spec mode → warn, proceed |
 | mktemp | Unit | `mktemp` fails → abort before push |
+| FR-2 | — | xref requirements.md FR-2 |
 
 ## Tradeoffs
 
