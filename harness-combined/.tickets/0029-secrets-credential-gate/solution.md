@@ -52,6 +52,7 @@ discarded. Default is fail-closed; opt-out via `HARNESS_ALLOW_MISSING_SECRETS_SC
 | NFR-5 unrecognized version | Unit | `--version` returns unknown prefix; `passed=False`, warning |
 | NFR-2 (redaction shape) | Unit | GateError message: (a) no raw key, (b) rule name present, (c) first 4 chars + masking |
 | NFR-3 (path sanitization) | Unit | Scanner JSON with path outside worktree root → error discarded |
+| FR-4 | — | xref requirements.md FR-4 |
 
 ## Tradeoffs
 
