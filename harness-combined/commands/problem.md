@@ -87,12 +87,16 @@ Update `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/status.md` (the claim stub i
 status: solution
 ticket: XXXX
 title: <title>
+effort: small
 branch: ticket/XXXX-<slug>
 owner: <git config user.email>
 source: local
 external_id:
 updated: YYYY-MM-DD
 ```
+
+The `effort` field takes `small` | `medium` | `large` and feeds the Effort column in
+`/ticket-list`; leave it at `small` unless the scope clearly warrants otherwise.
 
 ---
 
