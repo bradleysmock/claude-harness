@@ -153,7 +153,7 @@ Each of these three commands is a **thin controller** in `commands/`. It inspect
 
 ## Skills (intent-triggered)
 
-These six behaviors are skills rather than commands. Invoke them explicitly with `/<name>` or just describe the intent — the model will pick the right skill from the description.
+These seven behaviors are skills rather than commands. Invoke them explicitly with `/<name>` or just describe the intent — the model will pick the right skill from the description.
 
 | Skill | Triggers on | Purpose |
 |---|---|---|
@@ -161,6 +161,7 @@ These six behaviors are skills rather than commands. Invoke them explicitly with
 | `usage-report` | "review my Claude Code usage", "where am I spending tokens/time", "how can I use Claude more efficiently" | Runs a deterministic analyzer over local `~/.claude` state and writes a dated report: usage patterns, an idle-excluded time estimate, strengths/weaknesses, and roadmap-tied recommendations. |
 | `review` | "review ticket 0003", "is 0007 ready to merge?" | Ticket-scoped post-build review against problem / requirements / solution. Sets `changes-requested` if must-fix found. |
 | `critique` | "critique my changes", "expert panel review of the auth route" | Free-form expert-panel critique of the current diff or specified files. Writes `CRITIQUE.md`. |
+| `requirements-review` | "review requirements", "is 0034 ready to build?", "/requirements-review 0034" | Pre-build checkpoint: reviews `requirements.md` against `problem.md` across completeness, testability, coverage, consistency in a scoped read-only subagent; writes advisory `requirements-findings.md`. |
 | `status` | "what's open?", "where are we?" | Combined view of tickets + standalone runs + failure-memory presence. |
 | `debug` | "why did the build escalate?", "the run gave up — what now?" | Classify and explain an escalated standalone run; propose targeted fix. |
 
