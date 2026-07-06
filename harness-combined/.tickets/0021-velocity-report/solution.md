@@ -51,6 +51,9 @@ Add a `/velocity` slash command backed by `skills/velocity/SKILL.md`. The skill 
 | FR-10       | Unit        | Negative cycle time (end < start) → ticket skipped; "invalid date range" in skip note |
 | Security    | Unit        | Path traversal: ticket slug `../../etc` → resolved path fails containment check, ticket skipped |
 | FR-11       | Manual      | `/velocity` invokable in live harness session (not CI-tested) |
+| FR-3 | — | xref requirements.md FR-3 |
+| FR-12 | — | xref requirements.md FR-12 |
+| FR-13 | — | xref requirements.md FR-13 |
 
 ## Tradeoffs
 
