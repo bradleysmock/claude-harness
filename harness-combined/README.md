@@ -146,6 +146,7 @@ Each of these three commands is a **thin controller** in `commands/`. It inspect
 | `/ticket-status` | Open tickets with implementation order |
 | `/export [--format json\|csv] [--all] [--output <file>]` | Export ticket data (number, title, status, summaries, commits) from `.tickets/` to JSON or CSV. Completed tickets by default; `--all` for every status. |
 | `/velocity` | Cycle-time report over completed tickets: per-ticket detail table, weekly ISO-week summary, and overall average. Date math is delegated to `skills/velocity/compute.py` (deterministic; ticket data piped via stdin). |
+| `/sprint [--sprint-capacity N] [--max-sprints N] [--as-of YYYY-MM-DD]` | Group open tickets into a dependency-ordered, capacity-bounded weekly sprint plan with a backlog-overflow section. Topological sort, bin-packing, and date labeling are delegated to `skills/sprint/compute.py` (deterministic; ticket data piped via stdin). Read-only. |
 | `/init` | Initialize the pipeline in the current project |
 
 ---
