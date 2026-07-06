@@ -49,6 +49,7 @@ Add a `GateTimeoutConfig` dataclass to `gates/__init__.py` that is populated fro
 | C-04 | Unit | `default_timeout_seconds = 0` → `ValueError` at load time |
 | C-04 | Unit | `test_timeout_seconds = -1` → `ValueError` at load time |
 | C-08 | Unit | File present but no timeout keys → all `timeout_for()` calls return hardcoded defaults |
+| FR-6 | — | xref requirements.md FR-6 |
 
 ## Tradeoffs
 
