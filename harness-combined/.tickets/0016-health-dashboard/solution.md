@@ -43,6 +43,8 @@ Add a `/health` command backed by a new `health.py` module that reads gate-findi
 | FR-10       | Unit        | absent memory.db returns None sections gracefully; output includes note           |
 | C-01        | Unit        | health_report("/etc") raises ValueError before any FS access                     |
 | FR-1–FR-8   | Integration | full skill execution, stdout captured; assert section headers present, column names correct, "N of M" annotation present |
+| FR-7 | — | xref requirements.md FR-7 |
+| FR-11 | — | xref requirements.md FR-11 |
 
 ## Tradeoffs
 
