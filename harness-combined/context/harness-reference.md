@@ -173,10 +173,10 @@ Two independent memory layers, no overlap:
 | Layer | Audience | Written by | Read by | Purpose |
 |---|---|---|---|---|
 | `.harness/memory.db` | Machine only (opaque) | `memory(action="record", ...)` after each gate cycle | `memory(action="retrieve", ...)` before each repair attempt | BM25-searchable failure trail. |
-| `.tickets/_learnings.md` | Lead only | The lead, by hand | Loaded at `/problem` and `/build` | Human-curated must-fix patterns. |
+| `.tickets/_learnings.md` | Lead-curated | `/deliver` and `/harvest-learnings` (append-only, after lead approval) | Loaded at `/problem` and `/build` | Human-curated must-fix patterns. |
 | `.tickets/_standards.md` | Lead only | The lead, by hand | Loaded at `/problem` and `/build` | Project engineering standards. |
 
-`/deliver` may **suggest** candidate learnings but never writes to `_learnings.md`. `/init` creates both files as stubs.
+`/deliver` and `/harvest-learnings` **append** candidate learnings to `_learnings.md`, but only after the lead accepts them and only via a template-field-only write path (`date | gate | ticket | pattern`) — never raw extracted text, and never overwriting existing content. `/init` creates both files as stubs.
 
 ---
 

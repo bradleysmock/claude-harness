@@ -90,10 +90,10 @@ Two layers, no overlap:
 | Layer | Audience | Written by | Read by |
 |---|---|---|---|
 | `.harness/memory.db` | machine only (opaque) | `memory(action="record", ...)` after each gate cycle | `memory(action="retrieve", ...)` before each repair attempt |
-| `.tickets/_learnings.md` | lead only | the lead, by hand | loaded as context at `/problem` and `/build` |
+| `.tickets/_learnings.md` | lead-curated | `/deliver` and `/harvest-learnings` (append-only, after lead approval) | loaded as context at `/problem` and `/build` |
 | `.tickets/_standards.md` | lead only | the lead, by hand | loaded as context at `/problem` and `/build` |
 
-The machine maintains its own BM25-searchable failure trail in `memory.db` and consults it during repair. The lead curates `_learnings.md` (must-fix patterns) and `_standards.md` (engineering standards) by hand — the harness never writes to either. `/deliver` may *suggest* candidate learnings in its final report; the lead decides what lands in the file.
+The machine maintains its own BM25-searchable failure trail in `memory.db` and consults it during repair. `_standards.md` is hand-edited by the lead only. `_learnings.md` (must-fix patterns) is appended to by `/deliver` and `/harvest-learnings` — but only entries the lead accepts, via a template-field-only write path that never overwrites existing content or writes raw extracted text. `/harvest-learnings` reads the auto-populated `memory.db` for recurring cross-ticket patterns and is the always-available capture path; `/deliver`'s capture is opportunistic — it fires only when the ticket has a `gate-findings.md` (e.g. from a manual `/gate` run).
 
 `/init` creates `_standards.md` and `_learnings.md` as stubs so the harness finds the files it expects from the first session. Edit the standards file before your first `/problem`.
 

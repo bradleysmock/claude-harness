@@ -197,22 +197,44 @@ If the `git merge --squash` reports a conflict, report the error and stop withou
 
 **Partial-move guard:** If both `.tickets/XXXX-<slug>/` and `.tickets/completed/XXXX-<slug>/` exist simultaneously, warn the lead — treat the root copy as authoritative and proceed with the mv from root.
 
-## Step 5 — Suggest candidate learnings (do not write)
+## Step 5 — Candidate learnings (present, then append accepted)
 
-`.tickets/_learnings.md` is lead-curated. The harness never writes to it.
+`.tickets/_learnings.md` is lead-curated. The harness appends to it **only after the
+lead approves**, and only via the template-field-only write path below — it never writes
+raw extracted text.
 
-Scan `gate-findings.md` and commit messages for repairs ("repair" / "fix gate"). If a pattern stands out, surface up to **three** one-line suggestions to the lead in the final report, framed as:
+1. Call `${CLAUDE_PLUGIN_ROOT}/context/helpers/parse-gate-findings.md` with the ticket's
+   `gate-findings.md`, the ticket number, and today's date. It returns a normalized,
+   sanitized candidate list (≤ 5, BLOCKER/MAJOR prioritized).
 
-```
-Candidate learnings to consider adding to .tickets/_learnings.md:
-  - <date> | <gate> | <pattern>
-  - ...
-(Edit _learnings.md yourself if any of these are worth keeping. The model reads it at the start of every /problem and /build.)
-```
+   **Path note:** by this step the ticket directory has already been archived (Step 4)
+   and the worktree removed, so `gate-findings.md` now lives at
+   `.tickets/completed/XXXX-<slug>/gate-findings.md` — pass **that** path, not the
+   pre-archive `.tickets/XXXX-<slug>/` one, which no longer exists. If it is absent,
+   the helper returns no candidates and this step is skipped (below).
+2. Call `${CLAUDE_PLUGIN_ROOT}/context/helpers/candidate-learnings-flow.md` with that
+   candidate list and `.tickets/_learnings.md`. It deduplicates against existing
+   content, presents ready-to-paste lines under a "Candidate learnings" section, runs a
+   single accept/reject exchange, and appends only accepted entries — each built from
+   the validated template fields (`date | gate | ticket | pattern`), never from raw text.
 
-The model's raw per-failure record already lives in `.harness/memory.db` via `memory(action="record", ...)` calls during the gate/repair loop — that is the machine-readable layer and stays opaque. The lead's `_learnings.md` is the human-readable layer.
+If `gate-findings.md` is absent or empty (or parse-gate-findings.md returns no
+candidates), this step is **silently skipped** — no "Candidate learnings" section
+appears in the report.
 
-If `gate-findings.md` is empty or no repair occurred, skip this step.
+**Opportunistic by design:** `gate-findings.md` is written by the `/gate` command, not
+by the default `/build` gate loop (which calls the gate MCP tool directly). So this
+`/deliver` capture fires only when a `gate-findings.md` exists for the ticket (e.g. the
+lead ran `/gate` during review). The always-available capture path is
+`/harvest-learnings`, which mines the auto-populated `.harness/memory.db` for recurring
+cross-ticket patterns between deliveries — run it periodically regardless of whether any
+single delivery produced gate findings.
+
+The model's raw per-failure record also lives in `.harness/memory.db` via
+`memory(action="record", ...)` calls during the gate/repair loop — that is the
+machine-readable layer and stays opaque. The lead's `_learnings.md` is the
+human-readable, lead-approved layer, and `/harvest-learnings` mines the same `memory.db`
+for recurring cross-ticket patterns between deliveries.
 
 ## Step 6 — Clear sentinel
 

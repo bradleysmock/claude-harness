@@ -49,7 +49,7 @@ Ensure each of these entries is present in `.gitignore` (append any that are mis
 
 ### 5 — Write lead-curated stub files
 
-These two files live alongside the tickets and are loaded as context during `/problem` and `/build` so the model respects them from the start. They are **lead-curated** — the harness never auto-appends to them. The machine maintains its own separate failure trail in `.harness/memory.db` (BM25-searchable, opaque).
+These two files live alongside the tickets and are loaded as context during `/problem` and `/build` so the model respects them from the start. They are **lead-curated**: `_standards.md` is only ever hand-edited, and `_learnings.md` is only appended to by `/deliver` and `/harvest-learnings` **after the lead approves** each entry (append-only, never overwriting). The machine maintains its own separate failure trail in `.harness/memory.db` (BM25-searchable, opaque).
 
 Skip whichever file already exists. Do not overwrite.
 
@@ -99,20 +99,20 @@ Replace each section's bullets with what actually applies to this project. Delet
 ```markdown
 # Learnings
 
-Must-fix patterns surfaced through gate failures and post-build reviews. The harness loads this file as context at the start of every `/problem` and `/build` so the model avoids repeating the same mistakes. **Lead-curated** — the harness never appends here. The machine's raw failure trail lives in `.harness/memory.db` (read by `memory(action="retrieve", ...)` before each repair attempt) and is intentionally separate from this file.
+Must-fix patterns surfaced through gate failures and post-build reviews. The harness loads this file as context at the start of every `/problem` and `/build` so the model avoids repeating the same mistakes. **Lead-curated** — `/deliver` and `/harvest-learnings` append to it, but only after the lead accepts each candidate, and only via a template-field-only write path (they never overwrite existing entries or write raw extracted text). The machine's raw failure trail lives in `.harness/memory.db` (read by `memory(action="retrieve", ...)` before each repair attempt) and is intentionally separate from this file.
 
-Format: one entry per pattern, dated, terse.
+Format: one entry per pattern, dated, terse. The `ticket` field is the originating ticket number, or `multi` for a recurring cross-ticket pattern from `/harvest-learnings`.
 
 ```
-YYYY-MM-DD | <gate or area> | <one-line pattern>
+<date> | <gate> | <ticket> | <pattern>
 ```
 
 Examples (delete these once real entries accumulate):
 
 ```
-2026-04-12 | mypy        | Public APIs annotate `Optional[X]`, not `X | None` — older mypy in CI rejects PEP 604.
-2026-04-18 | bandit      | `subprocess.run` with any user-derived value: argv list + `shell=False`, no exceptions.
-2026-05-02 | pytest      | Async tests need `asyncio_mode = auto` in pyproject; without it they silently pass.
+2026-04-12 | type_check | 0031  | Public APIs annotate Optional[X], not X or None — older mypy in CI rejects PEP 604.
+2026-04-18 | security   | 0042  | subprocess.run with any user-derived value: argv list + shell=False, no exceptions.
+2026-05-02 | test       | multi | Async tests need asyncio_mode = auto in pyproject; without it they silently pass.
 ```
 
 Add a new line when you encounter a repeated mistake or a pattern worth enforcing. Keep entries terse — the model uses them as guardrails, not documentation. Prune freely; older entries that no longer apply should be removed by hand.
