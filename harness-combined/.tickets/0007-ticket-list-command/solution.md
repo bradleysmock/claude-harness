@@ -81,6 +81,7 @@ The Python script must:
 | NFR-3b      | Integration | Title of exactly 39 chars → displayed as-is (no truncation) | 0 |
 | extra-pipe  | Integration | Title containing `\|` → rendered as `\\\|`, table structure intact | 0 |
 | extra-nl    | Integration | Title containing embedded newline → newline replaced with space | 0 |
+| FR-13 | — | xref requirements.md FR-13 |
 
 ## Tradeoffs
 
