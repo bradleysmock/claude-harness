@@ -65,6 +65,8 @@ When rebase succeeded (sub-step 2b-4 path), pass the following note to the Step 
 | D-06 gate warning | Integration | `--rebase` succeeds → Step 3 confirmation block includes gate-invalidation notice visibly |
 | Mid-rebase guard | Integration | Worktree already in mid-rebase state when `--rebase` passed → halt with named error, no rebase attempted |
 | Input validation | Unit | Invalid branch name in `status.md` → halt before any git call; assert no git subprocess spawned (instrument or mock `git` calls) |
+| FR-8 | — | xref requirements.md FR-8 |
+| FR-9 | — | xref requirements.md FR-9 |
 
 ## Tradeoffs
 
