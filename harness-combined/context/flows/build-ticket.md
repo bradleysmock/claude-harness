@@ -71,9 +71,52 @@ have no covering spec) and then proceed with the build regardless. This check is
 the coverage map, or one whose specs were hand-written), skip it silently: no warning, no
 error, no change in behavior.
 
+## Step 1.9 — Dependency precondition (before worktree creation)
+
+**Runs before the worktree is created/resumed in Step 2 — a fail-closed gate.** Read the
+ticket's `depends-on:` field (see **Ticket dependencies** in
+`${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`) and enforce it via `ticket_deps.py`,
+scanning the filesystem **once** for this invocation:
+
+```python
+from pathlib import Path
+from ticket_deps import parse_deps, blocking_dependencies
+
+graph = parse_deps(Path(".tickets"))            # scans .tickets/ and .tickets/completed/ once
+blocked = blocking_dependencies(graph, "XXXX")  # deps not yet in `done`
+```
+
+If `blocked` is non-empty, **stop before creating/resuming the worktree** and print a
+structured error naming each blocking ticket and its current status, e.g.:
+
+```
+/build XXXX blocked — unresolved dependencies:
+  - 0010 (implementing)
+  - 0011 (review-ready)
+Deliver those tickets (status: done) first, or edit this ticket's depends-on: field.
+```
+
+`parse_deps` also validates every `depends-on:` reference — a dependency on a ticket that
+exists in neither `.tickets/` nor `.tickets/completed/` raises `ValueError` here (fail-closed).
+
 ## Step 2 — Resume the claim worktree (do not create one)
 
-The branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` already exist — they were created at claim time (`/problem` Phase 1), and the design artifacts live on the branch. **Resume** that worktree; do not fork a new one. Only if the worktree is somehow absent (e.g. a fresh clone, or a ticket claimed before branch-at-claim) recreate it from the existing branch:
+The branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` already exist — they were created at claim time (`/problem` Phase 1), and the design artifacts live on the branch. **Resume** that worktree; do not fork a new one.
+
+**Cycle check on every `status.md` write.** Each time this flow writes `status.md`
+(`implementing`, `review-ready`, `changes-requested`), run a full-graph cycle check first so
+an edit to any ticket's `depends-on:` cannot introduce a cycle that slips through:
+
+```python
+from pathlib import Path
+from ticket_deps import parse_deps, assert_acyclic
+
+assert_acyclic(parse_deps(Path(".tickets")))    # raises TicketCyclicDependencyError on a cycle
+```
+
+A `TicketCyclicDependencyError` (a `ValueError` subclass) names the full cycle path and
+**rejects the write** — resolve the cycle before retrying.
+ Only if the worktree is somehow absent (e.g. a fresh clone, or a ticket claimed before branch-at-claim) recreate it from the existing branch:
 
 ```
 git worktree add .worktrees/XXXX-<slug> ticket/XXXX-<slug>   # fallback only — normally the worktree already exists

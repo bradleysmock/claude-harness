@@ -277,6 +277,31 @@ limit). Write `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md` (hard li
 <Ordered list of implementation steps. This is what /build uses to determine spec order.>
 ```
 
+**Dependency cycle check (before writing `status: solution`).** Phase 4 is the first write
+that may include a `depends-on:` field (see **Ticket dependencies** in
+`${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Because the check runs *before* the
+new `depends-on:` line is persisted, validate the **proposed** edge — the dependencies you are
+about to write — not just the on-disk graph. `ticket_deps.py` exposes an API shaped for exactly
+this so the about-to-be-written edge is included in the cycle / unknown-ref check:
+
+```python
+from pathlib import Path
+from ticket_deps import TicketInfo, assert_acyclic_with_proposed
+
+proposed = TicketInfo(
+    number="XXXX",              # this ticket's number
+    status="solution",
+    depends_on=("0010", "0011"),  # the depends-on: values being authored (() if none)
+)
+assert_acyclic_with_proposed(Path(".tickets"), proposed)
+```
+
+`assert_acyclic_with_proposed` overlays `proposed` onto the loaded graph, then calls
+`build_graph` (FR-9: a non-existent `depends-on:` reference raises `ValueError`) and
+`assert_acyclic`/`check_cycle` (FR-7: a cycle raises `TicketCyclicDependencyError`, a
+`ValueError` subclass, naming the full cycle path). Either error **rejects the write** —
+resolve the cycle or bad reference before proceeding.
+
 Update `status.md` to `status: solution`.
 
 ---

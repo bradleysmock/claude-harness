@@ -52,6 +52,35 @@ N. **NNNN** — one-line reason (size signal + dep note if relevant)
 
 **Critical path:** `NNNN → NNNN → NNNN` — one sentence naming the bottleneck ticket.
 
+### Dependency Graph
+
+Build the dependency graph from every open and completed ticket's `depends-on:` field by
+delegating to `ticket_deps.py` — do **not** re-implement graph logic in prose:
+
+```python
+from pathlib import Path
+from ticket_deps import parse_deps, mermaid_diagram, topo_layers
+
+graph = parse_deps(Path(".tickets"))            # scans .tickets/ and .tickets/completed/
+diagram = mermaid_diagram(graph)                # Mermaid `graph TD`, labels sanitized
+waves = topo_layers(graph)                      # execution-order waves
+```
+
+Render a fenced ` ```mermaid ` block containing the `graph TD` output so GitHub renders it:
+
+````
+```mermaid
+graph TD
+    0010["0010 Base ticket"]
+    0032["0032 Dependent ticket"]
+    0010 --> 0032
+```
+````
+
+Then render the **execution-order waves** from `topo_layers` in the same wave format as the
+Implementation Order section above (one wave per topological layer). If no ticket declares a
+`depends-on:` field, state: *No declared dependencies — all tickets are independent.*
+
 ## Ordering rules
 
 1. **Status stage first** — `implementing` > `review-ready` > `requirements` > `solution` > `problem` > `open`. Tickets already in motion go first.

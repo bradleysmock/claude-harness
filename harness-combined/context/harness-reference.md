@@ -29,8 +29,45 @@ branch: ticket/XXXX-<slug>
 owner: <git config user.email>
 source: local           # reserved seam — `github` etc. for externally-sourced tickets (not built)
 external_id:            # reserved seam — e.g. github:#123
+depends-on: 0010, 0011  # optional — comma-separated 4-digit ticket numbers this ticket depends on
 updated: YYYY-MM-DD
 ```
+
+### Ticket dependencies (`depends-on:`)
+
+`status.md` may carry an **optional** `depends-on:` line whose value is a
+comma-separated list of four-digit ticket numbers (e.g. `depends-on: 0010, 0011`).
+Its **absence is treated identically to an empty list** — no migration is needed
+for pre-existing tickets. All ticket numbers are **normalized to 4-digit
+zero-padded strings** on parse, so `depends-on: 10, 11` and `depends-on: 0010, 0011`
+are equivalent.
+
+The parsing, validation, and graph logic live in `ticket_deps.py` (I/O layer +
+graph layer), which the flow docs delegate to:
+
+- **`parse_deps(tickets_root)`** — scans both `.tickets/` and `.tickets/completed/`
+  (so a ticket may depend on an already-completed one), contains every scanned
+  path within the tickets root (fail-closed path-traversal guard), and returns a
+  frozen `TicketGraph`.
+- **`check_cycle(graph)` / `assert_acyclic(graph)`** — DFS cycle detection
+  (O(N+E)); a cycle raises `TicketCyclicDependencyError` (a `ValueError` subclass)
+  whose message names the full cycle path.
+- **`assert_acyclic_with_proposed(tickets_root, proposed)`** — the write-time guard
+  used by `/problem` Phase 4: it overlays the about-to-be-written `TicketInfo` onto
+  the loaded graph before checking, so a cycle or unknown reference introduced by the
+  edge being authored is caught *before* it is persisted (a plain `assert_acyclic`
+  over on-disk state would miss it).
+- **`blocking_dependencies(graph, ticket)`** — the dependencies of `ticket` not
+  yet in `done` status; a non-empty result blocks `/build`.
+- **`topo_layers(graph)`** — Kahn topological execution waves.
+- **`mermaid_diagram(graph)`** — a Mermaid `graph TD` diagram; labels are
+  sanitized via the `MERMAID_UNSAFE_CHARS` constant.
+
+**Cycle detection runs whenever `status.md` is written with a `depends-on:` field**
+— at design-write time in `/problem` Phase 4 and at any subsequent status
+transition in `/build` — and rejects the write before completing it. A
+`depends-on:` reference to a ticket that exists in neither `.tickets/` nor
+`.tickets/completed/` is a validation error (`ValueError`), not silently ignored.
 
 ### Status transitions
 
