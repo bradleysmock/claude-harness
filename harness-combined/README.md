@@ -144,6 +144,7 @@ Each of these three commands is a **thin controller** in `commands/`. It inspect
 | `/bisect --good <ticket-or-ref> [--bad <ticket-or-ref>] [--run <cmd>]` | Ticket-aware `git bisect`: finds the regression commit and names the ticket that introduced it. Output uses a UTF-8 em-dash: `Regression introduced in commit <sha> — part of ticket XXXX (<title>)`. |
 | `/cancel XXXX` | Abandon ticket: remove worktree, delete branch |
 | `/ticket-status` | Open tickets with implementation order |
+| `/export [--format json\|csv] [--all] [--output <file>]` | Export ticket data (number, title, status, summaries, commits) from `.tickets/` to JSON or CSV. Completed tickets by default; `--all` for every status. |
 | `/velocity` | Cycle-time report over completed tickets: per-ticket detail table, weekly ISO-week summary, and overall average. Date math is delegated to `skills/velocity/compute.py` (deterministic; ticket data piped via stdin). |
 | `/init` | Initialize the pipeline in the current project |
 
