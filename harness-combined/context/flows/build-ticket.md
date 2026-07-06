@@ -181,6 +181,8 @@ Display the critic's structured report to the user verbatim.
 
 ### Step 7a — Auto-repair BLOCKER / MAJOR findings
 
+**Dry-run suppression:** if this run is a dry run (`DRY_RUN=true`, i.e. reached via `build-dry-run-ticket.md`), the auto-repair loop does **not** run — evaluate `should_auto_repair(dry_run)` (from `dry_run.py`) at this entry point; it returns `False` under dry-run. The critic still runs in Step 7 and its findings are shown, but no repair commit is made and no worktree is touched. A dry run stops after displaying the critic output. This check is placed at Step 7a entry (not Step 7) so the critic always runs.
+
 **If the critic surfaces no BLOCKER and no MAJOR findings**, skip to Step 7c.
 
 Otherwise, enter the repair loop. Run up to `MAX_REPAIR_ATTEMPTS` (default 3) attempts:

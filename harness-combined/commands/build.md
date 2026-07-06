@@ -2,6 +2,14 @@ Build `$ARGUMENTS` — generate, validate, and write the implementation.
 
 If `$ARGUMENTS` is empty, ask the lead which ticket or spec to build before doing anything else.
 
+## `--dry-run` flag
+
+Before mode selection, strip a `--dry-run` flag from `$ARGUMENTS` if present (it may appear anywhere in the argument string; the helper `parse_dry_run_flag` in `dry_run.py` does this and returns the remaining argument). A dry run previews a build — it runs every gate phase and the critic in full and prints a plan of the files a live build *would* write, but writes **no** implementation files, creates **no** worktree, and leaves `status.md` untouched.
+
+- **`--dry-run` is ticket mode only.** If the surviving argument does not begin with four digits (i.e. it would select spec mode), reject with an error and stop — `validate_dry_run_mode` raises `DryRunModeError` for this case. Do not fall through to a normal build.
+- When `--dry-run` is present and the surviving argument is a ticket, announce "dry-run ticket mode for XXXX-slug" and read `${CLAUDE_PLUGIN_ROOT}/context/flows/build-dry-run-ticket.md` in full and follow it instead of `build-ticket.md`.
+- When `--dry-run` is absent, continue to normal mode selection below with the (unchanged) argument.
+
 ## Mode selection
 
 Look at `$ARGUMENTS` and pick exactly one mode:

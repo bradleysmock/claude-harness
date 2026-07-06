@@ -32,9 +32,13 @@ Read only the files named in the Components section. Do not explore the full cod
 
 Tell the user which path in one sentence.
 
+## `dry_run` parameter (Steps 4–5)
+
+When this flow is driven by a dry run (`/build --dry-run XXXX` → `build-dry-run-ticket.md`), spec generation runs with `dry_run=True`: the spec objects are derived in-memory exactly as below, but the **write step is skipped** — the `.py` files are *not* persisted to `.harness/specs/` or `.harness/tasks/`, so a dry run leaves no spec artifacts behind (FR-10). Use `persist_specs(spec_sources, project_root, dry_run=dry_run)` in `dry_run.py` as the single write gate: it returns the written paths in a live build and `[]` (writing nothing) under dry-run. All other steps (deriving specs, choosing single-spec vs DAG) are identical.
+
 ## Step 4 — Write spec files
 
-Write each spec to `.harness/specs/XXXX-<slug>-<component>.py`:
+Write each spec to `.harness/specs/XXXX-<slug>-<component>.py` (skipped when `dry_run=True` — see above):
 
 ```python
 from harness import Spec
