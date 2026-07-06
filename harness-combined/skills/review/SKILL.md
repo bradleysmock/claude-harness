@@ -73,10 +73,10 @@ Unlike `critique`, do **not** write the report to `CRITIQUE.md` — the interact
 
 **If changes required** (BLOCKER items exist):
 - Update `status.md` to `status: changes-requested`.
-- Commit the metadata transition to `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+- Commit the metadata transition **inside the worktree on the branch** — it must **not** touch `main` (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
   ```
-  git add .tickets/XXXX-<slug>/
-  git commit -m "chore(ticket): XXXX → changes-requested"
+  git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/status.md
+  git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX → changes-requested"
   ```
 - List which BLOCKER items need addressing.
 - Tell the lead to invoke `/build XXXX` to continue work in the existing worktree.

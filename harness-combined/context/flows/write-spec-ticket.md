@@ -11,6 +11,8 @@ Read the approved `solution.md` and derive specs directly. The design phase alre
 
 Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md`, `solution.md`, `requirements.md`, `problem.md`. Use whichever location the ticket is found in for all subsequent file references in this flow.
 
+Resolve status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`: when the claim-time worktree `.worktrees/XXXX-<slug>` exists, its `.tickets/` copy of `status.md` and the design artifacts it holds are authoritative; the root copy shows only claim/terminal states.
+
 Confirm `status` is `solution`. If not, tell the user to run `/problem XXXX` first (or `/refine XXXX` if `solution.md` exists but needs work) and stop.
 
 Read `${CLAUDE_PLUGIN_ROOT}/context/score-spec.md` in full and apply the checks against this ticket's `requirements.md` and `solution.md`. If the verdict is BLOCK, show the failing checks and stop — the lead must fix the design artifacts before spec generation can proceed. If WARN, show the warnings and continue.

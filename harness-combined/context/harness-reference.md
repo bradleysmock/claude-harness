@@ -53,6 +53,22 @@ updated: YYYY-MM-DD
 
 > **Self-speccing:** `/write-spec` never changed `status`; the `solution → implementing` transition has always been driven by `/build` setup. As of the merged build flow, `/build` also *generates* the spec/task files inline when it starts from `status: solution` with no specs present. `/write-spec` is therefore an optional pre-step, not a required transition.
 
+### Ticket resolution
+
+Every flow that reads a ticket's live status obeys one **worktree-first** rule. This is the single authoritative resolution rule; the resolver flows (`commands/autopilot.md`, `context/flows/build-ticket.md` Step 1, `context/flows/write-spec-ticket.md` Step 1, `commands/gate.md`, `context/flows/deliver-ticket.md` Step 1) cite it rather than re-deriving their own.
+
+- **When a worktree `.worktrees/XXXX-<slug>` exists**, that worktree's `.tickets/XXXX-<slug>/` copy of `status.md` is **authoritative**. It carries every post-claim implementation-phase state — `solution`, `implementing`, `review-ready`, `changes-requested` — because those states are branch-only (see **Two commits on `main`** above).
+- **The root `.tickets/XXXX-<slug>/` copy** (the one on `main`) signals only the coarse **claim and terminal** states: it reads `claimed` from claim until delivery, then `done` / `cancelled` / `abandoned`. Between claim and delivery it is deliberately stale and must **not** be trusted for the implementation-phase status.
+
+So a resolver: (1) locates the ticket dir (`.tickets/XXXX-*`, else `.tickets/completed/XXXX-*`); (2) if `.worktrees/XXXX-<slug>` exists, reads the worktree copy of `status.md`, otherwise the root copy; (3) applies its precondition against that authoritative status.
+
+**Worked example.** A ticket claimed and designed to `solution`:
+
+- `main`'s `.tickets/0042-foo/status.md` → `status: claimed` — the stale claim stub.
+- `.worktrees/0042-foo/.tickets/0042-foo/status.md` → `status: solution` — authoritative.
+
+A resolver that reads the root copy would see `claimed` and wrongly reject a correctly-designed ticket; it must read the worktree copy whenever the worktree exists. (Legacy tickets claimed before branch-at-claim may have no worktree; there the root copy is authoritative until `/build` resumes or recreates one.)
+
 ### State split (multi-developer)
 
 `main` carries only the coarse, durable signal — the `claimed` commit and the terminal `done` / `cancelled` / `abandoned`. **All** post-claim implementation-phase states (`solution`, `implementing`, `review-ready`, `changes-requested`) are **branch only**: committed inside the claim-time worktree and pushed to origin, never to `main`. Because `main` never re-touches a claimed ticket's `.tickets/<slug>/` after the claim stub, the delivery `git merge --squash`'s merge base for that path is the claim stub and only the branch changed it — so the path resolves cleanly with no conflict, and the whole branch (code + the branch's `.tickets/<slug>/`) collapses into one commit.

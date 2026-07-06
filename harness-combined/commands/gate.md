@@ -4,6 +4,8 @@ Manual gate runner — runs the full gate suite against a ticket's worktree usin
 
 A ticket number argument is required. If none is provided, scan `.tickets/` (not `.tickets/completed/`) for tickets with `status: implementing` or `status: review-ready`. If exactly one exists, use it. Otherwise list candidates and stop. For direct ticket ID resolution, check `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/`.
 
+Read each ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`: when a worktree `.worktrees/XXXX-<slug>` exists, its `.tickets/` copy of `status.md` is authoritative (it carries `implementing` / `review-ready`); the root copy shows only claim/terminal states.
+
 ## Steps
 
 1. **Determine worktree path** from `status.md`: read the `branch` field (e.g. `ticket/XXXX-<slug>`), strip the `ticket/` prefix, resolve `.worktrees/XXXX-<slug>` relative to project root. Confirm the directory exists.

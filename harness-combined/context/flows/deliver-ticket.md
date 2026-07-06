@@ -13,6 +13,8 @@ Merge the ticket's worktree branch into main, remove the worktree, and record le
 
 Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md`.
 
+Resolve status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`: the branch is still unmerged here, so the worktree `.worktrees/XXXX-<slug>` exists and its `.tickets/` copy of `status.md` is authoritative — the root copy still reads `claimed`. Confirm `review-ready` against the worktree copy.
+
 - Confirm `status` is `review-ready`. If not, tell the user to run `/build XXXX` first and stop.
 - Extract `branch` (e.g. `ticket/XXXX-<slug>`) and `ticket` number.
 - Run `git branch --list <branch>` to confirm the branch exists.

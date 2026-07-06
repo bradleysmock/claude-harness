@@ -24,11 +24,11 @@ If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, th
 
 4. After each resolved item, update `solution.md` to reflect the decision. Track unresolved items in an Open Questions section.
 
-5. Status stays at `solution` — `/refine` can be run multiple times. If you revised `solution.md` (or any artifact), commit the change to `main` so it is not left local-only (scoped add — see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+5. Status stays at `solution` — `/refine` can be run multiple times. If you revised `solution.md` (or any artifact), commit the change **inside the worktree on the branch** so it is not left local-only and never lands on `main` (the artifacts live on the branch per the **Ticket resolution** rule in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`; scoped add — see "Committing ticket metadata" there):
 
 ```
-git add .tickets/XXXX-<slug>/
-git commit -m "chore(ticket): XXXX refine solution"
+git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/
+git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX refine solution"
 ```
 
 If no artifact was changed this pass, skip the commit.
@@ -59,7 +59,8 @@ Rules:
 5. **Bail if undrivable.** If a flagged check cannot be resolved from existing text
    without fabricating scope (e.g. `FR count` is short and no further FR is implied),
    make no change and report **bail** to Step S. Do not guess.
-6. **Commit on change.** If an artifact was revised, commit it to `main` exactly as
-   in Step 5 (`chore(ticket): XXXX refine solution`). Step S re-scores the committed
-   files. If nothing changed (bail), make no commit.
+6. **Commit on change.** If an artifact was revised, commit it **on the branch inside
+   the worktree** exactly as in Step 5 (`chore(ticket): XXXX refine solution`) — never
+   to `main`. Step S re-scores the committed worktree files. If nothing changed (bail),
+   make no commit.
 

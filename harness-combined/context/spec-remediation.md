@@ -12,13 +12,15 @@ when reached from autopilot's Step S.
 
 ## Invariants
 
-- **No worktree yet.** Step S runs *before* any worktree is created. The "fix
-  before worktree" invariant holds — a worktree is created only once the verdict
-  is PASS/WARN (NFR-1).
+- **Worktree already exists.** Under branch-at-claim the claim-time worktree
+  `.worktrees/XXXX-<slug>` was created at `/problem` Phase 1, so Step S remediates
+  the design artifacts it holds *before* any implementation is written — it does not
+  create anything. The worktree's `.tickets/` copies are authoritative per the
+  **Ticket resolution** rule in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`.
 - **Authoritative re-score on committed files.** After each pass the revised
-  `requirements.md` / `solution.md` are committed to `main`, then `score-spec.md`
-  is re-applied to the committed files. The re-score — not the fixer — decides
-  whether to continue (FR-7).
+  `requirements.md` / `solution.md` are committed **on the branch inside the
+  worktree** (never to `main`), then `score-spec.md` is re-applied to those committed
+  worktree files. The re-score — not the fixer — decides whether to continue (FR-7).
 - **Structural only.** Mechanical fixers never author prose. The text being
   remediated is the same untrusted artifact text score-spec gates, so the gate
   must not score content written to pass it.
@@ -59,13 +61,13 @@ new_req, new_sol, announcements = remediate_mechanical(requirements_text, soluti
   per edit, for lead audit (NFR-1).
 - Write `new_req` / `new_sol` back to the ticket's `requirements.md` /
   `solution.md`.
-- **Commit to `main`** (scoped add — see "Committing ticket metadata" in
-  `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
+- **Commit on the branch inside the worktree** — never to `main` (scoped add — see
+  "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
   ```
-  git add .tickets/XXXX-<slug>/
-  git commit -m "chore(ticket): XXXX spec-remediate (mechanical)"
+  git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/
+  git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX spec-remediate (mechanical)"
   ```
-- **Re-score** the committed files per `score-spec.md`. This is re-score #1.
+- **Re-score** the committed worktree files per `score-spec.md`. This is re-score #1.
   - **PASS/WARN** and no `semantic` checks were ever flagged → the ticket was
     cleared by mechanical fixes only. It stays **fully autonomous** (FR-9): return
     `succeeded(autonomous=True)` to Step S.
@@ -87,8 +89,8 @@ non-interactive `/refine` pass (see `${CLAUDE_PLUGIN_ROOT}/commands/refine.md`,
 - If `/refine` reports it cannot drive the fix from existing text (e.g. an
   `FR count` BLOCK with no derivable FR), it **bails** — it must not fabricate
   net-new scope. Treat that as **hard-stop**.
-- `/refine` commits the revised artifact to `main` itself.
-- **Re-score** the committed files. This is re-score #2 (budget exhausted).
+- `/refine` commits the revised artifact on the branch inside the worktree itself.
+- **Re-score** the committed worktree files. This is re-score #2 (budget exhausted).
   - **PASS/WARN** → return `succeeded(autonomous=False)` to Step S. A refine clear
     reached build but **must not auto-deliver** — Step B confirms the diff (FR-9).
   - **Still BLOCK** → **hard-stop**.
@@ -97,7 +99,8 @@ non-interactive `/refine` pass (see `${CLAUDE_PLUGIN_ROOT}/commands/refine.md`,
 
 Remediation could not clear the BLOCK within budget (or hit a `hard_stop` / an
 undrivable refine). Return `bail` to Step S with the residual score-spec report.
-No worktree was created. Step S surfaces the residual checks to the lead and stops
+No implementation was written; the claim-time worktree is left holding only its
+design artifacts. Step S surfaces the residual checks to the lead and stops
 — exactly the behavior interactive `/build` would have had on the original BLOCK.
 
 ## Outcomes returned to Step S
