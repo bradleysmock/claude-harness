@@ -45,6 +45,7 @@ Introduce a `GateScheduler` class in `gates/scheduler.py` that accepts a gate li
 | FR-8 (large output) | Unit | Gate returns 1 MB of stdout; `LogWriter.write` produces a log file of the correct byte count; `GateResult` is not truncated (D-15) |
 | NFR-1 | Unit | Gate function raises unhandled exception; sibling gates complete; exception surfaces as `TOOL_ERROR` in results |
 | NFR-3 | Unit | Cycle in `GATE_GRAPH` raises `ValueError` at `validate_dag()` call |
+| FR-9 | — | xref requirements.md FR-9 |
 
 ## Tradeoffs
 
