@@ -55,6 +55,7 @@ subprocess call; the annotation step fails closed when the report is absent or u
 | FR-7 | Unit | Pass rate 0.6 with `--threshold 0.8` → `0.6 < 0.8` → not in flaky report (treated as blocker) |
 | NFR-2 | Unit | JSON output loads without error; schema fields present; deterministic across runs |
 | NFR-3 | Integration | State of `.harness/` is identical before run N and before run N+1 within a single `/flaky` execution |
+| FR-1 | — | xref requirements.md FR-1 |
 
 ## Tradeoffs and Risks
 
