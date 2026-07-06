@@ -7,3 +7,6 @@ mypy>=1.10
 pytest>=8.0
 bandit>=1.7
 textual>=0.50
+# Coverage gate reads per-language thresholds from `.tickets/_thresholds.yaml`.
+# Imported lazily by gates/coverage.py — only required when that file is present.
+PyYAML>=6.0

@@ -35,6 +35,32 @@ The tool runs `git log main..<branch>` and validates each subject against `type(
 
 This gate is independent of `/deliver` and can be run standalone (e.g. in CI) by invoking `commit_lint` directly.
 
+## Step 1.6 — Coverage enforcement preflight (fail-closed)
+
+Before offering delivery, verify the coverage gate's verdict. The coverage gate
+(`gates/coverage.py`, run as part of `gate_run_on_dir` during `/build`) writes a
+machine-readable sidecar at `.tickets/XXXX-<slug>/gate-findings.json`. Because the
+branch is still unmerged, read it from the **branch's** copy — the worktree
+(`.worktrees/XXXX-<slug>/…/.tickets/XXXX-<slug>/gate-findings.json`) or, equivalently,
+`git show <branch>:<path-to>/gate-findings.json`. The root copy on `main` is not
+authoritative here.
+
+Parse it with a strict JSON reader and inspect `coverage.passed`:
+
+- **`coverage.passed == true`** → continue to Step 2. (A `status` of `"skipped"` — no
+  threshold configured, or the coverage tool is not installed — is a legitimate pass:
+  the gate is skip-safe by design.)
+- **Sidecar absent, unreadable, not valid JSON, missing the `coverage` object, or
+  `coverage.passed != true`** → **stop before the confirm prompt (fail-closed).** An
+  absent or malformed sidecar is treated as a **failure**, never as "no coverage data".
+  Print the reason (missing file / parse error / `coverage.status` + any `warnings`) and
+  tell the lead to re-run `/build XXXX` so the coverage gate re-writes a passing sidecar,
+  or to lower/clear the floor in `.tickets/_thresholds.yaml` if the threshold is wrong.
+  Do **not** proceed to Step 3.
+
+This preflight is what makes the coverage floor binding at delivery: a formatting change
+or a deleted findings file can never silently unblock a merge.
+
 ## Step 2 — Check for file conflicts with other review-ready tickets
 
 Get changed files: `git diff --name-only main....<branch>`

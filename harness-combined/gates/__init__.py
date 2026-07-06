@@ -93,6 +93,43 @@ def run_suite_for(
         raise ValueError(f"Unsupported language: {language!r}")
 
 
+# Languages the coverage gate can measure (Python, Node.js, Rust — FR-1).
+_COVERAGE_LANGUAGES = ("python", "typescript", "rust")
+
+
+def _append_coverage_gate(
+    results: list[GateResult],
+    language: str,
+    directory: str,
+    standards_path: str | None,
+    base_ref: str,
+) -> None:
+    """Append one coverage GateResult after the language gates, when applicable.
+
+    Runs only when a ``standards_path`` was supplied, the language supports coverage,
+    and every prior gate passed (coverage runs *after* the test gate — FR-1). The
+    coverage gate is skip-safe by construction; the narrow guard here is defence in
+    depth so a filesystem/config/runtime fault degrades to a warning entry instead of
+    breaking the whole suite (mirrors the dep-audit phase precedent), preserving NFR-2.
+    """
+    if standards_path is None or language not in _COVERAGE_LANGUAGES:
+        return
+    if not all(r.passed for r in results):
+        return
+    from gates.coverage import run_coverage_gate
+    try:
+        results.append(run_coverage_gate(directory, language, standards_path, base_ref))
+    except (OSError, ValueError, RuntimeError) as exc:
+        results.append(GateResult(
+            gate="coverage", passed=True,
+            errors=[GateError(
+                message=f"coverage gate degraded: {exc}", file=None, line=None,
+                column=None, code="COVERAGE_GATE_ERROR", severity="warning",
+            )],
+            duration_ms=0,
+        ))
+
+
 def _language_suite_on_dir(
     language: str,
     directory: str,
@@ -101,18 +138,19 @@ def _language_suite_on_dir(
     """Dispatch to a single language's directory-mode gate suite."""
     if language == "python":
         from gates.python import run_python_suite_on_dir
-        return run_python_suite_on_dir(directory, fail_fast=fail_fast)
+        results = run_python_suite_on_dir(directory, fail_fast=fail_fast)
     elif language == "typescript":
         from gates.typescript import run_typescript_suite_on_dir
-        return run_typescript_suite_on_dir(directory, fail_fast=fail_fast)
+        results = run_typescript_suite_on_dir(directory, fail_fast=fail_fast)
     elif language == "go":
         from gates.go import run_go_suite_on_dir
-        return run_go_suite_on_dir(directory, fail_fast=fail_fast)
+        results = run_go_suite_on_dir(directory, fail_fast=fail_fast)
     elif language == "rust":
         from gates.rust import run_rust_suite_on_dir
-        return run_rust_suite_on_dir(directory, fail_fast=fail_fast)
+        results = run_rust_suite_on_dir(directory, fail_fast=fail_fast)
     else:
         raise ValueError(f"Unsupported language: {language!r}")
+    return results
 
 
 def _dep_audit_model_result(directory: str) -> GateResult:
@@ -157,17 +195,23 @@ def run_suite_on_dir(
     language: str,
     directory: str,
     fail_fast: bool = True,
+    *,
+    standards_path: str | None = None,
+    base_ref: str = "main",
 ) -> list[GateResult]:
-    """Directory mode: language gates, then a single post-language dep-audit phase.
+    """Directory mode: language gates, then coverage and dep-audit phases.
 
-    The dep-audit phase runs once, after the language-specific phases, with no
-    per-language branching. In fail-fast mode a failing language gate
-    short-circuits before dep-audit runs. The phase is skipped entirely when
-    gate config disables it (FR-10 — selective skip).
+    After the language-specific phases pass, a coverage gate is appended when
+    ``standards_path`` is provided (see :func:`_append_coverage_gate`), followed by
+    a single post-language dep-audit phase. In fail-fast mode a failing language
+    gate short-circuits before either extra phase runs. Callers that omit
+    ``standards_path`` keep the pre-coverage behaviour.
     """
     results = _language_suite_on_dir(language, directory, fail_fast=fail_fast)
     if fail_fast and not all(r.passed for r in results):
         return results
+    # Coverage runs after the language/test gates pass (FR-1), before dep-audit.
+    _append_coverage_gate(results, language, directory, standards_path, base_ref)
     from gates.dep_audit import dep_audit_enabled
     if dep_audit_enabled(directory):
         results.append(_dep_audit_model_result(directory))

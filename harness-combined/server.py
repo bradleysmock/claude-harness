@@ -193,9 +193,19 @@ def gate_run_on_dir(directory: str, language: str, project_root: str, fail_fast:
         # Gate every detected stack; a polyglot worktree must not pass by
         # gating only one language (FR-7). Single explicit language keeps the
         # original response shape for back-compat with /build.
+        # The coverage gate reads its thresholds from `.tickets/_thresholds.yaml`
+        # and writes its `gate-findings.json` sidecar into `.tickets/<active-slug>/`.
+        # Both must resolve against the *directory being gated* (the worktree/branch),
+        # NOT `project_root` (the main repo) — otherwise the sidecar the gate writes
+        # and the branch copy the `/deliver` preflight reads would never coincide.
+        # The server only locates the standards file; it never parses thresholds.
+        standards_path = str(Path(directory) / ".tickets" / "_standards.md")
         aggregated: list[tuple[str, Any]] = []
         for stack in stacks:
-            results = run_suite_on_dir(stack, directory, fail_fast=fail_fast)
+            results = run_suite_on_dir(
+                stack, directory, fail_fast=fail_fast,
+                standards_path=standards_path, base_ref="main",
+            )
             aggregated.extend((stack, r) for r in results)
             if fail_fast and not all(r.passed for r in results):
                 failed = next(r for r in results if not r.passed)
