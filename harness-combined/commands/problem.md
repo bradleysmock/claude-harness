@@ -144,6 +144,7 @@ ticket: XXXX
 title: <title>
 type: <category | category (inferred) | generic>
 effort: small
+milestone:
 branch: ticket/XXXX-<slug>
 owner: <git config user.email>
 source: local
@@ -160,6 +161,10 @@ The `type` field records the category resolved in Phase 1.5 via
 `type: generic` when no category applies. It gives traceability for template
 drift (a renamed template file leaves the `type:` visible while no template is
 applied).
+
+The optional `milestone:` field associates the ticket with a named milestone defined
+in `.tickets/_milestones.md` (see `/milestone`); leave it blank if the ticket belongs
+to no milestone. Names use the charset `[A-Za-z0-9._-]` (max 40 chars).
 
 ---
 

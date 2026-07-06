@@ -12,6 +12,10 @@ Before running anything, interpret `$ARGUMENTS`. Only these flags are recognised
 - `--open` — show only tickets under `.tickets/` (exclude `completed/`).
 - `--completed` — show only tickets under `.tickets/completed/`.
 - `--status <stage>` — show only tickets whose `status` field equals `<stage>`.
+- `--milestone <name>` — show only tickets whose `milestone` field equals `<name>`.
+  `<name>` is validated against the safe charset `[A-Za-z0-9._-]` (max 40 chars); a
+  name absent from `.tickets/_milestones.md` is still shown but annotated
+  `(undefined)`. Pairs with `/milestone` (which aggregates the same field).
 
 Validation rules — enforce these before invoking Python:
 
@@ -67,14 +71,40 @@ VALID_STAGES = (
 DASH = "—"  # em dash for a missing/blank field
 ELLIPSIS = "…"
 TITLE_MAX = 39  # a title longer than this is truncated to 39 chars + ellipsis
-FIELDS = ("ticket", "status", "title", "effort", "updated")
+FIELDS = ("ticket", "status", "title", "effort", "updated", "milestone")
+
+# Safe charset for a milestone name — the same identifier rule /milestone enforces.
+# Validating a file- or CLI-supplied name before any comparison or display keeps a
+# value carrying shell metacharacters out of the pipeline (it is data, never executed).
+MILESTONE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+MILESTONE_MAX = 40
+
+
+def valid_milestone(name):
+    return bool(name) and len(name) <= MILESTONE_MAX and MILESTONE_RE.match(name) is not None
+
+
+def defined_milestones(tickets_root):
+    """Set of milestone names declared as `## milestone: Name` in _milestones.md
+    (empty if the file is absent). Used only to annotate an undefined filter name."""
+    names = set()
+    try:
+        text = (tickets_root / "_milestones.md").read_text(encoding="utf-8")
+    except OSError:
+        return names
+    for line in text.splitlines():
+        match = re.match(r"^##\s+milestone:\s*(.*)$", line)
+        if match and match.group(1).strip():
+            names.add(match.group(1).strip())
+    return names
 
 
 def parse_args(argv):
-    """Return (open_only, completed_only, status_filter) or exit 1 on bad input."""
+    """Return (open_only, completed_only, status_filter, milestone_filter) or exit 1."""
     open_only = False
     completed_only = False
     status_filter = None
+    milestone_filter = None
     i = 0
     while i < len(argv):
         arg = argv[i]
@@ -87,6 +117,11 @@ def parse_args(argv):
             if i >= len(argv):
                 fail("--status requires a stage argument")
             status_filter = argv[i]
+        elif arg == "--milestone":
+            i += 1
+            if i >= len(argv):
+                fail("--milestone requires a name argument")
+            milestone_filter = argv[i]
         else:
             fail(f"unknown argument: {arg}")
         i += 1
@@ -97,7 +132,12 @@ def parse_args(argv):
             f"invalid --status {status_filter!r}; "
             f"expected one of: {', '.join(VALID_STAGES)}"
         )
-    return open_only, completed_only, status_filter
+    if milestone_filter is not None and not valid_milestone(milestone_filter):
+        fail(
+            f"invalid --milestone {milestone_filter!r}; "
+            f"allowed [A-Za-z0-9._-], max {MILESTONE_MAX} chars"
+        )
+    return open_only, completed_only, status_filter, milestone_filter
 
 
 def fail(message):
@@ -117,7 +157,9 @@ def parse_status_file(path):
         if match:
             key = match.group(1).strip().lower()
             value = match.group(2).strip()
-            if key in FIELDS and value:
+            # First value of a repeated key wins (FR-3: a ticket has at most one
+            # milestone). Harmless for the single-line fields, which never repeat.
+            if key in FIELDS and value and key not in fields:
                 fields[key] = value
     return fields
 
@@ -167,13 +209,11 @@ def collect(tickets_root, completed):
 
 
 def main(argv):
-    open_only, completed_only, status_filter = parse_args(argv)
+    open_only, completed_only, status_filter, milestone_filter = parse_args(argv)
     tickets_root = Path(".tickets").resolve()
 
     rows = []
-    if not tickets_root.is_dir():
-        rows = []
-    else:
+    if tickets_root.is_dir():
         wanted = []
         if not completed_only:
             wanted.append(False)  # open
@@ -186,11 +226,21 @@ def main(argv):
         for _key, is_completed, fields in gathered:
             if status_filter is not None and fields.get("status") != status_filter:
                 continue
+            if milestone_filter is not None and fields.get("milestone") != milestone_filter:
+                continue
             rows.append((is_completed, fields))
 
     if not rows:
-        print("No tickets found.")
+        if milestone_filter is not None:
+            print(f"No tickets found for milestone '{milestone_filter}'.")
+        else:
+            print("No tickets found.")
         return 0
+
+    # FR-AC: a milestone tagged on tickets but absent from _milestones.md is still
+    # listed, flagged so the operator can spot the typo/orphan.
+    if milestone_filter is not None and milestone_filter not in defined_milestones(tickets_root):
+        print(f"Note: milestone '{milestone_filter}' is not defined in _milestones.md (undefined).")
 
     header = "| Ticket # | Status | Title | Effort | Updated |"
     divider = "|---|---|---|---|---|"
