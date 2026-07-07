@@ -59,9 +59,37 @@ def gate_python(file_path: str) -> list[str]:
     return findings
 
 
+def _js_project_root(file_path: str) -> Path | None:
+    """Nearest ancestor directory of ``file_path`` containing package.json.
+
+    Simple bounded upward walk that stops at the filesystem root, so the search
+    stays well within the 20-second tool timeout. Returns None when no ancestor
+    holds a package.json.
+    """
+    current = Path(file_path).resolve().parent
+    for directory in (current, *current.parents):
+        if (directory / "package.json").is_file():
+            return directory
+    return None
+
+
 def gate_javascript_typescript(file_path: str) -> list[str]:
     findings: list[str] = []
-    if shutil.which("eslint") is not None:
+    # Prefer the project-local eslint (node_modules/.bin/eslint) via
+    # `npx --no-install`, matching how the Stop hook resolves eslint. Most
+    # projects have no global eslint on PATH, so a bare `eslint` call almost
+    # never fires. Fall back to a global eslint, and skip silently when neither
+    # exists.
+    project_root = _js_project_root(file_path)
+    if project_root is not None and (project_root / "node_modules" / ".bin" / "eslint").exists():
+        return_code, output = run_tool(
+            "npx",
+            ["--no-install", "eslint", "--no-color", "--format", "compact", file_path],
+            cwd=project_root,
+        )
+        if return_code not in (0, None) and output.strip():
+            findings.append(f"eslint:\n{output.strip()}")
+    elif shutil.which("eslint") is not None:
         return_code, output = run_tool("eslint", ["--no-color", "--format", "compact", file_path])
         if return_code not in (0, None) and output.strip():
             findings.append(f"eslint:\n{output.strip()}")

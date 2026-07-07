@@ -715,18 +715,21 @@ def memory(
     attempt: int = 0,
     outcome: str = "",
     limit: int = 3,
+    resolution: str = "",
 ) -> str:
     """
     Gate failure memory.
 
-    action="record": save a failure/resolution. Required: spec_id, gate, errors_text, attempt, outcome ('passed'|'escalated').
+    action="record": save a failure/resolution. Required: spec_id, gate, errors_text, attempt, outcome ('passed'|'escalated'). Optional: resolution — a one-line summary of HOW a passed failure was fixed, surfaced in future retrievals.
     action="retrieve": BM25 search for similar past failures. Required: errors_text, gate. Optional: limit (default 3).
 
     Returns "recorded" or formatted failure narratives.
     """
     try:
         if action == "record":
-            _memory(project_root).record(spec_id, gate, errors_text, attempt, outcome)
+            _memory(project_root).record(
+                spec_id, gate, errors_text, attempt, outcome, resolution or None
+            )
             return "recorded"
         if action == "retrieve":
             narratives = _memory(project_root).retrieve_similar(errors_text, gate, limit)

@@ -205,6 +205,29 @@ it.
 > the run before `sast` executes. Fix earlier-phase failures to surface SAST
 > findings. Pin `.semgrep.yml` to avoid `p/default` rule churn.
 
+### Hook ↔ MCP gate command parity
+
+The write-time hooks and the MCP gate must enforce the **same** commands per
+language, or the same code gets inconsistent signals (e.g. a data race that
+passes the turn-end hook but fails the `-race` MCP gate). The per-language
+commands are documented below and locked by a drift test
+(`tests/test_0052_hook_gate_drift.py`), which parses this table and asserts the
+documented commands still match the hook and gate source. Update this table and
+the source together; the drift test fails if they diverge.
+
+| Language   | Per-write hook (`post_write_gate`) | Stop hook (`stop_full_gate`)                                   | MCP gate (`gates/`)                              |
+|------------|------------------------------------|----------------------------------------------------------------|--------------------------------------------------|
+| Python     | `ruff check`, `bandit -ll`         | `ruff check`, `bandit -ll`, `mypy`, `pytest -q`                 | `ruff`, `mypy`, `bandit`, `pytest`               |
+| JS/TS      | `npx --no-install eslint`          | `npx --no-install eslint`, `npx --no-install tsc --noEmit`, `npm test` | `eslint`, `tsc --noEmit`                  |
+| Go         | `gofmt -l`                         | `gofmt -l`, `go vet ./...`, `go test -race ./...`              | `go vet`, `go test -race -v ./...`               |
+| Rust       | `rustfmt --check`                  | `cargo fmt --check`, `cargo clippy`, `cargo test`             | `cargo check`, `cargo clippy`, `cargo test`      |
+
+The Go row is the parity that motivated this table: both the Stop hook and the
+MCP gate run `go test` with `-race`, so a data race cannot pass one layer and
+fail the other. The per-write hook resolves `eslint` through
+`npx --no-install` from the written file's project root (nearest `package.json`),
+matching the Stop hook, so project-local eslint installs actually lint on write.
+
 ### Parallel gate execution (`parallel_gate_limit`)
 
 In **directory mode** the language gates run through a dependency-aware scheduler

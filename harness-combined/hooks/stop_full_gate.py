@@ -352,7 +352,9 @@ def gates_go(worktree_dir: Path) -> list[str]:
     if code not in (0, None) and out:
         failures.append(f"go vet:\n{out}")
 
-    code, out = run_gate("go", ["test", "./..."], worktree_dir)
+    # -race matches the MCP Go gate (gates/go.py runs `go test -race -v ./...`),
+    # so a data race cannot pass the turn-end hook and then fail the MCP gate.
+    code, out = run_gate("go", ["test", "-race", "./..."], worktree_dir)
     if code not in (0, None) and out:
         tail = "\n".join(out.splitlines()[-40:])
         failures.append(f"go test (last 40 lines):\n{tail}")
