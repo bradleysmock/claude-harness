@@ -358,6 +358,8 @@ def _no_dep_audit(monkeypatch):
 
 def test_run_suite_appends_coverage_after_language_gates(monkeypatch, _no_dep_audit):
     import gates as gates_pkg
+    monkeypatch.setattr("gates.secrets.run_secrets_gate",
+                        lambda d: GateResult(gate="secrets", passed=True, errors=[], duration_ms=0))
     monkeypatch.setattr("gates.python.run_python_suite_on_dir",
                         lambda directory, fail_fast=True, config=None: [
                             GateResult(gate="test", passed=True, errors=[], duration_ms=1)])

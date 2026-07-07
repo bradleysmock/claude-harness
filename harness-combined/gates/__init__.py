@@ -379,11 +379,24 @@ def run_suite_on_dir(
     ``changed_files`` (ticket 0030) is forwarded to the language suite so a gate
     whose scope does not overlap the diff is skipped; the coverage/dep-audit/SAST
     phases are unaffected — they still run only after the language gates pass.
+
+    The secrets gate runs first, before language dispatch, via a single
+    pre-dispatch insertion (ticket 0029, FR-2/FR-8) so every language inherits it
+    with no per-language edit. Unlike the advisory coverage/dep-audit/sast phases
+    it is a *hard* gate — its ``passed`` flag is used as-is. In fail-fast mode a
+    detected credential short-circuits the whole suite before any language gate
+    runs (a leaked secret is the highest-severity defect — fail as early as
+    possible); the returned list then holds only the secrets result.
     """
+    from gates.secrets import run_secrets_gate
+    secrets_result = run_secrets_gate(Path(directory))
+    if fail_fast and not secrets_result.passed:
+        return [secrets_result]
     results = _language_suite_on_dir(
         language, directory, fail_fast=fail_fast, config=config,
         overrides=overrides, changed_files=changed_files,
     )
+    results.insert(0, secrets_result)
     if fail_fast and not all(r.passed for r in results):
         return results
     # Coverage runs after the language/test gates pass (FR-1), before dep-audit.

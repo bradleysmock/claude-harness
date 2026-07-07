@@ -232,6 +232,11 @@ def test_failfast_skipped_gate_does_not_shortcircuit(monkeypatch, tmp_path: Path
 
 def test_run_suite_on_dir_threads_changed_files(monkeypatch, tmp_path: Path) -> None:
     _fake_subprocess_success(monkeypatch)
+    # The secrets gate (ticket 0029) runs first and would fail-close with no
+    # scanner installed, short-circuiting before the language suite; neutralise it
+    # so this test exercises the changed_files threading it is about.
+    monkeypatch.setattr("gates.secrets.run_secrets_gate",
+                        lambda d: GateResult("secrets", True, [], 0))
     results = gates.run_suite_on_dir("python", str(tmp_path), changed_files=["README.md"])
     lang_gates = [r for r in results if r.gate in {"lint", "type_check", "test", "security"}]
     assert lang_gates and all(r.skipped for r in lang_gates)

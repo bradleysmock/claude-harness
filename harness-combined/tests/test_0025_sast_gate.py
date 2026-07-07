@@ -353,11 +353,13 @@ def _passing(gate_name: str) -> GateResult:
 
 
 def test_sast_appended_last(monkeypatch, tmp_path):
+    monkeypatch.setattr("gates.secrets.run_secrets_gate", lambda d: _passing("secrets"))
     monkeypatch.setattr(gates, "_language_suite_on_dir",
                         lambda *a, **k: [_passing("lint"), _passing("test")])
     monkeypatch.setattr("gates.dep_audit.dep_audit_enabled", lambda d: False)
     results = gates.run_suite_on_dir("python", str(tmp_path), fail_fast=False)
-    assert [r.gate for r in results][:2] == ["lint", "test"]
+    # secrets is prepended as the first gate (ticket 0029); lint/test follow.
+    assert [r.gate for r in results][:3] == ["secrets", "lint", "test"]
     assert results[-1].gate == "sast"
 
 

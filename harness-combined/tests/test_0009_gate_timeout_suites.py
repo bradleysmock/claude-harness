@@ -135,6 +135,8 @@ def test_run_suite_on_dir_forwards_config_to_language_suite(monkeypatch):
         captured["config"] = config
         return [GateResult(gate="lint", passed=True, errors=[], duration_ms=1)]
 
+    monkeypatch.setattr("gates.secrets.run_secrets_gate",
+                        lambda d: GateResult(gate="secrets", passed=True, errors=[], duration_ms=0))
     monkeypatch.setattr(python, "run_python_suite_on_dir", fake_python_dir)
     cfg = GateTimeoutConfig(default_timeout_seconds=42)
     gates.run_suite_on_dir("python", ".", config=cfg)
