@@ -227,7 +227,22 @@ def _format_polyglot_findings(results: list[LanguageResult], directory: str) -> 
             status = "SKIP" if gr.skipped else ("PASS" if gr.passed else "FAIL")
             lines.append(f"## {lr.language} / {gr.gate}" if multi else f"## {gr.gate}")
             lines += ["", f"**Status**: {status}",
-                      f"**Duration**: {gr.duration_ms}ms", ""]
+                      f"**Duration**: {gr.duration_ms}ms"]
+            # Test-gate run mode + baseline-excluded failures (ticket 0041):
+            # informational — these pre-existing failures were already failing at
+            # the merge base and are not counted against the ticket. ``mode`` is
+            # None and the list empty for every non-test / skipped gate, so nothing
+            # renders there.
+            if gr.mode:
+                lines.append(f"**Mode**: {gr.mode}")
+            if gr.baseline_excluded:
+                lines.append(
+                    f"**Baseline-excluded** ({len(gr.baseline_excluded)} pre-existing "
+                    "failure(s), not counted against this ticket):"
+                )
+                for tid in gr.baseline_excluded:
+                    lines.append(f"- (baseline) `{tid}`")
+            lines.append("")
             if gr.skipped:
                 lines.append(f"**Reason**: {gr.skip_reason}")
             elif gr.errors:

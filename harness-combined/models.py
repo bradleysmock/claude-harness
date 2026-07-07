@@ -53,6 +53,13 @@ class GateResult:
     #: failure — ``passed`` stays True — so it never trips the fail-fast loop.
     skipped: bool = False
     skip_reason: str = ""
+    # Optional test-gate reporting (ticket 0041): which run mode produced this
+    # result ("full" | "baseline-delta") and any pre-existing failures excluded
+    # from the pass/fail decision because they were already failing at the merge
+    # base. Both default to the pre-0041 shape so every other gate's ``to_dict``
+    # output stays byte-identical — the keys appear only when populated.
+    mode: str | None = None
+    baseline_excluded: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -67,6 +74,10 @@ class GateResult:
         if self.skipped:
             d["skipped"] = True
             d["skip_reason"] = self.skip_reason
+        if self.mode is not None:
+            d["mode"] = self.mode
+        if self.baseline_excluded:
+            d["baseline_excluded"] = list(self.baseline_excluded)
         return d
 
 
