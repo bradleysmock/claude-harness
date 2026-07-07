@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,28 @@ from types import ModuleType
 from typing import Callable
 
 PER_GATE_TIMEOUT_SECONDS = 90
+
+# Vendored / cache / generated directories excluded from recursive source probes
+# (FR-3). Deliberately duplicated from server._SCAN_SKIP: the Stop hook must run
+# standalone (it never imports server, to avoid dragging in the full gate suite),
+# so the constant is copied and pinned identical by a consistency test rather
+# than shared by import.
+_SCAN_SKIP = {"node_modules", ".git", ".venv", "venv", "dist", "target", "__pycache__"}
+
+
+def _has_source_file(root: Path, suffix: str) -> bool:
+    """True if any file ending in ``suffix`` exists under ``root``, skipping
+    vendored/generated trees (FR-3).
+
+    Uses an ``os.walk`` that prunes every directory in ``_SCAN_SKIP`` from
+    descent, so it never recurses into ``node_modules`` / ``.venv`` / etc. — a
+    bounded walk rather than a full ``rglob`` of vendored trees (NFR-1).
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SCAN_SKIP]
+        if any(name.endswith(suffix) for name in filenames):
+            return True
+    return False
 
 
 def _load_repair_integrity() -> ModuleType | None:
@@ -161,11 +184,11 @@ def detect_stacks(worktree_dir: Path) -> list[str]:
     stacks: list[str] = []
     if any((worktree_dir / marker).exists() for marker in ("pyproject.toml", "setup.py", "setup.cfg", "requirements.txt")):
         stacks.append("python")
-    elif any(worktree_dir.glob("**/*.py")):
+    elif _has_source_file(worktree_dir, ".py"):
         stacks.append("python")
 
     if (worktree_dir / "package.json").is_file():
-        if (worktree_dir / "tsconfig.json").is_file() or any(worktree_dir.glob("**/*.ts")):
+        if (worktree_dir / "tsconfig.json").is_file() or _has_source_file(worktree_dir, ".ts"):
             stacks.append("typescript")
         else:
             stacks.append("javascript")
@@ -365,8 +388,9 @@ STACK_GATES: dict[str, Callable[[Path], list[str]]] = {
 }
 
 
-def collect_failures(worktree_dir: Path) -> list[str]:
-    stacks = detect_stacks(worktree_dir)
+def collect_failures(worktree_dir: Path, stacks: list[str] | None = None) -> list[str]:
+    if stacks is None:
+        stacks = detect_stacks(worktree_dir)
     failures: list[str] = []
     seen_dispatchers: set[Callable[[Path], list[str]]] = set()
     for stack in stacks:
@@ -399,7 +423,19 @@ def main() -> int:
 
     all_failures: list[tuple[str, list[str]]] = []
     for ticket in tickets:
-        failures = collect_failures(ticket.worktree_dir)
+        stacks = detect_stacks(ticket.worktree_dir)
+        # A review-ready worktree with no supported stack yields zero *language*
+        # gate coverage. Print a single honest warning naming it instead of
+        # passing in silence (FR-4), but do NOT skip the ticket: the
+        # stack-independent repair-integrity check inside collect_failures still
+        # runs, so a net-new unexplained suppression in an unsupported worktree
+        # still blocks. The warning alone never changes the exit code.
+        if not stacks:
+            sys.stderr.write(
+                f"stop_full_gate: no supported stack detected in worktree "
+                f"'{ticket.worktree_dir.name}' — no gate coverage for this ticket.\n"
+            )
+        failures = collect_failures(ticket.worktree_dir, stacks=stacks)
         if failures:
             all_failures.append((ticket.worktree_dir.name, failures))
 

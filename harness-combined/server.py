@@ -124,24 +124,6 @@ def _load_task_module(path: Path) -> Task:
         sys.modules.pop("harness", None)
 
 
-def _detect_language(directory: str) -> str:
-    """Detect project language from marker files."""
-    d = Path(directory)
-    if (d / "go.mod").exists():
-        return "go"
-    if (d / "Cargo.toml").exists():
-        return "rust"
-    if (d / "tsconfig.json").exists() or (d / "package.json").exists():
-        return "typescript"
-    # Python: require a project descriptor, not just *.py files
-    if (d / "pyproject.toml").exists() or (d / "setup.py").exists() or (d / "setup.cfg").exists():
-        return "python"
-    # Fallback: scan for *.py files only if no other marker found
-    if any(d.rglob("*.py")):
-        return "python"
-    return "python"  # default
-
-
 # Manifest files that mark each stack. Detection is manifest-only (FR-1): loose
 # source files (e.g. bare *.py) no longer trigger a stack — operators declare a
 # project descriptor. Order mirrors StackName's canonical ordering.
@@ -202,6 +184,55 @@ def _detect_stacks(directory: str) -> list[StackName]:
         if any((r / m).exists() for r in roots for m in manifests):
             detected.append(stack)
     return detected
+
+
+# Manifests for stacks the harness recognises but does not (yet) gate. Detection
+# names these in the unsupported-stack error so the operator sees *what* was found
+# rather than a misleading Python tool error (FR-1). Glob patterns are matched
+# per scan-root; the list is deliberately small and honest — an empty
+# markers_found still yields a valid error naming the directory.
+_UNSUPPORTED_MARKERS: tuple[str, ...] = (
+    "pom.xml", "build.gradle", "build.gradle.kts",  # JVM
+    "*.csproj", "*.sln", "*.fsproj",                # .NET
+    "Gemfile", "*.gemspec",                          # Ruby
+    "composer.json",                                 # PHP
+    "mix.exs",                                        # Elixir
+)
+
+
+def _unsupported_stack_payload(directory: str) -> dict[str, Any]:
+    """Structured error for an ``auto`` run that detected no supported stack (FR-1).
+
+    Names the directory and any recognised-but-unsupported manifest markers found
+    at the same one-level, non-vendored scan roots ``_detect_stacks`` uses (no full
+    rglob — NFR-1), and states the remediation (NFR-2). Returns a JSON-serialisable
+    dict with ``passed`` False and ``unsupported_stack`` True so callers can branch
+    on it without string-matching the message.
+    """
+    roots = _scan_roots(directory)
+    found: set[str] = set()
+    for root in roots:
+        for pattern in _UNSUPPORTED_MARKERS:
+            for match in root.glob(pattern):
+                if match.is_file():
+                    found.add(match.name)
+    markers = sorted(found)
+    if markers:
+        detail = f"found unrecognised marker(s): {', '.join(markers)}. "
+    else:
+        detail = "no python/typescript/go/rust manifest found. "
+    message = (
+        f"No supported stack detected in {directory}: {detail}"
+        "Pass an explicit language (python|typescript|go|rust) or add gate "
+        "support for this stack."
+    )
+    return {
+        "passed": False,
+        "unsupported_stack": True,
+        "directory": directory,
+        "markers_found": markers,
+        "error": message,
+    }
 
 
 def _format_polyglot_findings(results: list[LanguageResult], directory: str) -> str:
@@ -360,9 +391,12 @@ def gate_run_on_dir(
         # An unknown explicit language raises ValueError here (caught below), the
         # same fail path as an unsupported language reaching the suite dispatch.
         if language == "auto":
-            stacks: list[StackName] = _detect_stacks(directory) or [
-                StackName(_detect_language(directory))
-            ]
+            stacks: list[StackName] = _detect_stacks(directory)
+            # Fail honest: an unrecognised worktree returns an explicit
+            # unsupported-stack error naming what was found, never a silent
+            # Python default that would emit misleading mypy/pytest errors (FR-1).
+            if not stacks:
+                return json.dumps(_unsupported_stack_payload(directory), indent=2)
         else:
             stacks = [StackName(language)]
         # Gate every detected stack; a polyglot worktree must not pass by
