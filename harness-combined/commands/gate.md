@@ -66,6 +66,23 @@ SARIF (Static Analysis Results Interchange Format) 2.1.0 is the machine-readable
 
    **Non-fatal write**: if the SARIF file cannot be written (e.g. a read-only filesystem), the run is unaffected — the JSON response carries `sarif_write_failed: true` and the gate verdict is otherwise unchanged. A SARIF write failure never fails a gate run.
 
+## Inline PR comments (`--comment`)
+
+Posting findings as inline GitHub PR review comments is **opt-in** via `--comment`; the default is terminal output only. When the flag is set, after `gate-findings.md` is written, parse it and post:
+
+```python
+from pathlib import Path
+from gates.finding_parser import parse_gate_findings
+from gates.pr_commenter import post_findings, format_summary
+
+worktree = Path(".worktrees/XXXX-<slug>")
+findings = parse_gate_findings(worktree / ".tickets/XXXX-<slug>/gate-findings.md", worktree)
+result = post_findings(findings, worktree, should_post=True, kind="gate", cwd=worktree)
+print(format_summary(result))   # "Posted N inline comments (M skipped as duplicates)."
+```
+
+`post_findings` detects the open PR for the branch, routes each finding inline (when its `file:line` is in the PR diff) or to a single top-level comment (off-diff or no location), deduplicates against existing comments, and submits the inline batch in one `gh api .../reviews` call. It **falls back to terminal output** (with a specific reason) when `gh` is missing/unauthenticated, when no open PR exists, or when the existing-comment fetch fails — never blocking the run and never posting duplicates. Without `--comment`, do not call `post_findings` (or call it with `should_post=False`, which posts nothing and makes no `gh` calls).
+
 ## Notes
 
 - This command **does not fix findings** — it records them. The caller decides what to do.

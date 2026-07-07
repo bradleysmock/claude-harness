@@ -1,3 +1,10 @@
+[project]
+name = "harness-combined"
+version = "0.0.0"
+# Floor is 3.10: the inline-PR-comment orchestrator (gates/pr_commenter.py, ticket
+# 0031) dispatches typed result types with a `match` statement.
+requires-python = ">=3.10"
+
 [tool.bandit]
 # B102 (exec_used): server.py uses exec() to load harness-authored spec/task files
 # from .harness/specs/ and .harness/tasks/ — never external user input.

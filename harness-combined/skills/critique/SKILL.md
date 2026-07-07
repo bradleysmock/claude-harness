@@ -105,6 +105,20 @@ After loading active panel files and reading all files in scope, produce finding
 
 Write the critique as a structured report. Do not write anything until you have read all target files. After producing the report, write it to `CRITIQUE.md` in the current working directory.
 
+**Inline PR comments (opt-in, `--comment`).** When the operator invokes the skill with `--comment`, additionally post the findings as inline GitHub PR review comments after writing `CRITIQUE.md`; the default (no flag) is the written report only. Parse the report's findings with `parse_critic_findings` and hand them to `post_findings(..., kind="critic")`:
+
+```python
+from pathlib import Path
+from gates.critic_finding_parser import parse_critic_findings
+from gates.pr_commenter import post_findings, format_summary
+
+findings = parse_critic_findings(Path("CRITIQUE.md").read_text(), Path("."))
+result = post_findings(findings, Path("."), should_post=True, kind="critic", cwd=Path("."))
+print(format_summary(result))
+```
+
+BLOCKER and MAJOR findings become inline review comments on their `file:line`; MINOR and OBS become COMMENT-type inline comments whose body is prefixed `[suggestion]` (they do **not** use GitHub's code-suggestion markdown). Findings without a `file:line` post as top-level PR comments. `post_findings` deduplicates against existing comments (critic key: `file:line:severity:code`, stable across re-renders) and submits everything in one batched `gh api .../reviews` call, falling back to terminal-only output — with a specific reason — when `gh` is unavailable/unauthenticated, no open PR exists, or the dedup fetch fails. Without `--comment`, do not post.
+
 The report is structured for a reader who *skims first, dives second*. Verdict comes before findings so the reader knows whether to read on; the Finding Table is the punch list; BLOCKER/MAJOR Detail is the substantive read; MINOR/OBS findings stay in tabular form because the table row already says what's needed. Two-paragraph synthesis on a MINOR-severity stylistic note does not pull its weight.
 
 ```
