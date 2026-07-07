@@ -353,7 +353,35 @@ If the lead requests changes at Checkpoint 1 and you revise the artifacts, commi
 
 ## Phase 6 — Spec Score Check
 
-Present Checkpoint 1 once the critic loop is complete.
+Run the score-spec validator **now** — while the full design-session context is still loaded — so a structurally deficient spec is caught and fixed *before* the lead approves at Checkpoint 1, not minutes later when the score-spec gate first fires at `/write-spec` or `/build` time.
+
+Read `${CLAUDE_PLUGIN_ROOT}/context/score-spec.md` in full and apply its checks against the worktree's design artifacts:
+
+- `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md`
+- `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md`
+
+Display the structured per-check report verbatim — the six `[PASS|WARN|BLOCK]` check lines and the overall `Verdict`.
+
+### Fix-and-re-score budget (at most two passes)
+
+If the verdict is **BLOCK**, revise `requirements.md` / `solution.md` in the worktree to clear the failing checks, then re-apply the score-spec checks. Repeat at most **two fix passes** total. Do **not** spawn a subagent — Phase 6 reuses the full design-session context and fixes in-session.
+
+- If a pass clears the BLOCK (verdict becomes PASS or WARN), stop and carry that verdict into Checkpoint 1.
+- If a **residual BLOCK** remains after the two-pass budget is exhausted, stop fixing and carry that residual BLOCK — naming its failing checks — into the Checkpoint 1 summary. Never hide a residual BLOCK; the lead decides how to proceed.
+
+A WARN verdict is not fixed here — it is reported and carried forward.
+
+### Commit fix-pass revisions (on the branch)
+
+If any fix pass edited the artifacts, commit the revision **on the feature branch inside the worktree**, using the same design commit convention as Phase 5 — never to `main`:
+
+```
+git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/
+git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX design (status: solution)"
+git -C .worktrees/XXXX-<slug> push    # publish the scored/fixed design on the branch
+```
+
+Then present Checkpoint 1 with the final score-spec verdict.
 
 ---
 
@@ -371,6 +399,9 @@ Present a concise summary and wait for approval:
 
 ### What the critic found
 <How many rounds, what categories of issues, how resolved. "No significant issues" if clean.>
+
+### Score-spec verdict
+<PASS — or WARN with named checks — or residual BLOCK with named checks (from Phase 6, after the two-pass fix budget).>
 
 ### Open questions
 <Any unresolved items from requirements. Empty if none.>
