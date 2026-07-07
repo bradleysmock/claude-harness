@@ -109,16 +109,30 @@ After loading active panel files and reading all files in scope, produce finding
 
 ## Output Format
 
-Write the critique as a structured report. Do not write anything until you have read all target files. After producing the report, write it to `CRITIQUE.md` in the current working directory.
+Write the critique as a structured report. Do not write anything until you have read all target files. After producing the report, write it to the harness critiques directory — **never** to `CRITIQUE.md` in the current working directory, and **never** inside a worktree.
 
-**Inline PR comments (opt-in, `--comment`).** When the operator invokes the skill with `--comment`, additionally post the findings as inline GitHub PR review comments after writing `CRITIQUE.md`; the default (no flag) is the written report only. Parse the report's findings with `parse_critic_findings` and hand them to `post_findings(..., kind="critic")`:
+**Report destination.** Write the report to `.harness/critiques/<report-file>`, creating the `.harness/critiques/` directory if it does not exist. This sits beside `.harness/results/` and `.harness/memory.db` in the harness state home, so it inherits the same git-ignore treatment and never leaks into delivered code.
+
+- **Resolve `.harness/` at the main project root, never inside a worktree.** If the current directory is inside a `.worktrees/<slug>/` checkout (a ticket worktree), do **not** write the report there — a report committed into a worktree would be swept into the delivery squash. Resolve the main working tree's root (e.g. the directory holding `.tickets/` and `.harness/`; from within a worktree, the parent of `git rev-parse --git-common-dir`) and write the report to *its* `.harness/critiques/`.
+- **Filename: `<YYYY-MM-DD>-<NN>-<target-slug>.md`.** The date leads the filename so a plain reverse-lexical sort of the reports is globally newest-first **regardless of target** — put the date first, not the slug, or reports for different targets interleave by name instead of by time. `<YYYY-MM-DD>` is today's date. `<NN>` is a two-digit counter (`01`, `02`, …): scan `.harness/critiques/` for existing `<YYYY-MM-DD>-*.md` files (any target) and use the next unused value, so same-day re-runs never collide. `<target-slug>` is a short kebab-case slug of the review target (the file/glob in `$ARGUMENTS`, or `working-tree` when reviewing the current diff). This makes filenames sort chronologically and collision-free across same-day re-runs, so successive critiques never overwrite each other. Call this resolved path `<report-path>` below.
+
+**Ticket-pointer rule.** When the critique's target files belong to a ticket — a path inside a ticket worktree (`.worktrees/<slug>/…`) or inside a ticket directory (`.tickets/<slug>/…`) — append a one-line pointer to that ticket's `critic-findings.md` (the durable per-ticket findings index; see "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`), so the report is discoverable from the ticket later. The line carries four fields — date, target, verdict, and report path:
+
+```
+- <YYYY-MM-DD> · critique · target: <target> · verdict: <APPROVE|REVISE|MAJOR REWORK> · report: <report-path>
+```
+
+`<verdict>` is the **Recommended action** from the report's Verdict section. Append under a `## Critique pointers` heading (create it if absent); do not overwrite existing content. When the target does not belong to any ticket, skip this step.
+
+**Inline PR comments (opt-in, `--comment`).** When the operator invokes the skill with `--comment`, additionally post the findings as inline GitHub PR review comments after writing `<report-path>`; the default (no flag) is the written report only. Read the findings back from the **exact `<report-path>` resolved and written above** — the main-root-anchored absolute path — and do **not** re-derive `.harness/critiques/` relative to the current directory, which would point at the wrong `.harness/` when invoked from inside a worktree. Parse the report's findings with `parse_critic_findings` and hand them to `post_findings(..., kind="critic")`:
 
 ```python
 from pathlib import Path
 from gates.critic_finding_parser import parse_critic_findings
 from gates.pr_commenter import post_findings, format_summary
 
-findings = parse_critic_findings(Path("CRITIQUE.md").read_text(), Path("."))
+report_path = Path(report_path)  # the absolute <report-path> resolved + written above; NOT re-derived from cwd
+findings = parse_critic_findings(report_path.read_text(), Path("."))
 result = post_findings(findings, Path("."), should_post=True, kind="critic", cwd=Path("."))
 print(format_summary(result))
 ```

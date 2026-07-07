@@ -160,7 +160,7 @@ These seven behaviors are skills rather than commands. Invoke them explicitly wi
 | `suggest` | "what should we build next?", "what features are missing?", "suggest something" | Inventories current capabilities and open tickets, compares against comparable tools, surfaces up to 10 non-duplicate improvement ideas, emits `/problem`-ready lines for accepted suggestions. |
 | `usage-report` | "review my Claude Code usage", "where am I spending tokens/time", "how can I use Claude more efficiently" | Runs a deterministic analyzer over local `~/.claude` state and writes a dated report: usage patterns, an idle-excluded time estimate, strengths/weaknesses, and roadmap-tied recommendations. |
 | `review` | "review ticket 0003", "is 0007 ready to merge?" | Ticket-scoped post-build review against problem / requirements / solution. Sets `changes-requested` if must-fix found. |
-| `critique` | "critique my changes", "expert panel review of the auth route" | Free-form expert-panel critique of the current diff or specified files. Writes `CRITIQUE.md`. |
+| `critique` | "critique my changes", "expert panel review of the auth route" | Free-form expert-panel critique of the current diff or specified files. Writes a timestamped report under `.harness/critiques/`. |
 | `requirements-review` | "review requirements", "is 0034 ready to build?", "/requirements-review 0034" | Pre-build checkpoint: reviews `requirements.md` against `problem.md` across completeness, testability, coverage, consistency in a scoped read-only subagent; writes advisory `requirements-findings.md`. |
 | `status` | "what's open?", "where are we?" | Combined view of tickets + standalone runs + failure-memory presence. |
 | `debug` | "why did the build escalate?", "the run gave up — what now?" | Classify and explain an escalated standalone run; propose targeted fix. |
@@ -173,7 +173,7 @@ These seven behaviors are skills rather than commands. Invoke them explicitly wi
 Two **optional** manual follow-ups are available between `/build` and `/deliver`:
 
 - `/review XXXX` — same panel-aware review as the post-build critic, but **interactive**: findings stream in the conversation, lead can ask follow-up questions, request deeper dives, or skip ahead to verdict. Use when you want to walk the review conversationally rather than read a one-shot report.
-- `/critique <files>` — comprehensive on-demand panel critique against arbitrary files. Works on code (`/critique src/auth/`) or design artifacts (`/critique problem.md solution.md`). Free-form scope; not tied to a ticket; output written to `CRITIQUE.md`.
+- `/critique <files>` — comprehensive on-demand panel critique against arbitrary files. Works on code (`/critique src/auth/`) or design artifacts (`/critique problem.md solution.md`). Free-form scope; not tied to a ticket; output written to a timestamped report under `.harness/critiques/`.
 
 ---
 

@@ -116,6 +116,16 @@ If there are escalated runs, remind the user: invoke the **debug** skill to inve
 
 If `.harness/memory.db` exists, note: "Failure memory: present" (do a quick file existence check; do not query the DB).
 
+## Step 4 — Recent critiques
+
+If `.harness/critiques/` exists and holds any `*.md` reports, list the **three most recent**. The reports are named `<YYYY-MM-DD>-<NN>-<target-slug>.md` — the date leads, so a plain **reverse lexical sort** of the filenames is globally newest-first across all targets; take the first three. For each, show the filename and its verdict line — the **Recommended action** from the report's Verdict section (`APPROVE` / `REVISE` / `MAJOR REWORK`). Omit this section entirely when the directory is absent or empty.
+
+### Recent Critiques
+
+| Report | Verdict |
+|--------|---------|
+| `<YYYY-MM-DD>-<NN>-<target-slug>.md` | APPROVE / REVISE / MAJOR REWORK |
+
 ## Output shape
 
-Keep the report compact. Active tickets table + optional completed tickets table + spec/build status + one-line memory note. Do not narrate; the user will pull on whichever thread matters next.
+Keep the report compact. Active tickets table + optional completed tickets table + spec/build status + one-line memory note + optional recent-critiques table. Do not narrate; the user will pull on whichever thread matters next.
