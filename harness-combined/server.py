@@ -289,14 +289,38 @@ def _format_polyglot_findings(results: list[LanguageResult], directory: str) -> 
             lines.append("")
             if gr.skipped:
                 lines.append(f"**Reason**: {gr.skip_reason}")
-            elif gr.errors:
-                for e in gr.errors:
-                    where = e.file or "?"
-                    loc = f"{where}:{e.line}" if e.line is not None else where
-                    lines.append(f"- `{loc}` [`{e.code}`]: {e.message}")
             else:
-                lines.append("clean")
+                # TOOL_SKIPPED warnings ride on a *passing* gate (an absent optional
+                # tool, ticket 0043); they are surfaced in the dedicated Skipped Tools
+                # section below, not as per-gate findings — so a skipped-tool gate
+                # still reads "clean" in its own section.
+                real_errors = [e for e in gr.errors if e.code != "TOOL_SKIPPED"]
+                if real_errors:
+                    for e in real_errors:
+                        where = e.file or "?"
+                        loc = f"{where}:{e.line}" if e.line is not None else where
+                        lines.append(f"- `{loc}` [`{e.code}`]: {e.message}")
+                else:
+                    lines.append("clean")
             lines.append("")
+    # Skipped Tools section: emitted whenever any gate carried a TOOL_SKIPPED entry
+    # (an optional tool that was not installed). Visible, non-blocking (ticket 0043).
+    skipped_tools = [
+        (lr.language, gr.gate, e)
+        for lr in results for gr in lr.results for e in gr.errors
+        if e.code == "TOOL_SKIPPED"
+    ]
+    if skipped_tools:
+        lines += [
+            "## Skipped Tools",
+            "",
+            "Optional tools not installed — their gates passed without running "
+            "(provision via the ticket 0022 doctor):",
+            "",
+        ]
+        for language, gate, e in skipped_tools:
+            lines.append(f"- {language} / {gate}: {e.message}")
+        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -333,13 +357,28 @@ def gate_run(implementation: str, tests: str, language: str, project_root: str) 
     try:
         config = GateTimeoutConfig.from_directory(Path(project_root))
         results = run_suite_for(language, implementation, tests, project_root, config=config)
+        # Surface absent optional tools (ticket 0043): TOOL_SKIPPED warnings ride on
+        # *passing* gates (e.g. go staticcheck, rust cargo-audit), so the all-pass
+        # branch below would otherwise drop them and the fail-fast branch returns
+        # only the failing gate — either way a skip would stay silent. Attach the
+        # skip list to whichever payload is returned; keyed only when non-empty so
+        # the no-skip response shape is byte-for-byte unchanged.
+        skipped_tools = [
+            e.message for r in results for e in r.errors if e.code == "TOOL_SKIPPED"
+        ]
         if all(r.passed for r in results):
-            return json.dumps({
+            payload: dict[str, Any] = {
                 "passed": True,
                 "duration_ms": sum(r.duration_ms for r in results),
-            })
+            }
+            if skipped_tools:
+                payload["skipped_tools"] = skipped_tools
+            return json.dumps(payload)
         failed = next(r for r in results if not r.passed)
-        return json.dumps(failed.to_dict(), indent=2)
+        payload = failed.to_dict()
+        if skipped_tools:
+            payload["skipped_tools"] = skipped_tools
+        return json.dumps(payload, indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)})
     except Exception as e:
@@ -454,6 +493,14 @@ def gate_run_on_dir(
         # is added only when a skip actually occurred so the response shape is
         # byte-for-byte unchanged for every caller that omits changed_files (FR-7).
         any_skipped = any(r.skipped for _, r in tagged)
+        # A TOOL_SKIPPED warning (an absent optional tool, ticket 0043) is distinct
+        # from a ticket-0030 scope skip (``GateResult.skipped``). No directory-mode
+        # gate emits one today, but if one ever does, the single-language all-pass
+        # branch below must still emit ``findings_md`` so the ``## Skipped Tools``
+        # section can surface — otherwise the warning would be computed and dropped.
+        has_tool_skipped = any(
+            e.code == "TOOL_SKIPPED" for _, r in tagged for e in r.errors
+        )
 
         # Opt-in SARIF emission (FR-2 + FR-10). Two independent triggers: the
         # explicit `emit_sarif` argument (the /gate --sarif flag), OR a
@@ -476,10 +523,13 @@ def gate_run_on_dir(
                 payload = {"passed": True, "language": str(stacks[0])}
                 if any_skipped:
                     payload["any_skipped"] = True
+                if any_skipped or has_tool_skipped:
                     # A single-language run shares one scope across its gates, so an
-                    # all-pass run with skips means every gate was skipped. The bare
-                    # payload carries no per-gate data, so add the rendered body --
-                    # otherwise /gate cannot write the required SKIP entries (FR-8).
+                    # all-pass run with scope skips means every gate was skipped; a
+                    # TOOL_SKIPPED warning (ticket 0043) likewise needs a body to
+                    # carry its `## Skipped Tools` section. The bare payload carries
+                    # no per-gate data, so add the rendered body -- otherwise /gate
+                    # cannot write the required SKIP / Skipped Tools entries (FR-8).
                     payload["findings_md"] = _format_polyglot_findings(lang_results, directory)
                 if sarif_write_failed:
                     payload["sarif_write_failed"] = True

@@ -30,7 +30,9 @@ def _captured_go_commands(monkeypatch, tmp_path: Path) -> list[list[str]]:
     (tmp_path / "go.mod").write_text("module x\n", encoding="utf-8")
     calls: list[list[str]] = []
 
-    def fake_run_gate(executable, args, cwd):
+    def fake_run_gate(executable, args, cwd, skipped=None):
+        # ticket 0043 added the optional `skipped` collector to run_gate; accept it
+        # so this fake matches the current signature (it does not affect -race).
         calls.append([executable, *args])
         return 0, ""
 

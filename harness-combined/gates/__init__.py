@@ -152,6 +152,30 @@ def append_tool_error_if_silent(
     return errors
 
 
+def tool_skipped(gate: str, tool: str, install_hint: str) -> GateResult:
+    """Canonical *passing* ``GateResult`` for an absent optional tool (ticket 0043).
+
+    The skip-path counterpart to :func:`append_tool_error_if_silent`: an optional
+    tool that is not installed must be **visible**, never a silent pass. The gate
+    still counts as ``passed=True`` (warn tier — provisioning is an operator choice,
+    not a code defect), but it carries exactly one ``TOOL_SKIPPED`` warning naming
+    the ``tool``, its ``gate``, and a one-line ``install_hint`` so a lead can tell a
+    clean pass from a vacuous one.
+
+    ``TOOL_SKIPPED`` (severity ``warning``, gate still passes) is deliberately
+    distinct from ``TOOL_ERROR`` (severity ``error``, gate fails — the tool was
+    present but crashed). One wording, one test, mirroring the error-path helper.
+    """
+    return GateResult(
+        gate=gate, passed=True,
+        errors=[GateError(
+            message=f"{tool} not installed — {gate} gate skipped (install: {install_hint})",
+            file=None, line=None, column=None, code="TOOL_SKIPPED", severity="warning",
+        )],
+        duration_ms=0,
+    )
+
+
 def find_config_root(directory: Path, names: tuple[str, ...]) -> Path:
     """Resolve the directory that owns one of ``names`` (e.g. ``tsconfig.json``).
 

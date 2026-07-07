@@ -13,6 +13,7 @@ from gates import (
     ProcessResult,
     _timeout_error,
     run_dir_gates_scheduled,
+    tool_skipped,
 )
 from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
@@ -133,7 +134,11 @@ def _vet_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateR
 def _staticcheck_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     import shutil as _shutil
     if not _shutil.which("staticcheck"):
-        return GateResult(gate="staticcheck", passed=True, errors=[], duration_ms=0)
+        # Absent optional tool: warn-and-pass, never a silent pass (ticket 0043).
+        return tool_skipped(
+            "staticcheck", "staticcheck",
+            "go install honnef.co/go/tools/cmd/staticcheck@latest",
+        )
     start = time.monotonic()
     timeout = config.timeout_for("lint", 60) if config else 60
     try:

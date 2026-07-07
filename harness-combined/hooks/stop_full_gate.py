@@ -202,9 +202,22 @@ def detect_stacks(worktree_dir: Path) -> list[str]:
     return stacks
 
 
-def run_gate(executable: str, args: list[str], cwd: Path) -> tuple[int, str]:
+def run_gate(
+    executable: str, args: list[str], cwd: Path,
+    skipped: list[str] | None = None,
+) -> tuple[int | None, str]:
+    """Run one gate tool; record (never swallow) a missing executable (ticket 0043).
+
+    When ``executable`` is not on PATH, append its name (deduped) to ``skipped`` if a
+    collector was supplied and return the non-run sentinel code ``None`` — distinct
+    from ``0`` (ran and passed) so a caller can tell "did not run" from "ran clean".
+    The existing ``code not in (0, None)`` failure checks already treat ``None`` as
+    not-a-failure, so a skip is informational and never blocks completion.
+    """
     if shutil.which(executable) is None:
-        return 0, ""
+        if skipped is not None and executable not in skipped:
+            skipped.append(executable)
+        return None, ""
     try:
         completed = subprocess.run(
             [executable, *args],
@@ -237,8 +250,24 @@ def changed_files(worktree_dir: Path, suffix: str) -> list[str]:
 
 # --- Per-stack gate sets ---------------------------------------------------
 
-def gates_python(worktree_dir: Path) -> list[str]:
+
+@dataclass
+class StackReport:
+    """One stack's Stop-hook outcome: blocking failures plus skipped tools.
+
+    ``failures`` are the human-readable blocking sections (unchanged shape).
+    ``skipped`` names the optional tools that were not installed this run — visible
+    but non-blocking (ticket 0043). Kept as a small struct so a stack can report a
+    skip *and* a pass in the same run.
+    """
+
+    failures: list[str]
+    skipped: list[str]
+
+
+def gates_python(worktree_dir: Path) -> StackReport:
     failures: list[str] = []
+    skipped: list[str] = []
     python_root = _python_project_root(worktree_dir)
     all_py_files = changed_files(worktree_dir, ".py")
 
@@ -258,47 +287,48 @@ def gates_python(worktree_dir: Path) -> list[str]:
         py_files = all_py_files
 
     if py_files:
-        code, out = run_gate("ruff", ["check", "--output-format", "concise", *py_files], python_root)
+        code, out = run_gate("ruff", ["check", "--output-format", "concise", *py_files], python_root, skipped=skipped)
         if code not in (0, None) and out:
             failures.append(f"ruff:\n{out}")
 
-        code, out = run_gate("bandit", ["-ll", "-q", "-f", "txt", *py_files], python_root)
+        code, out = run_gate("bandit", ["-ll", "-q", "-f", "txt", *py_files], python_root, skipped=skipped)
         if code not in (0, None) and "No issues identified" not in out and out:
             failures.append(f"bandit:\n{out}")
 
-        code, out = run_gate("mypy", ["--no-error-summary", *py_files], python_root)
+        code, out = run_gate("mypy", ["--no-error-summary", *py_files], python_root, skipped=skipped)
         if code not in (0, None) and out:
             failures.append(f"mypy:\n{out}")
 
-    code, out = run_gate("pytest", ["-q", "--no-header", "--no-summary"], python_root)
+    code, out = run_gate("pytest", ["-q", "--no-header", "--no-summary"], python_root, skipped=skipped)
     if code not in (0, None) and out:
         tail = "\n".join(out.splitlines()[-40:])
         failures.append(f"pytest (last 40 lines):\n{tail}")
 
-    return failures
+    return StackReport(failures=failures, skipped=skipped)
 
 
-def gates_javascript_typescript(worktree_dir: Path) -> list[str]:
+def gates_javascript_typescript(worktree_dir: Path) -> StackReport:
     failures: list[str] = []
+    skipped: list[str] = []
     if (worktree_dir / "node_modules" / ".bin" / "eslint").exists() or shutil.which("eslint") is not None:
-        code, out = run_gate("npx", ["--no-install", "eslint", "--no-color", "."], worktree_dir)
+        code, out = run_gate("npx", ["--no-install", "eslint", "--no-color", "."], worktree_dir, skipped=skipped)
         if code not in (0, None) and out:
             tail = "\n".join(out.splitlines()[-60:])
             failures.append(f"eslint:\n{tail}")
 
     if (worktree_dir / "tsconfig.json").is_file():
-        code, out = run_gate("npx", ["--no-install", "tsc", "--noEmit"], worktree_dir)
+        code, out = run_gate("npx", ["--no-install", "tsc", "--noEmit"], worktree_dir, skipped=skipped)
         if code not in (0, None) and out:
             tail = "\n".join(out.splitlines()[-60:])
             failures.append(f"tsc:\n{tail}")
 
     if (worktree_dir / "package.json").is_file():
-        code, out = run_gate("npm", ["test", "--silent"], worktree_dir)
+        code, out = run_gate("npm", ["test", "--silent"], worktree_dir, skipped=skipped)
         if code not in (0, None) and out:
             tail = "\n".join(out.splitlines()[-40:])
             failures.append(f"npm test (last 40 lines):\n{tail}")
 
-    return failures
+    return StackReport(failures=failures, skipped=skipped)
 
 
 def check_migration_conflicts(worktree_dir: Path) -> list[str]:
@@ -335,53 +365,55 @@ def check_migration_conflicts(worktree_dir: Path) -> list[str]:
     return ["migration number conflicts (renumber before merging):\n" + "\n".join(conflicts)]
 
 
-def gates_go(worktree_dir: Path) -> list[str]:
+def gates_go(worktree_dir: Path) -> StackReport:
     failures: list[str] = []
+    skipped: list[str] = []
 
     # Fast pre-check: migration conflicts break the migrator at test startup,
     # so skip the compiler gates if any are found.
     migration_failures = check_migration_conflicts(worktree_dir)
     if migration_failures:
-        return migration_failures
+        return StackReport(failures=migration_failures, skipped=skipped)
 
-    code, out = run_gate("gofmt", ["-l", "."], worktree_dir)
+    code, out = run_gate("gofmt", ["-l", "."], worktree_dir, skipped=skipped)
     if out.strip():
         failures.append(f"gofmt (unformatted files):\n{out.strip()}")
 
-    code, out = run_gate("go", ["vet", "./..."], worktree_dir)
+    code, out = run_gate("go", ["vet", "./..."], worktree_dir, skipped=skipped)
     if code not in (0, None) and out:
         failures.append(f"go vet:\n{out}")
 
     # -race matches the MCP Go gate (gates/go.py runs `go test -race -v ./...`),
     # so a data race cannot pass the turn-end hook and then fail the MCP gate.
-    code, out = run_gate("go", ["test", "-race", "./..."], worktree_dir)
+    code, out = run_gate("go", ["test", "-race", "./..."], worktree_dir, skipped=skipped)
     if code not in (0, None) and out:
         tail = "\n".join(out.splitlines()[-40:])
         failures.append(f"go test (last 40 lines):\n{tail}")
 
-    return failures
+    return StackReport(failures=failures, skipped=skipped)
 
 
-def gates_rust(worktree_dir: Path) -> list[str]:
+def gates_rust(worktree_dir: Path) -> StackReport:
     failures: list[str] = []
-    code, out = run_gate("cargo", ["fmt", "--check"], worktree_dir)
+    skipped: list[str] = []
+    code, out = run_gate("cargo", ["fmt", "--check"], worktree_dir, skipped=skipped)
     if code not in (0, None) and out:
         failures.append(f"cargo fmt --check:\n{out[:600]}")
 
-    code, out = run_gate("cargo", ["clippy", "--", "-D", "warnings"], worktree_dir)
+    code, out = run_gate("cargo", ["clippy", "--", "-D", "warnings"], worktree_dir, skipped=skipped)
     if code not in (0, None) and out:
         tail = "\n".join(out.splitlines()[-40:])
         failures.append(f"cargo clippy:\n{tail}")
 
-    code, out = run_gate("cargo", ["test", "--quiet"], worktree_dir)
+    code, out = run_gate("cargo", ["test", "--quiet"], worktree_dir, skipped=skipped)
     if code not in (0, None) and out:
         tail = "\n".join(out.splitlines()[-40:])
         failures.append(f"cargo test (last 40 lines):\n{tail}")
 
-    return failures
+    return StackReport(failures=failures, skipped=skipped)
 
 
-STACK_GATES: dict[str, Callable[[Path], list[str]]] = {
+STACK_GATES: dict[str, Callable[[Path], StackReport]] = {
     "python": gates_python,
     "javascript": gates_javascript_typescript,
     "typescript": gates_javascript_typescript,
@@ -390,24 +422,45 @@ STACK_GATES: dict[str, Callable[[Path], list[str]]] = {
 }
 
 
-def collect_failures(worktree_dir: Path, stacks: list[str] | None = None) -> list[str]:
+def collect_report(
+    worktree_dir: Path, stacks: list[str] | None = None
+) -> tuple[list[str], list[str]]:
+    """Return ``(failure sections, skip lines)`` for every detected stack.
+
+    Failure sections are the blocking ``=== stack ===`` bodies (unchanged). Skip
+    lines name each optional tool that was not installed, one line per stack, so a
+    missing gate tool is *visible* instead of a silent pass (ticket 0043, FR-2). A
+    skip line never contributes to the blocking decision — it is informational.
+    ``stacks`` may be pre-supplied by the caller (ticket 0047 honest-stack
+    handling); when ``None`` it is detected here.
+    """
     if stacks is None:
         stacks = detect_stacks(worktree_dir)
     failures: list[str] = []
-    seen_dispatchers: set[Callable[[Path], list[str]]] = set()
+    skip_lines: list[str] = []
+    seen_dispatchers: set[Callable[[Path], StackReport]] = set()
     for stack in stacks:
         gate_runner = STACK_GATES.get(stack)
         if gate_runner is None or gate_runner in seen_dispatchers:
             continue
         seen_dispatchers.add(gate_runner)
-        section = gate_runner(worktree_dir)
-        if section:
-            failures.append(f"=== {stack} ===\n" + "\n\n".join(section))
+        report = gate_runner(worktree_dir)
+        if report.failures:
+            failures.append(f"=== {stack} ===\n" + "\n\n".join(report.failures))
+        if report.skipped:
+            skip_lines.append(
+                f"{stack}: skipped (not installed) — " + ", ".join(report.skipped)
+            )
 
     suppression_section = unexplained_suppressions(worktree_dir)
     if suppression_section:
         failures.append("=== repair-integrity ===\n" + "\n\n".join(suppression_section))
-    return failures
+    return failures, skip_lines
+
+
+def collect_failures(worktree_dir: Path, stacks: list[str] | None = None) -> list[str]:
+    """Blocking failure sections only. Skip lines are surfaced via ``collect_report``."""
+    return collect_report(worktree_dir, stacks)[0]
 
 
 def main() -> int:
@@ -424,12 +477,13 @@ def main() -> int:
         return 0
 
     all_failures: list[tuple[str, list[str]]] = []
+    all_skips: list[tuple[str, list[str]]] = []
     for ticket in tickets:
         stacks = detect_stacks(ticket.worktree_dir)
         # A review-ready worktree with no supported stack yields zero *language*
         # gate coverage. Print a single honest warning naming it instead of
         # passing in silence (FR-4), but do NOT skip the ticket: the
-        # stack-independent repair-integrity check inside collect_failures still
+        # stack-independent repair-integrity check inside collect_report still
         # runs, so a net-new unexplained suppression in an unsupported worktree
         # still blocks. The warning alone never changes the exit code.
         if not stacks:
@@ -437,16 +491,35 @@ def main() -> int:
                 f"stop_full_gate: no supported stack detected in worktree "
                 f"'{ticket.worktree_dir.name}' — no gate coverage for this ticket.\n"
             )
-        failures = collect_failures(ticket.worktree_dir, stacks=stacks)
+        failures, skips = collect_report(ticket.worktree_dir, stacks=stacks)
         if failures:
             all_failures.append((ticket.worktree_dir.name, failures))
+        if skips:
+            all_skips.append((ticket.worktree_dir.name, skips))
+
+    # Build the informational skip note once (non-blocking — ticket 0043, FR-2).
+    skip_note = ""
+    if all_skips:
+        skip_sections = [
+            f"--- {name} ---\n" + "\n".join(skips) for name, skips in all_skips
+        ]
+        skip_note = (
+            "stop_full_gate: gate tools skipped (not installed — provision via "
+            "the ticket 0022 doctor):\n\n" + "\n\n".join(skip_sections)
+        )
 
     if not all_failures:
+        # Skips only (or nothing): surface any skip note but never block the turn.
+        if skip_note:
+            sys.stderr.write(skip_note + "\n")
         return 0
 
     sections: list[str] = []
     for worktree_name, failures in all_failures:
         sections.append(f"--- {worktree_name} ---\n\n" + "\n\n".join(failures))
+
+    if skip_note:
+        sections.append(skip_note)
 
     sys.stderr.write(
         "stop_full_gate blocked completion — gate failures detected:\n\n"

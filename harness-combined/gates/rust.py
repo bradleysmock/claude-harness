@@ -14,6 +14,7 @@ from gates import (
     ProcessResult,
     _timeout_error,
     run_dir_gates_scheduled,
+    tool_skipped,
 )
 from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
@@ -197,7 +198,8 @@ def _test_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> Gate
 def _audit_gate(cwd: str | Path, config: GateTimeoutConfig | None = None) -> GateResult:
     import shutil as _shutil
     if not _shutil.which("cargo-audit"):
-        return GateResult(gate="audit", passed=True, errors=[], duration_ms=0)
+        # Absent optional tool: warn-and-pass, never a silent pass (ticket 0043).
+        return tool_skipped("audit", "cargo-audit", "cargo install cargo-audit")
     start = time.monotonic()
     timeout = config.timeout_for("security", 120) if config else 120
     try:
