@@ -8,7 +8,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from gates import GateTimeoutConfig, ProcessResult, _timeout_error, run_dir_gates_scheduled
+from gates import (
+    GateTimeoutConfig,
+    ProcessResult,
+    _timeout_error,
+    run_dir_gates_scheduled,
+)
 from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
 
@@ -16,7 +21,39 @@ from models import GateError, GateResult
 # the doctor contract). Every name must appear in a subprocess argument list.
 REQUIRED_TOOLS: list[str] = ["go", "staticcheck"]
 
-_GO_MOD = "module harness/temp\n\ngo 1.21\n"
+# Current stable Go language version for generated code. Raised from 1.21 so
+# post-1.21 language features build (range-over-int in 1.22, range-over-func in
+# 1.23). Review cadence: revisit each January against the current Go stable
+# release; a host go.mod's `go` directive overrides this (see host_go_version).
+GO_VERSION = "1.23"
+
+_GO_DIRECTIVE = re.compile(r"^go\s+(?P<version>\d+\.\d+(?:\.\d+)?)\s*$")
+
+
+def _go_mod(version: str) -> str:
+    """Render the temp-module go.mod for a given Go language version."""
+    return f"module harness/temp\n\ngo {version}\n"
+
+
+def host_go_version(project_root: str | Path) -> str | None:
+    """Version from a host ``go.mod``'s ``go X.Y`` directive, or None when absent.
+
+    Text mode prefers this over ``GO_VERSION`` so generated code is built against the
+    host project's declared language version (FR-5). A missing/unreadable go.mod, or
+    one with no ``go`` directive, returns None.
+    """
+    try:
+        text = (Path(project_root) / "go.mod").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        m = _GO_DIRECTIVE.match(line.strip())
+        if m:
+            return m.group("version")
+    return None
+
+
+_GO_MOD = _go_mod(GO_VERSION)
 
 _GO_ERROR = re.compile(
     r"^(?:\./)?(?P<file>[^:]+\.go):(?P<line>\d+)(?::(?P<col>\d+))?:\s*(?P<msg>.+)$"
@@ -36,7 +73,7 @@ class GoEnv:
 
 def _make_env(implementation: str, tests: str, project_root: str) -> GoEnv:
     tmpdir = Path(tempfile.mkdtemp(prefix="harness_go_"))
-    (tmpdir / "go.mod").write_text(_GO_MOD)
+    (tmpdir / "go.mod").write_text(_go_mod(host_go_version(project_root) or GO_VERSION))
     impl = tmpdir / "implementation.go"
     test = tmpdir / "implementation_test.go"
     impl.write_text(implementation, encoding="utf-8")

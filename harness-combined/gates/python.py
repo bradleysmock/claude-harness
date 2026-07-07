@@ -23,6 +23,11 @@ from gates import (
 from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
 
+try:  # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised only on Python < 3.11
+    import tomli as tomllib  # type: ignore[import-not-found, no-redef]
+
 # Tools this gate invokes via subprocess. Single source of truth consumed by
 # gates/doctor.py to build its probe registry (ticket 0022). Every name here
 # must appear in a subprocess argument list below; the doctor CI invariant test
@@ -324,6 +329,45 @@ def run_python_suite(
     return results
 
 
+# ── Directory mode config detection ───────────────────────────────────────────
+
+def has_ruff_config(directory: Path) -> bool:
+    """True when *directory* carries its own ruff configuration.
+
+    Recognised sources: ``ruff.toml``, ``.ruff.toml``, or a ``[tool.ruff]`` table in
+    ``pyproject.toml``. When a project config exists the directory-mode lint runs
+    bare ``ruff check .`` so the project's (often stricter) rule selection wins over
+    the harness floor. A ``pyproject.toml`` that cannot be read/parsed is treated as
+    having no ruff config (the floor then applies) rather than raising.
+    """
+    if (directory / "ruff.toml").exists() or (directory / ".ruff.toml").exists():
+        return True
+    pyproject = directory / "pyproject.toml"
+    if not pyproject.exists():
+        return False
+    try:
+        with open(pyproject, "rb") as fh:
+            data = tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError):
+        return False
+    tool = data.get("tool")
+    return isinstance(tool, dict) and "ruff" in tool
+
+
+def _ruff_dir_argv(directory: Path) -> list[str]:
+    """Directory-mode ruff argv: project config wins, hardcoded floor is the fallback.
+
+    Always requests JSON output (an output format, not a rule selection). The
+    ``--select E,F,W,I --ignore E501`` floor is appended ONLY when the project ships
+    no ruff config, so a project's own (stricter) config is never overridden and a
+    config-less project still gets baseline linting.
+    """
+    argv = [sys.executable, "-m", "ruff", "check", ".", "--output-format", "json"]
+    if not has_ruff_config(directory):
+        argv += ["--select", "E,F,W,I", "--ignore", "E501"]
+    return argv
+
+
 # ── Directory mode gates ──────────────────────────────────────────────────────
 
 def _lint_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
@@ -332,12 +376,7 @@ def _lint_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> G
     root = Path(directory)
     timeout = config.timeout_for("lint", 60) if config else 60
     try:
-        result = _exec_dir([
-            sys.executable, "-m", "ruff", "check", ".",
-            "--output-format", "json",
-            "--select", "E,F,W,I",
-            "--ignore", "E501",
-        ], directory, timeout=timeout)
+        result = _exec_dir(_ruff_dir_argv(root), directory, timeout=timeout)
     except subprocess.TimeoutExpired:
         return _timeout_error("lint", timeout)
     errors = _parse_ruff_json(result.stdout, root)
@@ -355,9 +394,22 @@ def _type_check_gate_dir(directory: str, config: GateTimeoutConfig | None = None
     root = Path(directory)
     timeout = config.timeout_for("typecheck", 60) if config else 60
     try:
+        # No --ignore-missing-imports here (FR-2): a wrong/nonexistent import path
+        # (import-not-found) is a genuine defect and must be flagged. We DO disable
+        # import-untyped so a valid third-party dependency that merely lacks type
+        # stubs is not a false failure — only genuinely unresolvable modules fail.
+        #
+        # Precondition (by design): dir-mode mypy runs via ``sys.executable`` — the
+        # interpreter running the harness — so the project's dependencies must be
+        # resolvable by that interpreter (i.e. the harness is invoked from within the
+        # project's environment). A dependency present only in a separate project
+        # venv resolves to import-not-found and will fail; using a detected project
+        # venv interpreter is a future enhancement, tracked separately. Text mode
+        # keeps --ignore-missing-imports (temp dirs can't resolve project imports).
         result = _exec_dir([
             sys.executable, "-m", "mypy", ".",
-            "--ignore-missing-imports", "--no-error-summary",
+            "--disable-error-code=import-untyped",
+            "--no-error-summary",
             "--show-column-numbers", "--no-color-output",
         ], directory, timeout=timeout)
     except subprocess.TimeoutExpired:

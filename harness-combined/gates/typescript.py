@@ -25,33 +25,61 @@ from models import GateError, GateResult
 # the doctor contract). Every name must appear in a subprocess argument list.
 REQUIRED_TOOLS: list[str] = ["tsc", "eslint"]
 
-_TSCONFIG = json.dumps({
-    "compilerOptions": {
-        "target": "ES2020",
-        "module": "commonjs",
-        "lib": ["ES2020"],
-        "strict": True,
-        "esModuleInterop": True,
-        "skipLibCheck": True,
-        "outDir": "./dist",
-        "rootDir": ".",
-        "ignoreDeprecations": "6.0",
-    },
-    "include": ["./*.ts"],
-    "exclude": ["node_modules", "dist"],
-}, indent=2)
+# ── Text-mode toolchain pins ───────────────────────────────────────────────────
+# Current stable TypeScript compile target for generated code. Raised from ES2020
+# so code using post-ES2020 language features (e.g. .at(), Error cause, top-level
+# await targets) type-checks. Review cadence: revisit each January against the
+# current TypeScript stable release; host-project tsconfig values override these
+# (see host_ts_values). ``module`` stays commonjs for ts-jest compatibility.
+TS_TARGET = "ES2022"
+TS_MODULE = "commonjs"
 
-_ESLINT_CONFIG = json.dumps({
-    "parser": "@typescript-eslint/parser",
-    "plugins": ["@typescript-eslint"],
-    "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
-    "rules": {
-        "no-console": "warn",
-        "@typescript-eslint/no-explicit-any": "warn",
-        "@typescript-eslint/explicit-function-return-type": "off",
+
+def _build_tsconfig(target: str, module: str) -> str:
+    """Render the text-mode tsconfig JSON for a given target/module pair."""
+    return json.dumps({
+        "compilerOptions": {
+            "target": target,
+            "module": module,
+            "lib": [target],
+            "strict": True,
+            "esModuleInterop": True,
+            "skipLibCheck": True,
+            "outDir": "./dist",
+            "rootDir": ".",
+            "ignoreDeprecations": "6.0",
+        },
+        "include": ["./*.ts"],
+        "exclude": ["node_modules", "dist"],
+    }, indent=2)
+
+
+_TSCONFIG = _build_tsconfig(TS_TARGET, TS_MODULE)
+
+# ESLint v9+ flat config (ESM). Replaces the removed legacy .eslintrc.json form so
+# text-mode lint runs on a current ESLint without --no-eslintrc (which v9 deleted).
+# Auto-discovered by eslint when written as eslint.config.mjs in the run cwd.
+_ESLINT_FLAT_CONFIG = """\
+import tsParser from '@typescript-eslint/parser';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
+
+export default [
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 2022,
+      sourceType: 'module',
     },
-    "env": {"node": True, "es2020": True},
-}, indent=2)
+    plugins: { '@typescript-eslint': tsPlugin },
+    rules: {
+      'no-console': 'warn',
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+    },
+  },
+];
+"""
 
 _JEST_CONFIG = json.dumps({
     "preset": "ts-jest",
@@ -80,10 +108,40 @@ class TypeScriptEnv:
     test_file: Path
 
 
+def host_ts_values(project_root: str | Path) -> dict[str, str]:
+    """Read ``compilerOptions.target``/``module`` from a host ``tsconfig.json``.
+
+    Returns a dict with whichever of ``target``/``module`` the host project defines
+    (empty when there is no host tsconfig.json or it defines neither). Text mode
+    prefers these host values over the ``TS_TARGET``/``TS_MODULE`` constants so
+    generated code is checked against the project's own compile settings (FR-5). A
+    missing, unreadable, or malformed tsconfig degrades to an empty dict.
+    """
+    path = Path(project_root) / "tsconfig.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    opts = data.get("compilerOptions") if isinstance(data, dict) else None
+    if not isinstance(opts, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key in ("target", "module"):
+        value = opts.get(key)
+        if isinstance(value, str) and value:
+            out[key] = value
+    return out
+
+
 def _make_env(implementation: str, tests: str, project_root: str) -> TypeScriptEnv:
     tmpdir = Path(tempfile.mkdtemp(prefix="harness_ts_"))
-    (tmpdir / "tsconfig.json").write_text(_TSCONFIG)
-    (tmpdir / ".eslintrc.json").write_text(_ESLINT_CONFIG)
+    host = host_ts_values(project_root)
+    target = host.get("target", TS_TARGET)
+    module = host.get("module", TS_MODULE)
+    (tmpdir / "tsconfig.json").write_text(_build_tsconfig(target, module))
+    (tmpdir / "eslint.config.mjs").write_text(_ESLINT_FLAT_CONFIG)
     (tmpdir / "jest.config.json").write_text(_JEST_CONFIG)
     (tmpdir / "package.json").write_text(_PACKAGE_JSON)
 
@@ -180,12 +238,12 @@ def _lint_gate_text(env: TypeScriptEnv, config: GateTimeoutConfig | None = None)
     start = time.monotonic()
     timeout = config.timeout_for("lint", 60) if config else 60
     try:
+        # ESLint v9+: no --no-eslintrc (removed) and no legacy --config path. The
+        # flat eslint.config.mjs written into env.root is auto-discovered from cwd.
         result = _exec([
             "npx", "--yes", "eslint",
             str(env.impl_file),
             "--format", "json",
-            "--no-eslintrc",
-            "--config", str(env.root / ".eslintrc.json"),
         ], env.root, timeout=timeout)
     except subprocess.TimeoutExpired:
         return _timeout_error("lint", timeout)
@@ -264,10 +322,43 @@ def run_typescript_suite(
 # ── Directory mode gates ──────────────────────────────────────────────────────
 
 _TSCONFIG_NAMES = ("tsconfig.json",)
-_ESLINT_CONFIG_NAMES = (
-    "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs",
-    ".eslintrc.json", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.yml", ".eslintrc",
+# ESLint v9+ flat config filenames (project config wins; no --ext, which v9 removed).
+_ESLINT_FLAT_NAMES = (
+    "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts",
 )
+# Pre-v9 legacy config filenames (still linted with the --ext invocation).
+_ESLINT_LEGACY_NAMES = (
+    ".eslintrc.json", ".eslintrc.js", ".eslintrc.cjs",
+    ".eslintrc.yml", ".eslintrc.yaml", ".eslintrc",
+)
+_ESLINT_CONFIG_NAMES = _ESLINT_FLAT_NAMES + _ESLINT_LEGACY_NAMES
+
+
+def eslint_config_kind(root: Path) -> str:
+    """Classify the ESLint config in *root*: 'flat', 'legacy', or 'none'.
+
+    Flat config (eslint.config.*) is preferred over legacy (.eslintrc*) when both are
+    present — flat is what ESLint v9 uses by default, so it reflects the active config.
+    """
+    if any((root / n).exists() for n in _ESLINT_FLAT_NAMES):
+        return "flat"
+    if any((root / n).exists() for n in _ESLINT_LEGACY_NAMES):
+        return "legacy"
+    return "none"
+
+
+def _eslint_dir_argv(root: Path) -> list[str]:
+    """Directory-mode eslint argv, keyed on the config kind found in *root*.
+
+    ESLint v9 removed ``--ext``; passing it on a flat-config (or config-less v9)
+    project makes eslint exit as a TOOL_ERROR. So ``--ext .ts,.tsx`` is appended ONLY
+    for legacy-config projects, where the flag is still required to widen the default
+    file set. Flat/none projects rely on the config's own ``files`` globs.
+    """
+    argv = ["npx", "--yes", "eslint", ".", "--format", "json"]
+    if eslint_config_kind(root) == "legacy":
+        argv += ["--ext", ".ts,.tsx"]
+    return argv
 _JEST_CONFIG_NAMES = (
     "jest.config.js", "jest.config.cjs", "jest.config.mjs",
     "jest.config.ts", "jest.config.json",
@@ -330,9 +421,7 @@ def _lint_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> G
     root = find_config_root(Path(directory), _ESLINT_CONFIG_NAMES)
     timeout = config.timeout_for("lint", 60) if config else 60
     try:
-        result = _exec([
-            "npx", "--yes", "eslint", ".", "--format", "json", "--ext", ".ts,.tsx",
-        ], root, timeout=timeout)
+        result = _exec(_eslint_dir_argv(root), root, timeout=timeout)
     except subprocess.TimeoutExpired:
         return _timeout_error("lint", timeout)
     errors = _parse_eslint_json(result.stdout, root)

@@ -9,19 +9,38 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from gates import GateTimeoutConfig, ProcessResult, _timeout_error, run_dir_gates_scheduled
+from gates import (
+    GateTimeoutConfig,
+    ProcessResult,
+    _timeout_error,
+    run_dir_gates_scheduled,
+)
 from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
+
+try:  # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised only on Python < 3.11
+    import tomli as tomllib  # type: ignore[import-not-found, no-redef]
 
 # Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
 # the doctor contract). Every name must appear in a subprocess argument list.
 REQUIRED_TOOLS: list[str] = ["cargo", "clippy"]
 
-_CARGO_TOML = """\
+# Current stable Rust edition for generated code. Raised from 2021 to 2024 (stable
+# since Rust 1.85, Feb 2025) so code using 2024-edition semantics compiles. Review
+# cadence: revisit each January against the current Rust stable edition; a host
+# Cargo.toml's edition overrides this (see host_rust_edition).
+RUST_EDITION = "2024"
+
+
+def _cargo_toml(edition: str) -> str:
+    """Render the temp-crate Cargo.toml for a given edition."""
+    return f"""\
 [package]
 name = "harness-temp"
 version = "0.1.0"
-edition = "2021"
+edition = "{edition}"
 
 [lib]
 name = "harness_temp"
@@ -29,6 +48,26 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 """
+
+
+def host_rust_edition(project_root: str | Path) -> str | None:
+    """``[package].edition`` from a host ``Cargo.toml``, or None when unavailable.
+
+    Text mode prefers this over ``RUST_EDITION`` so generated code compiles against
+    the host project's declared edition (FR-5). A missing, unreadable, or malformed
+    Cargo.toml — or one without a ``[package].edition`` — returns None.
+    """
+    try:
+        with open(Path(project_root) / "Cargo.toml", "rb") as fh:
+            data = tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    pkg = data.get("package")
+    edition = pkg.get("edition") if isinstance(pkg, dict) else None
+    return edition if isinstance(edition, str) and edition else None
+
+
+_CARGO_TOML = _cargo_toml(RUST_EDITION)
 
 
 @dataclass
@@ -39,7 +78,9 @@ class RustEnv:
 
 def _make_env(implementation: str, tests: str, project_root: str) -> RustEnv:
     tmpdir = Path(tempfile.mkdtemp(prefix="harness_rs_"))
-    (tmpdir / "Cargo.toml").write_text(_CARGO_TOML)
+    (tmpdir / "Cargo.toml").write_text(
+        _cargo_toml(host_rust_edition(project_root) or RUST_EDITION)
+    )
     src = tmpdir / "src"
     src.mkdir()
     lib = src / "lib.rs"
