@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from mcp.server.fastmcp import FastMCP
 
+import sarif_output
 from dag import DAGResolver
 from gates import GateTimeoutConfig, run_suite_for, run_suite_on_dir
 from gates.commit_lint import CommitLintConfig
@@ -293,12 +294,16 @@ def gate_run_on_dir(
     project_root: str,
     fail_fast: bool = True,
     changed_files: list[str] | None = None,
+    emit_sarif: bool = False,
 ) -> str:
     """
     Run gates against a project directory (worktree or project root).
     language: "auto" to detect from marker files, or "python"/"typescript"/"go"/"rust".
     fail_fast=True (default): stop at first failure — use during /build repair loop.
     fail_fast=False: run all gates regardless — use for /gate to write gate-findings.md.
+    emit_sarif=True: after a full run, also write `.harness/results.sarif` (SARIF
+    2.1.0) anchored on `directory`. A write failure is non-fatal and surfaces as
+    `sarif_write_failed: true` in the JSON. Only meaningful with fail_fast=False.
 
     changed_files (ticket 0030): optional list of changed relative paths (e.g. from
     `git diff --name-only HEAD`). When provided, a gate whose file-scope patterns
@@ -377,6 +382,23 @@ def gate_run_on_dir(
         # is added only when a skip actually occurred so the response shape is
         # byte-for-byte unchanged for every caller that omits changed_files (FR-7).
         any_skipped = any(r.skipped for _, r in tagged)
+
+        # Opt-in SARIF emission (FR-2 + FR-10). Two independent triggers: the
+        # explicit `emit_sarif` argument (the /gate --sarif flag), OR a
+        # `sarif_output: true` line in the harness-root `.tickets/_standards.md`
+        # (read from `project_root`, never the scanned `directory` -- a worktree's
+        # own _standards.md has no authority to enable emission). The SARIF file is
+        # anchored on the gated `directory` (like the coverage sidecar) and covers
+        # every finding from every detected stack. Computed once here, after the
+        # full run; a write failure never fails the gate -- it only adds a
+        # `sarif_write_failed` marker to whichever payload is returned below.
+        sarif_write_failed = False
+        if emit_sarif or sarif_output.sarif_optin_enabled(project_root):
+            all_results = [r for lr in lang_results for r in lr.results]
+            out_path = Path(directory) / ".harness" / "results.sarif"
+            doc = sarif_output.build_sarif(all_results, directory)
+            sarif_write_failed = not sarif_output.write_sarif(doc, out_path)
+
         if all(r.passed for _, r in tagged):
             if single:
                 payload = {"passed": True, "language": str(stacks[0])}
@@ -384,9 +406,11 @@ def gate_run_on_dir(
                     payload["any_skipped"] = True
                     # A single-language run shares one scope across its gates, so an
                     # all-pass run with skips means every gate was skipped. The bare
-                    # payload carries no per-gate data, so add the rendered body —
+                    # payload carries no per-gate data, so add the rendered body --
                     # otherwise /gate cannot write the required SKIP entries (FR-8).
                     payload["findings_md"] = _format_polyglot_findings(lang_results, directory)
+                if sarif_write_failed:
+                    payload["sarif_write_failed"] = True
                 return json.dumps(payload)
             payload = {
                 "passed": True,
@@ -395,6 +419,8 @@ def gate_run_on_dir(
             }
             if any_skipped:
                 payload["any_skipped"] = True
+            if sarif_write_failed:
+                payload["sarif_write_failed"] = True
             return json.dumps(payload)
         if single:
             payload = {
@@ -404,6 +430,8 @@ def gate_run_on_dir(
             }
             if any_skipped:
                 payload["any_skipped"] = True
+            if sarif_write_failed:
+                payload["sarif_write_failed"] = True
             return json.dumps(payload, indent=2)
         payload = {
             "languages": [str(s) for s in stacks],
@@ -413,6 +441,8 @@ def gate_run_on_dir(
         }
         if any_skipped:
             payload["any_skipped"] = True
+        if sarif_write_failed:
+            payload["sarif_write_failed"] = True
         return json.dumps(payload, indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)})

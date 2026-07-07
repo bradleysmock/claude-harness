@@ -48,6 +48,24 @@ Read each ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN
 
    If the response is a `CONFIG_ERROR` (a malformed `[gates]` override block in `_standards.md`), report it as a failing run and surface the `CONFIG_ERROR` finding — the gate fails closed and does **not** fall back to the default commands.
 
+## SARIF output (`--sarif`)
+
+SARIF (Static Analysis Results Interchange Format) 2.1.0 is the machine-readable format read by the VS Code Problems panel, GitHub Code Scanning, and multi-tool CI dashboards. SARIF emission is **opt-in** and additive — it never alters `gate-findings.md`.
+
+6. **Emit SARIF (opt-in only)**: after `gate-findings.md` is written, emit a SARIF file when *either* trigger is set:
+   - The `--sarif` flag was passed to this command, **or**
+   - `.tickets/_standards.md` (in the harness project root) contains a line matching the regex `^\s*sarif_output\s*:\s*true\s*$`. The value is matched **case-sensitively**: only the exact lowercase `sarif_output: true` enables emission. Python-capitalized `True` / `yes` / `on` / `1` are **intentionally not matched** (no accidental enable from a differently-spelled truthy token). This opt-in is enforced in code by `sarif_output.sarif_optin_enabled(project_root)`, which reads only the harness-root file.
+
+   **Scope of authority**: only `.tickets/_standards.md` in the *harness project root* enables emission. A `_standards.md` inside the scanned worktree has **no authority** to turn SARIF output on — the project under analysis cannot enable emission of its own findings.
+
+   When triggered, pass `emit_sarif=True` to the MCP tool:
+   ```
+   gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root, fail_fast=False, emit_sarif=True)
+   ```
+   This writes `.harness/results.sarif` (anchored on the gated directory) with one SARIF `run` per gate tool that produced findings. File locations are POSIX-relative paths contained within the worktree — absolute CI-runner paths never leak into the uploaded SARIF.
+
+   **Non-fatal write**: if the SARIF file cannot be written (e.g. a read-only filesystem), the run is unaffected — the JSON response carries `sarif_write_failed: true` and the gate verdict is otherwise unchanged. A SARIF write failure never fails a gate run.
+
 ## Notes
 
 - This command **does not fix findings** — it records them. The caller decides what to do.

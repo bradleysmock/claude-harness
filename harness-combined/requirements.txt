@@ -13,3 +13,8 @@ PyYAML>=6.0
 # .harness.toml parsing (ticket 0009). tomllib is stdlib on Python >= 3.11;
 # tomli is the reference backport for 3.10 and older, imported as a fallback.
 tomli>=2.0; python_version < "3.11"
+# Dev/test only (ticket 0037): confirms the SARIF our own `sarif_output` module
+# emits is ingestible by the SARIF ecosystem (AC-5). NOT a runtime dependency —
+# the `sarif_output` module is stdlib-only. Provides the `sarif.loader` ingestion
+# API used by tests/test_sarif.py::test_ac5_sarif_tools_can_ingest_output.
+sarif-tools>=1.0
