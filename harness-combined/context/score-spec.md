@@ -19,6 +19,25 @@ Read `.tickets/XXXX-<slug>/requirements.md` and `.tickets/XXXX-<slug>/solution.m
 
    For each placeholder hit, report the file path and a `line:column` location with the offending span so the lead can jump to it.
 6. **Acceptance criteria** — `requirements.md` has at least 2 binary acceptance criteria.
+7. **FR testability** *(judged, WARN-only)* — for **each** functional requirement,
+   judge whether a failing test is derivable from the FR sentence **alone**: it must
+   name a concrete **actor** (who/what acts), a specific **action**, and an
+   **observable outcome** a test could assert. An FR that could only be satisfied or
+   refuted by re-reading other requirements, or whose outcome is subjective
+   ("correctly", "properly", "as expected", "user-friendly") with nothing measurable,
+   is **flagged**. Report one line per flagged FR with a one-line reason (see Output).
+   Flag only genuinely underivable FRs — never style, tone, or wording nits; a
+   testable FR that merely reads awkwardly passes. This check **only ever WARNs**; it
+   has no BLOCK authority and never changes the deterministic verdict.
+
+   Worked examples:
+   - **Passes** — "The export command must write a `report.json` file to the output
+     directory and exit non-zero if the directory is missing." Actor (export command),
+     action (write / exit), observable outcome (file present; exit code) — a failing
+     test writes itself.
+   - **Flagged** — "The system must handle errors correctly." No concrete actor, no
+     specific action, and "correctly" names no observable outcome. *Reason: no
+     assertable outcome — "correctly" is subjective and no actor/action is specified.*
 
 ## Output
 
@@ -33,9 +52,15 @@ score-spec: XXXX-<slug>
 [PASS|WARN|BLOCK] Implementation Order present
 [PASS|WARN|BLOCK] No placeholders
 [PASS|WARN|BLOCK] Acceptance criteria
+[PASS|WARN] FR testability
+  - FR-<n>: <one-line reason this FR is not testable>   # one line per flagged FR; omit when none
 
 Verdict: PASS | WARN | BLOCK
 ```
+
+The `FR testability` line reports `PASS` when every FR is testable, or `WARN` with one
+indented `FR-<n>: <reason>` line per flagged FR. This per-FR testability output is
+carried verbatim into the `/problem` Phase 6 display and the Checkpoint 1 verdict.
 
 **Verdict rules**:
 - Any BLOCK → overall BLOCK
@@ -44,4 +69,8 @@ Verdict: PASS | WARN | BLOCK
 
 **Severity per check**:
 - FR count, Imperative language, Test-plan coverage, No placeholders → BLOCK if failing
-- Implementation Order present, Acceptance criteria → WARN if failing
+- Implementation Order present, Acceptance criteria, FR testability → WARN if failing
+
+Only the four checks above (FR count, Imperative language, Test-plan coverage, No
+placeholders) carry BLOCK authority. `FR testability` is a judged check and is capped
+at WARN so the deterministic checks keep sole control of the BLOCK verdict.

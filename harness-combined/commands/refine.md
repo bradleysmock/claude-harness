@@ -17,6 +17,9 @@ If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, th
 
 2. Proactively surface anything that could cause problems in implementation:
    - Ambiguous requirements the solution doesn't fully address
+   - **FRs flagged by score-spec's `FR testability` check (WARN)** — requirements from
+     which no failing test is derivable (no concrete actor/action/observable outcome);
+     tighten each into a testable statement
    - Edge cases not covered in the test plan
    - Implementation details not yet decided (data schemas, API contracts, error handling)
    - Missing test scenarios
