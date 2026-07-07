@@ -14,15 +14,76 @@ No-op outside the harness (no .tickets/ or no review-ready ticket).
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Callable
 
 PER_GATE_TIMEOUT_SECONDS = 90
+
+
+def _load_repair_integrity() -> ModuleType | None:
+    """Load gates/repair_integrity.py by file path (FR-4).
+
+    Loading by path deliberately bypasses ``gates/__init__.py`` (which imports
+    the ``models`` package) so the Stop hook never drags in the full gate suite.
+    Returns None if the module cannot be found — the suppression section is then
+    simply omitted rather than crashing the hook.
+    """
+    module_path = Path(__file__).resolve().parent.parent / "gates" / "repair_integrity.py"
+    if not module_path.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("repair_integrity", module_path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    # Register before exec: @dataclass resolves cls.__module__ via sys.modules
+    # during class creation (py3.12+), which fails if the module is absent.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def worktree_diff_against_main(worktree_dir: Path) -> str:
+    """Unified diff of the worktree against main (empty string on any failure)."""
+    if shutil.which("git") is None:
+        return ""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(worktree_dir), "diff", "main"],
+            capture_output=True, text=True, timeout=PER_GATE_TIMEOUT_SECONDS, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return ""
+    return completed.stdout if completed.returncode == 0 else ""
+
+
+def unexplained_suppressions(worktree_dir: Path) -> list[str]:
+    """Net-new UNEXPLAINED suppression pragmas in the worktree diff (FR-4).
+
+    Reuses gates/repair_integrity's marker detection (single source of the marker
+    list). Returns a one-item report section when any are present, else []. Fails
+    safe: any error (module missing, git failure) yields no section.
+    """
+    repair_integrity = _load_repair_integrity()
+    if repair_integrity is None:
+        return []
+    diff = worktree_diff_against_main(worktree_dir)
+    if not diff:
+        return []
+    bare = [s for s in repair_integrity.added_suppressions(diff) if not s.explained]
+    if not bare:
+        return []
+    lines = [f"net-new unexplained suppression pragma(s): {len(bare)}"]
+    for s in bare:
+        lines.append(f"  {s.file}: [{s.marker}] {s.excerpt}")
+    lines.append("Add a reason suffix (e.g. '# nosec: <why>') or fix the underlying issue.")
+    return ["\n".join(lines)]
 
 
 @dataclass(frozen=True)
@@ -316,6 +377,10 @@ def collect_failures(worktree_dir: Path) -> list[str]:
         section = gate_runner(worktree_dir)
         if section:
             failures.append(f"=== {stack} ===\n" + "\n\n".join(section))
+
+    suppression_section = unexplained_suppressions(worktree_dir)
+    if suppression_section:
+        failures.append("=== repair-integrity ===\n" + "\n\n".join(suppression_section))
     return failures
 
 

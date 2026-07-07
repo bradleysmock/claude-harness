@@ -60,6 +60,16 @@ JUSTIFICATION_MARKERS = (
     "# noqa",
 )
 
+# A justification marker is honored ONLY when it carries a reason suffix on the
+# same line (ticket 0040, FR-3) — e.g. "# nosec: fixture uses literal creds".
+# A bare marker (the exact token a gaming repair would add) no longer bypasses
+# the guard, and is itself a blocking violation. Reasons are free text; the guard
+# never judges their adequacy (NFR-3). Reason detection: after the marker token,
+# strip a run of separators (colon, dash, em/en dash, bracket, whitespace) and
+# require at least one remaining word character.
+_REASON_LEAD = re.compile(r"^[\s:：—–\-\[(]+")
+_WORD = re.compile(r"\w")
+
 
 # --- Python patterns -------------------------------------------------------
 
@@ -106,8 +116,51 @@ RS_UNSAFE = re.compile(r"\bunsafe\s*\{")
 
 # --- Helpers ---------------------------------------------------------------
 
+def _reason_after(rest: str) -> bool:
+    """True when text following a marker carries any explanatory content."""
+    return bool(_WORD.search(_REASON_LEAD.sub("", rest)))
+
+
+def _reason_segment(line: str, start: int) -> str:
+    """The text from ``start`` up to the next justification marker (or line end).
+
+    On a multi-marker line (e.g. ``# noqa  # nosec``) a *second* marker is not a
+    reason for the first — truncating at the next marker keeps each bare marker
+    bare instead of one masquerading as the other's justification.
+    """
+    rest = line[start:]
+    cut = len(rest)
+    for marker in JUSTIFICATION_MARKERS:
+        pos = rest.find(marker)
+        if pos != -1:
+            cut = min(cut, pos)
+    return rest[:cut]
+
+
+def marker_is_reasoned(line: str, marker: str) -> bool:
+    """True when ``marker`` appears in ``line`` with a reason suffix after it."""
+    idx = line.find(marker)
+    if idx == -1:
+        return False
+    return _reason_after(_reason_segment(line, idx + len(marker)))
+
+
 def line_has_justification(line: str) -> bool:
-    return any(marker in line for marker in JUSTIFICATION_MARKERS)
+    """True only when a justification marker on the line carries a reason suffix.
+
+    A bare marker (no reason) no longer counts as justification, so the
+    forbidden-shape checks that gate on ``not line_has_justification`` now fire.
+    """
+    return any(marker_is_reasoned(line, marker) for marker in JUSTIFICATION_MARKERS)
+
+
+def bare_markers(line: str) -> list[str]:
+    """Justification markers present on the line WITHOUT a reason suffix."""
+    return [
+        marker
+        for marker in JUSTIFICATION_MARKERS
+        if marker in line and not marker_is_reasoned(line, marker)
+    ]
 
 
 def extension_of(file_path: str) -> str:
@@ -134,6 +187,26 @@ def detect_languages(file_path: str) -> list[str]:
 def scan_universal(file_path: str, line: str, line_number: int) -> list[Violation]:
     findings: list[Violation] = []
     has_justification = line_has_justification(line)
+
+    # Bare-marker enforcement (FR-3) is meaningful only in source files whose
+    # language the guard recognizes — there a suppression marker actually silences
+    # a linter. In prose/docs (no detected language, e.g. the plugin's own
+    # context/rules/*.md, which must *discuss* these tokens) the marker is just
+    # text with no reason-suffix escape hatch, so scanning it would block
+    # legitimate writes (NFR-3 false-positive escape hatch). Secret and SQL
+    # scanning below stay universal — those are dangerous in any file type.
+    if detect_languages(file_path):
+        for marker in bare_markers(line):
+            findings.append(Violation(
+                rule_id="suppression:bare-marker",
+                line_number=line_number,
+                line_excerpt=line.strip()[:120],
+                fix_hint=(
+                    f"Bare '{marker.strip()}' suppression — add a reason suffix on the "
+                    f"same line, e.g. '{marker.strip()}: <why this is safe>'. Fix the "
+                    "underlying issue rather than silencing it where possible."
+                ),
+            ))
 
     for secret_name, pattern in SECRET_PATTERNS:
         if pattern.search(line):

@@ -52,6 +52,7 @@ For **code review** mode, in addition to panel-based findings, evaluate two tick
 
 - **Requirements coverage** — Does each functional requirement in `requirements.md` have a corresponding implementation in the worktree AND a passing test that exercises it? Missing implementations and missing tests for stated requirements are **BLOCKER** findings (rationale: the ticket's contract isn't met).
 - **Alignment with `solution.md`** — Did the implementation follow the agreed architecture, tech choices, library selections, and overall approach? Significant unjustified deviations are **MAJOR** findings. Deviations explained in code comments, commit messages, or the worktree's added documentation are **OBS** findings (the lead can decide whether the deviation is acceptable).
+- **Weakened or deleted tests** — Compare the worktree's tests against `solution.md`'s Test Plan. Tests that were **weakened or deleted** relative to the Test Plan — a removed or skipped test, a loosened assertion, or a new unexplained suppression pragma that silences a gate rather than fixing the defect — are **BLOCKER** findings. A repair that turns a red gate green by weakening the safety net is not a fix; the ticket's tested-behavior contract must hold.
 
 These two checks supplement, not replace, the panel-based dimensions. Apply them alongside (not before or after) the panel findings.
 

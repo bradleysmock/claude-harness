@@ -170,9 +170,10 @@ Call `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`.
 If it fails:
 1. Call `memory(action="retrieve", errors_text=errors_text, gate=gate, project_root=project_root)`.
 2. Fix the specific `file:line` locations in the worktree files directly.
-3. Re-run `gate_run_on_dir`. Repeat up to `MAX_REPAIR_ATTEMPTS`.
-4. If pass: call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="passed", project_root=project_root)`.
-5. If still failing after `MAX_REPAIR_ATTEMPTS`: note the failure and continue to the next spec.
+3. **Repair-integrity check.** Before accepting the round, run the repair-integrity check on **this round's own diff** — the changes this repair attempt introduced, not the cumulative branch. Since the fixes here are still uncommitted, pass `git -C .worktrees/XXXX-<slug> diff` (the working-tree changes) through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — under concurrent delivery `main` advances and its new test functions would read as spurious removals. If the check reports any violation (a net removal of test functions, an added skip/xfail marker, or a net-new bare suppression pragma), the round **fails**: do not accept the green gate. Re-enter repair with the corrective instruction to **restore the test and fix the implementation** (or add a reason suffix to a genuinely justified suppression) rather than weakening the safety net.
+4. Re-run `gate_run_on_dir`. Repeat up to `MAX_REPAIR_ATTEMPTS`.
+5. If pass: call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="passed", project_root=project_root)`.
+6. If still failing after `MAX_REPAIR_ATTEMPTS`: note the failure and continue to the next spec.
 
 **f. Checkpoint:**
 
@@ -235,6 +236,7 @@ For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
 1. Announce: "Auto-repair attempt N/`MAX_REPAIR_ATTEMPTS` — addressing M BLOCKER / K MAJOR finding(s)."
 2. For each BLOCKER and MAJOR finding, fix the specific `file:line` location in the worktree files directly. Call `memory(action="retrieve", ...)` first when a finding overlaps a known failure pattern. Do **not** touch MINOR / OBS findings.
 3. Re-run the integration gate so fixes don't regress: `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`. If it fails, repair the gate failures (same inner loop as Step 4e) before proceeding — a green gate is a precondition for re-review.
+3a. **Repair-integrity check.** Run the repair-integrity check on **this round's own diff** — the changes this repair round introduced. Capture the round's diff before its commit (`git -C .worktrees/XXXX-<slug> diff` on the still-uncommitted fixes, or `git -C .worktrees/XXXX-<slug> diff HEAD` if you staged them) and pass it through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — that is the cumulative branch diff against a moving tip and would re-flag earlier accepted changes and drift from concurrent deliveries. If it reports any violation (removed test functions, added skip/xfail markers, or net-new bare suppression pragmas), the round **fails**: re-enter repair with the instruction to **restore the test and fix the implementation instead** of silencing the gate. A green gate obtained by weakening the safety net does not count as repaired.
 4. Commit the repair round: `git -C .worktrees/XXXX-<slug> commit -am "fix: address post-build critic round N findings"`.
 5. Re-spawn the critic subagent (**Round**: `N+1`, same Phase/Ticket) to verify. Display its report verbatim.
 6. **If the new report has no BLOCKER and no MAJOR findings** → repair succeeded. Go to Step 7b.
