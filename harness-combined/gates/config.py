@@ -62,6 +62,15 @@ _VALID_GATES: dict[str, frozenset[str]] = {
 #: A gate name is a short identifier (e.g. ``lint``, ``type_check``, ``dep-audit``).
 _GATE_RE = re.compile(r"[A-Za-z0-9_-]+")
 
+#: Block-level settings (not ``language.gate`` command overrides) permitted inside
+#: the ``[gates]`` block. The override parser skips these so a block-level knob and
+#: the per-gate command overrides can share one fenced block.
+_BLOCK_SETTINGS = frozenset({"parallel_gate_limit"})
+
+#: ``parallel_gate_limit = N`` — the max concurrent gates the scheduler may run
+#: (ticket 0036). Lives in the ``[gates]`` block alongside command overrides.
+_PARALLEL_LIMIT_RE = re.compile(r"^parallel_gate_limit\s*=\s*(.+)$")
+
 
 class ConfigError(ValueError):
     """Raised when the ``[gates]`` override block is malformed or unsafe."""
@@ -151,6 +160,10 @@ def load_gate_overrides(
             raise ConfigError(f"malformed override line (no '='): {line!r}")
         key, _, value = line.partition("=")
         key, value = key.strip(), value.strip()
+        if key in _BLOCK_SETTINGS:
+            # Block-level setting (e.g. parallel_gate_limit), not a command
+            # override — parsed separately by load_parallel_gate_limit.
+            continue
         if "." not in key:
             raise ConfigError(f"override key must be '<language>.<gate>': {key!r}")
         language, _, gate = key.partition(".")
@@ -167,3 +180,43 @@ def load_gate_overrides(
             )
         overrides.setdefault(language, {})[gate] = _parse_argv(value)
     return overrides
+
+
+def load_parallel_gate_limit(standards_path: Path | str) -> int | None:
+    """Parse ``parallel_gate_limit`` from the ``[gates]`` block of ``standards_path``.
+
+    Returns the configured max concurrent gates (a positive int), or ``None`` when
+    the file, the block, or the setting is absent — in which case the scheduler runs
+    all independent gates concurrently (FR-5's "no explicit limit" default). Parsing
+    is fail-closed: a non-integer or non-positive value raises :class:`ConfigError`
+    so a typo is visible rather than silently ignored. The value may be bare
+    (``parallel_gate_limit = 4``) or quoted (``= "4"``).
+    """
+    path = Path(standards_path)
+    if not path.exists():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"cannot read {path}: {exc}") from exc
+
+    block = _extract_gates_block(text)
+    if block is None:
+        return None
+    for raw in block:
+        match = _PARALLEL_LIMIT_RE.match(raw.strip())
+        if not match:
+            continue
+        value = match.group(1).strip().strip("\"'")
+        try:
+            limit = int(value)
+        except ValueError as exc:
+            raise ConfigError(
+                f"parallel_gate_limit must be a positive integer, got {value!r}"
+            ) from exc
+        if limit < 1:
+            raise ConfigError(
+                f"parallel_gate_limit must be >= 1, got {limit}"
+            )
+        return limit
+    return None

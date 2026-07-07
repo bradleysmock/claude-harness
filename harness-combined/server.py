@@ -25,7 +25,7 @@ from dag import DAGResolver
 from gates import GateTimeoutConfig, run_suite_for, run_suite_on_dir
 from gates.commit_lint import CommitLintConfig
 from gates.commit_lint import run as run_commit_lint
-from gates.config import ConfigError, load_gate_overrides
+from gates.config import ConfigError, load_gate_overrides, load_parallel_gate_limit
 from gates.doctor import DoctorError, format_report, run_doctor
 from memory import SQLiteFailureMemory
 from models import (
@@ -349,6 +349,10 @@ def gate_run_on_dir(
         standards_path = str(Path(directory) / ".tickets" / "_standards.md")
         try:
             overrides_map = load_gate_overrides(standards_path)
+            # parallel_gate_limit caps concurrent gates (ticket 0036). None => no
+            # explicit limit => all independent gates run concurrently (FR-5). A
+            # malformed value fails closed via ConfigError, same as the overrides.
+            parallel_limit = load_parallel_gate_limit(standards_path)
         except ConfigError as exc:
             return _config_error_payload(exc, standards_path)
 
@@ -371,14 +375,20 @@ def gate_run_on_dir(
                 fail_fast=fail_fast, standards_path=standards_path,
                 base_ref="main", config=config,
             )
-            # Forward overrides only when present so suites/fakes without the
-            # parameter keep working.
+            # Forward overrides / parallel limit only when present so suites and
+            # test fakes lacking those parameters keep working (the same "forward
+            # only when set" contract enforced for overrides). Parallel gate
+            # execution is therefore opt-in: absent parallel_gate_limit the suite
+            # stays sequential (preserving every existing gate_run_on_dir test);
+            # setting it to N>=2 fans out independent gates up to N at a time.
             if overrides:
                 kwargs["overrides"] = overrides
             # Forward the diff set only when supplied so the same forward-compat
             # holds and the None default preserves prior behaviour exactly.
             if changed_files is not None:
                 kwargs["changed_files"] = changed_files
+            if parallel_limit is not None:
+                kwargs["max_workers"] = parallel_limit
             results = run_suite_on_dir(stack, directory, **kwargs)
             lang_results.append(LanguageResult(stack, results))
             if fail_fast and not all(r.passed for r in results):

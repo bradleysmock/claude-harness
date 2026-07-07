@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from gates import GateTimeoutConfig, ProcessResult, _run_override_gate, _timeout_error
-from gates._scope import SKIP_REASON, GateSpec, has_scope_match
+from gates import GateTimeoutConfig, ProcessResult, _timeout_error, run_dir_gates_scheduled
+from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
 
 # Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
@@ -212,32 +212,28 @@ def run_rust_suite_on_dir(
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
     changed_files: list[str] | None = None,
+    max_workers: int | None = None,
+    log_dir: Path | None = None,
 ) -> list[GateResult]:
-    """Directory mode: check → clippy → test (actual project dir, no audit).
+    """Directory mode: check / clippy / test via ``GateScheduler``.
 
-    An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
-    with the operator-supplied one; absent keys run the default gate. When
-    ``changed_files`` is supplied, a gate whose scope patterns do not overlap it is
-    skipped — a passing ``skipped=True`` result — instead of run (ticket 0030).
+    ``check`` and ``clippy`` run concurrently; ``test`` waits on ``check`` per
+    :data:`RUST_GATE_GRAPH`. ``max_workers=None`` (default) is auto: concurrent when
+    ``fail_fast`` is False, sequential when True. An ``overrides`` entry replaces
+    that gate's default command. When ``changed_files`` is supplied, a gate whose
+    scope patterns do not overlap it is skipped — a passing ``skipped=True`` result
+    (ticket 0030).
     """
-    results = []
-    gates: list[tuple[str, GateSpec]] = [
+    from gates.gate_graph import RUST_GATE_GRAPH
+
+    gate_defs: list[tuple[str, GateSpec]] = [
         ("check", GateSpec(_check_gate, _RUST_SCOPE)),
         ("clippy", GateSpec(_clippy_gate, _RUST_SCOPE)),
         ("test", GateSpec(_test_gate, _RUST_SCOPE)),
     ]
-    for name, gate_spec in gates:
-        if not has_scope_match(changed_files, gate_spec.scope_patterns):
-            results.append(GateResult(
-                gate=name, passed=True, errors=[], duration_ms=0,
-                skipped=True, skip_reason=SKIP_REASON,
-            ))
-            continue
-        if overrides and name in overrides:
-            result = _run_override_gate(name, overrides[name], directory, config)
-        else:
-            result = gate_spec.fn(directory, config)
-        results.append(result)
-        if not result.passed and fail_fast:
-            return results
-    return results
+    return run_dir_gates_scheduled(
+        gate_defs, RUST_GATE_GRAPH, directory, log_namespace="rust",
+        scope_check=has_scope_match,
+        fail_fast=fail_fast, config=config, overrides=overrides,
+        changed_files=changed_files, max_workers=max_workers, log_dir=log_dir,
+    )

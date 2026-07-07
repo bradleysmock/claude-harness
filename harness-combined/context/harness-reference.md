@@ -205,6 +205,32 @@ it.
 > the run before `sast` executes. Fix earlier-phase failures to surface SAST
 > findings. Pin `.semgrep.yml` to avoid `p/default` rule churn.
 
+### Parallel gate execution (`parallel_gate_limit`)
+
+In **directory mode** the language gates run through a dependency-aware scheduler
+(`gates/scheduler.py`). Independent gates run concurrently on a thread pool while a
+gate with a declared prerequisite waits for it to pass — per language,
+`gates/gate_graph.py` declares `test` depends on `type_check` (Python/TypeScript),
+`build` (Go) or `check` (Rust); every other gate is independent. Result ordering is
+always the language's declared order, so `gate-findings.md` is unchanged.
+
+- **Opt-in, per project.** Add a `parallel_gate_limit = N` line to the `[gates]`
+  block of `.tickets/_standards.md` (the same block that holds command overrides).
+  `N` is the max gates in flight at once. Absent the key, the suite stays
+  **sequential** (identical to the pre-0036 fail-fast loop) — parallelism does not
+  turn on until the lead sets a limit. `parallel_gate_limit = 1` is explicitly
+  sequential; a malformed value fails closed with a `CONFIG_ERROR` finding.
+- **Prerequisite failure skips dependents.** If `type_check` fails, `test` is
+  recorded as a `SKIPPED` result (not silently passed).
+- **`fail_fast` semantics.** Under fail-fast a gate failure stops *new* gate
+  submissions; gates already in flight run to completion and their results are
+  captured. At `parallel_gate_limit = 1` this reproduces the old early-return exactly.
+- **Per-gate logs, written on completion (caveat).** When a log directory is
+  supplied, each gate's rendered result is written to `<log_dir>/<gate>.log` once the
+  gate finishes — not streamed incrementally. A gate process killed mid-run (e.g.
+  SIGKILL) therefore leaves no log for itself, but its peers' logs are intact. The
+  gate name is validated as a safe single path component before the path is built.
+
 ---
 
 ## Gate/Repair Loop

@@ -16,11 +16,11 @@ from typing import Any
 from gates import (
     GateTimeoutConfig,
     ProcessResult,
-    _run_override_gate,
     _timeout_error,
     append_tool_error_if_silent,
+    run_dir_gates_scheduled,
 )
-from gates._scope import SKIP_REASON, GateSpec, has_scope_match
+from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
 
 # Tools this gate invokes via subprocess. Single source of truth consumed by
@@ -450,34 +450,31 @@ def run_python_suite_on_dir(
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
     changed_files: list[str] | None = None,
+    max_workers: int | None = None,
+    log_dir: Path | None = None,
 ) -> list[GateResult]:
-    """Directory mode: lint → type_check → tests → security (actual project dir).
+    """Directory mode: lint / type_check / test / security via ``GateScheduler``.
 
-    An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
-    with the operator-supplied one; absent keys run the default gate. When
-    ``changed_files`` is supplied, a gate whose scope patterns do not overlap it is
-    skipped — a passing ``skipped=True`` result — instead of run (ticket 0030). A
-    skipped gate keeps ``passed=True`` so it never trips the fail-fast loop.
+    Independent gates (lint, type_check, security) run concurrently; ``test`` waits
+    on ``type_check`` per :data:`PYTHON_GATE_GRAPH`. ``max_workers=None`` (default)
+    is auto: concurrent when ``fail_fast`` is False, sequential when True; the server
+    overrides it from ``parallel_gate_limit``. An ``overrides`` entry (gate-name ->
+    argv) replaces that gate's default command. When ``changed_files`` is supplied, a
+    gate whose scope patterns do not overlap it is skipped — a passing
+    ``skipped=True`` result — keeping ``passed=True`` so it never trips fail-fast
+    (ticket 0030).
     """
-    results = []
-    gates: list[tuple[str, GateSpec]] = [
+    from gates.gate_graph import PYTHON_GATE_GRAPH
+
+    gate_defs: list[tuple[str, GateSpec]] = [
         ("lint", GateSpec(_lint_gate_dir, _PY_SCOPE)),
         ("type_check", GateSpec(_type_check_gate_dir, _PY_SCOPE)),
         ("test", GateSpec(_test_gate_dir, _PY_SCOPE)),
         ("security", GateSpec(_security_gate_dir, _PY_SCOPE)),
     ]
-    for name, gate_spec in gates:
-        if not has_scope_match(changed_files, gate_spec.scope_patterns):
-            results.append(GateResult(
-                gate=name, passed=True, errors=[], duration_ms=0,
-                skipped=True, skip_reason=SKIP_REASON,
-            ))
-            continue
-        if overrides and name in overrides:
-            result = _run_override_gate(name, overrides[name], directory, config)
-        else:
-            result = gate_spec.fn(directory, config)
-        results.append(result)
-        if not result.passed and fail_fast:
-            return results
-    return results
+    return run_dir_gates_scheduled(
+        gate_defs, PYTHON_GATE_GRAPH, directory, log_namespace="python",
+        scope_check=has_scope_match,
+        fail_fast=fail_fast, config=config, overrides=overrides,
+        changed_files=changed_files, max_workers=max_workers, log_dir=log_dir,
+    )

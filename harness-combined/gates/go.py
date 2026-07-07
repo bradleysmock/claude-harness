@@ -8,8 +8,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from gates import GateTimeoutConfig, ProcessResult, _run_override_gate, _timeout_error
-from gates._scope import SKIP_REASON, GateSpec, has_scope_match
+from gates import GateTimeoutConfig, ProcessResult, _timeout_error, run_dir_gates_scheduled
+from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
 
 # Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
@@ -189,32 +189,28 @@ def run_go_suite_on_dir(
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
     changed_files: list[str] | None = None,
+    max_workers: int | None = None,
+    log_dir: Path | None = None,
 ) -> list[GateResult]:
-    """Directory mode: build → vet → test (actual project dir, no temp env).
+    """Directory mode: build / vet / test via ``GateScheduler``.
 
-    An ``overrides`` entry (gate-name -> argv) replaces that gate's default command
-    with the operator-supplied one; absent keys run the default gate. When
-    ``changed_files`` is supplied, a gate whose scope patterns do not overlap it is
-    skipped — a passing ``skipped=True`` result — instead of run (ticket 0030).
+    ``build`` and ``vet`` run concurrently; ``test`` waits on ``build`` per
+    :data:`GO_GATE_GRAPH`. ``max_workers=None`` (default) is auto: concurrent when
+    ``fail_fast`` is False, sequential when True. An ``overrides`` entry replaces
+    that gate's default command. When ``changed_files`` is supplied, a gate whose
+    scope patterns do not overlap it is skipped — a passing ``skipped=True`` result
+    (ticket 0030).
     """
-    results = []
-    gates: list[tuple[str, GateSpec]] = [
+    from gates.gate_graph import GO_GATE_GRAPH
+
+    gate_defs: list[tuple[str, GateSpec]] = [
         ("build", GateSpec(_build_gate, _GO_SCOPE)),
         ("vet", GateSpec(_vet_gate, _GO_SCOPE)),
         ("test", GateSpec(_test_gate, _GO_SCOPE)),
     ]
-    for name, gate_spec in gates:
-        if not has_scope_match(changed_files, gate_spec.scope_patterns):
-            results.append(GateResult(
-                gate=name, passed=True, errors=[], duration_ms=0,
-                skipped=True, skip_reason=SKIP_REASON,
-            ))
-            continue
-        if overrides and name in overrides:
-            result = _run_override_gate(name, overrides[name], directory, config)
-        else:
-            result = gate_spec.fn(directory, config)
-        results.append(result)
-        if not result.passed and fail_fast:
-            return results
-    return results
+    return run_dir_gates_scheduled(
+        gate_defs, GO_GATE_GRAPH, directory, log_namespace="go",
+        scope_check=has_scope_match,
+        fail_fast=fail_fast, config=config, overrides=overrides,
+        changed_files=changed_files, max_workers=max_workers, log_dir=log_dir,
+    )

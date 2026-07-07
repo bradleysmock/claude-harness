@@ -4,8 +4,9 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
+from gates._scope import SKIP_REASON, GateSpec
 from models import GateError, GateResult
 
 try:  # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport
@@ -219,6 +220,115 @@ def _run_override_gate(
     )
 
 
+#: Sentinel: the caller did not specify ``max_workers``. Distinct from ``None``
+#: (which the scheduler reads as "unlimited"), so the parallelism knob is forwarded
+#: down the suite chain *only* when a caller set it — legacy fakes and direct callers
+#: that omit it keep the sequential default and never receive an unexpected kwarg.
+_WORKERS_UNSET: object = object()
+
+
+def _make_default_gate_fn(
+    gate_fn: Callable[..., GateResult],
+    config: GateTimeoutConfig | None,
+) -> Callable[[str], GateResult]:
+    """Bind ``config`` to a default gate function, exposing an ``fn(directory)`` shape."""
+    return lambda directory: gate_fn(directory, config)
+
+
+def _make_override_gate_fn(
+    name: str, argv: list[str], config: GateTimeoutConfig | None,
+) -> Callable[[str], GateResult]:
+    """Bind an operator override command to an ``fn(directory)`` shape."""
+    return lambda directory: _run_override_gate(name, argv, directory, config)
+
+
+def _make_skipped_gate_fn(name: str) -> Callable[[str], GateResult]:
+    """A gate fn that instantly returns a scoped-out skip result (ticket 0030).
+
+    A scope-skipped gate is modelled as a gate that "runs" but does no work and
+    passes, so it flows through the scheduler unchanged: ``passed=True`` satisfies
+    any dependent's prerequisite (a skipped ``type_check`` still lets ``test`` run)
+    and never trips the fail-fast latch — exactly the pre-0036 skip contract.
+    """
+    return lambda directory: GateResult(
+        gate=name, passed=True, errors=[], duration_ms=0,
+        skipped=True, skip_reason=SKIP_REASON,
+    )
+
+
+def run_dir_gates_scheduled(
+    gate_defs: list[tuple[str, GateSpec]],
+    gate_graph: dict[str, list[str]],
+    directory: str,
+    *,
+    log_namespace: str,
+    scope_check: Callable[[list[str] | None, list[str] | None], bool],
+    fail_fast: bool,
+    config: GateTimeoutConfig | None,
+    overrides: dict[str, list[str]] | None,
+    changed_files: list[str] | None,
+    max_workers: int | None,
+    log_dir: Path | None,
+) -> list[GateResult]:
+    """Run a language's directory-mode gates through :class:`GateScheduler` (0036).
+
+    ``gate_defs`` is the ordered ``(name, GateSpec)`` list — the ``GateSpec`` carries
+    the gate function and its file-scope patterns (ticket 0030). It defines the
+    scheduler's declaration order (and thus the returned result order). ``gate_graph``
+    supplies the prerequisite edges (e.g. ``test`` -> ``type_check``) that keep
+    dependent gates ordered while independent gates run concurrently.
+
+    Per-gate function selection:
+
+    * ``scope_check`` (the caller's ``has_scope_match``) is called once per gate, in
+      declaration order, with ``(changed_files, spec.scope_patterns)`` — the runner
+      passes its own module-local reference so a test can monkeypatch scope matching
+      on the language module (ticket 0030).
+    * A gate whose scope does not overlap ``changed_files`` becomes a skip-pass
+      (``skipped=True``) result and does no work (ticket 0030).
+    * Otherwise an ``overrides`` entry replaces the gate's default command with the
+      operator's argv; absent that, the default gate function runs.
+
+    Concurrency (``max_workers``):
+
+    * ``None`` (the runner default) means **auto**: run independent gates
+      concurrently when ``fail_fast`` is False (the ``/gate`` path — FR-5's "no
+      explicit limit" default), but stay strictly sequential when ``fail_fast`` is
+      True (the ``/build`` repair path, preserving the old early-return exactly).
+    * An explicit integer (the operator's ``parallel_gate_limit``) always wins and
+      caps in-flight gates at that value.
+
+    Logs (``log_dir``): when unset, per-gate logs are written under
+    ``<directory>/.harness/gate-logs/<log_namespace>/`` (FR-3). The
+    ``<log_namespace>`` (the language) keeps a polyglot run's same-named gates —
+    e.g. python and typescript ``test`` — in separate files (NFR-2).
+    """
+    from gates.scheduler import GateScheduler
+
+    gate_fns: dict[str, Callable[[str], GateResult]] = {}
+    for name, spec in gate_defs:
+        if not scope_check(changed_files, spec.scope_patterns):
+            gate_fns[name] = _make_skipped_gate_fn(name)
+        elif overrides and name in overrides:
+            gate_fns[name] = _make_override_gate_fn(name, overrides[name], config)
+        else:
+            gate_fns[name] = _make_default_gate_fn(spec.fn, config)
+
+    effective_workers = max_workers
+    if max_workers is None:
+        # Auto: concurrent for non-fail-fast (/gate), sequential for fail-fast (/build).
+        effective_workers = None if not fail_fast else 1
+    if log_dir is None:
+        log_dir = Path(directory) / ".harness" / "gate-logs" / log_namespace
+
+    order = [name for name, _ in gate_defs]
+    scheduler = GateScheduler(
+        order, gate_graph, gate_fns,
+        max_workers=effective_workers, log_dir=log_dir, fail_fast=fail_fast,
+    )
+    return scheduler.run(directory)
+
+
 def run_suite_for(
     language: str,
     implementation: str,
@@ -287,20 +397,28 @@ def _language_suite_on_dir(
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
     changed_files: list[str] | None = None,
+    max_workers: int | None | object = _WORKERS_UNSET,
+    log_dir: Path | None = None,
 ) -> list[GateResult]:
     """Dispatch to a single language's directory-mode gate suite.
 
-    ``overrides`` (gate-name -> replacement argv) is forwarded to the language
-    suite only when non-empty, so existing suite stand-ins that predate the
-    parameter keep working. ``changed_files`` is forwarded only when supplied
-    (not ``None``) for the same back-compat reason — a suite fake without the
-    parameter keeps working, and the default ``None`` preserves prior behaviour.
+    Newer parameters are forwarded to the language suite only when the caller set
+    them, so a suite stand-in that predates a parameter is never handed an
+    unexpected keyword: ``overrides`` (gate-name -> replacement argv) when
+    non-empty; ``changed_files`` (0030 scope skipping) when not ``None``;
+    ``max_workers`` (0036 parallel gate limit) when the caller passed it (not
+    :data:`_WORKERS_UNSET`); ``log_dir`` (0036 per-gate log destination) when
+    non-``None``.
     """
     extra: dict[str, Any] = {}
     if overrides:
         extra["overrides"] = overrides
     if changed_files is not None:
         extra["changed_files"] = changed_files
+    if max_workers is not _WORKERS_UNSET:
+        extra["max_workers"] = max_workers
+    if log_dir is not None:
+        extra["log_dir"] = log_dir
     if language == "python":
         from gates.python import run_python_suite_on_dir
         results = run_python_suite_on_dir(directory, fail_fast=fail_fast, config=config, **extra)
@@ -366,6 +484,8 @@ def run_suite_on_dir(
     config: GateTimeoutConfig | None = None,
     overrides: dict[str, list[str]] | None = None,
     changed_files: list[str] | None = None,
+    max_workers: int | None | object = _WORKERS_UNSET,
+    log_dir: Path | None = None,
 ) -> list[GateResult]:
     """Directory mode: language gates, then coverage and dep-audit phases.
 
@@ -395,6 +515,7 @@ def run_suite_on_dir(
     results = _language_suite_on_dir(
         language, directory, fail_fast=fail_fast, config=config,
         overrides=overrides, changed_files=changed_files,
+        max_workers=max_workers, log_dir=log_dir,
     )
     results.insert(0, secrets_result)
     if fail_fast and not all(r.passed for r in results):
