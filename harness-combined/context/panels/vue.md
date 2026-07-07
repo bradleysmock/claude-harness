@@ -1,6 +1,6 @@
 ## Vue Panel
 
-*Active when Vue is in the project: `vue` in `package.json`; `**/*.vue` files; `nuxt.config.{js,ts}` or `vite.config.*` with `@vitejs/plugin-vue`; or `nuxt`/`@vue/*` packages present. TypeScript-level concerns defer to TypeScript/JS; generic UI concerns defer to UI; this panel covers Vue-specific machinery — the reactivity model (Proxy-based fine-grained tracking), the Composition API, Single File Components, `<script setup>` and the macro-driven compiler API, Pinia, and the composable ecosystem.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md`. TypeScript-level concerns defer to TypeScript/JS; generic UI concerns defer to UI; this panel covers Vue-specific machinery — the reactivity model (Proxy-based fine-grained tracking), the Composition API, Single File Components, `<script setup>` and the macro-driven compiler API, Pinia, and the composable ecosystem.*
 
 - **Evan You** — Vue creator; the reactivity model, Composition API design, the SFC compiler, Vue 3's architecture; canonical voice on what is and isn't reactive and why
 - **Anthony Fu** — VueUse, Vite ecosystem, Vue / Nuxt core team; the working voice on modern Vue idioms — `<script setup>`, composables, Pinia, the migration from Vuex/Vue 2 patterns to the 3.x default style

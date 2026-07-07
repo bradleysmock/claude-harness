@@ -1,6 +1,6 @@
 ## React Panel
 
-*Active when React is in the project: `react` in `package.json`; `**/*.{jsx,tsx}` files; `next.config.{js,ts,mjs}`, `remix.config.{js,ts}`, `vite.config.*` with `@vitejs/plugin-react`; or app directories matching `app/**` with React component conventions. TypeScript-level concerns defer to TypeScript/JS; generic UI / accessibility / Tailwind concerns defer to UI; this panel covers React-specific machinery — the render-as-description model, hooks rules and reactive closure semantics, Server Components, async/server state — and the patterns that distinguish "production React" from "tutorial React."*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md`. TypeScript-level concerns defer to TypeScript/JS; generic UI / accessibility / Tailwind concerns defer to UI; this panel covers React-specific machinery — the render-as-description model, hooks rules and reactive closure semantics, Server Components, async/server state — and the patterns that distinguish "production React" from "tutorial React."*
 
 - **Dan Abramov** — former React core team; the working voice on React's mental model — render as a pure description of UI for a given state, hooks as reactive primitives, Server Components as a separate runtime that composes with client components
 - **Tanner Linsley** — TanStack Query / Router / Table / Form; canonical authority on the distinction between *server state* and *client state*, and on why `useEffect` for data fetching is the single most-recurring production bug class in React codebases

@@ -1,6 +1,6 @@
 ## SolidJS Panel
 
-*Active when SolidJS is in the project: `solid-js` or `@solidjs/start` in `package.json`; `**/*.{jsx,tsx}` files using Solid's JSX runtime (`vite.config.*` with `vite-plugin-solid`); `app.config.{js,ts}` (SolidStart); or routes under `src/routes/**` matching SolidStart conventions. TypeScript-level concerns defer to TypeScript/JS; generic UI concerns defer to UI; this panel covers Solid-specific machinery — the fine-grained signal-based reactivity, the run-once component model, JSX-as-direct-DOM-compilation, and the SolidStart boundary between server and client.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md`. TypeScript-level concerns defer to TypeScript/JS; generic UI concerns defer to UI; this panel covers Solid-specific machinery — the fine-grained signal-based reactivity, the run-once component model, JSX-as-direct-DOM-compilation, and the SolidStart boundary between server and client.*
 
 - **Ryan Carniato** — SolidJS creator; SolidStart lead; the canonical voice on fine-grained reactivity, the "components run once" model, and why JSX compiled to direct DOM operations (no virtual DOM) is a different framework even when the source code looks like React
 

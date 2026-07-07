@@ -1,6 +1,6 @@
 ## USWDS Design System Panel
 
-*Project-specific. Active when the U.S. Web Design System is in use: `@uswds/uswds` in `package.json` / dependency manifest, `usa-*` classes appearing in markup, USWDS Sass entry points (`_uswds-theme*.scss`, `uswds-init.scss`), or files under `uswds*/` in scope. Generic UI architecture — progressive enhancement, accessibility, Tailwind discipline, atomic design — lives in `ui.md`; this panel covers the boundary rules specific to running USWDS alongside Tailwind and HTMX.*
+*Project-specific. Activation is governed by the trigger table in `skills/critique/SKILL.md`. Generic UI architecture — progressive enhancement, accessibility, Tailwind discipline, atomic design — lives in `ui.md`; this panel covers the boundary rules specific to running USWDS alongside Tailwind and HTMX.*
 
 - **Brad Frost** — *Atomic Design*; design systems, the cost of off-system components
 

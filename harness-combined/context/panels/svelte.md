@@ -1,6 +1,6 @@
 ## Svelte Panel
 
-*Active when Svelte is in the project: `svelte` or `@sveltejs/kit` in `package.json`; `**/*.svelte` files; `svelte.config.{js,ts}`; or routes under `src/routes/**` matching SvelteKit conventions. TypeScript-level concerns defer to TypeScript/JS; generic UI concerns defer to UI; this panel covers Svelte-specific machinery — the compiler-first model, runes (Svelte 5), stores, and the SvelteKit boundary between server and client load functions and form actions.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md`. TypeScript-level concerns defer to TypeScript/JS; generic UI concerns defer to UI; this panel covers Svelte-specific machinery — the compiler-first model, runes (Svelte 5), stores, and the SvelteKit boundary between server and client load functions and form actions.*
 
 - **Rich Harris** — Svelte creator; SvelteKit lead; the canonical voice on Svelte's compiler-first philosophy, the runes design (Svelte 5), and the SvelteKit architecture for SSR, load functions, and form actions
 

@@ -1,6 +1,6 @@
 ## C / C++ Panel
 
-*Active when `**/*.c`, `**/*.h`, `**/*.cpp`, `**/*.cc`, `**/*.cxx`, `**/*.hpp`, `**/*.hh`, `CMakeLists.txt`, or `*.cmake` are in scope.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Bjarne Stroustrup** — C++ creator; type safety as the primary tool, RAII, "within C++ there is a smaller, cleaner language struggling to get out"
 - **Herb Sutter** — ISO C++ standards committee chair; *Exceptional C++*, C++ Core Guidelines, GotW; modern C++ discipline

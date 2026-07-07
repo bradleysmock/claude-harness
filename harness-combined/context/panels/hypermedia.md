@@ -1,6 +1,6 @@
 ## Hypermedia & HTMX Panel
 
-*Active when HTMX is detected in the project: `htmx` in a dependency manifest (`package.json`, `requirements.txt`, `pyproject.toml`, `Gemfile`), `hx-*` attributes present in template files, or `htmx-ext-*` files in scope. Generic HTTP correctness (REST/OpenAPI, status codes, caching, content negotiation, versioning) lives in `http-api.md`; this panel covers the hypermedia layer on top.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md`. Generic HTTP correctness (REST/OpenAPI, status codes, caching, content negotiation, versioning) lives in `http-api.md`; this panel covers the hypermedia layer on top.*
 
 - **Carson Gross** — creator of HTMX; *Hypermedia Systems* (with Adam Stepinski and Deniz Akşimşek); hypermedia-driven architecture
 - **Mark Nottingham** — IETF HTTPbis working group chair; HTTP semantics applied to hypermedia partials (Cache-Control on fragments, redirect vs. swap, Content-Type for partials). His broader HTTP positions live in `http-api.md`; here he is invoked where partial-response semantics differ from whole-resource semantics.

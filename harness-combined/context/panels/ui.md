@@ -1,6 +1,6 @@
 ## UI Panel
 
-*Active when `**/*.html`, `**/*.css`, `**/*.scss`, `**/*.jsx`, `**/*.tsx`, or files under `static/`, `public/`, `templates/`, or `app/templates/` / `app/static/` are in scope. Design-system-specific rules (e.g., USWDS) live in their own panel and activate additively; this panel covers progressive enhancement, accessibility, Tailwind / utility-CSS discipline, and atomic-design thinking as general lenses.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md`. Design-system-specific rules (e.g., USWDS) live in their own panel and activate additively; this panel covers progressive enhancement, accessibility, Tailwind / utility-CSS discipline, and atomic-design thinking as general lenses.*
 
 - **Jeremy Keith** — *Resilient Web Design*, *HTML5 for Web Designers*; progressive enhancement, HTML-first architecture
 - **Heydon Pickering** — *Inclusive Design Patterns*, *Inclusive Components*; accessibility, ARIA, inclusive UI

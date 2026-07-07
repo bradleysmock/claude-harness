@@ -1,6 +1,6 @@
 ## Performance Panel
 
-*Active when hot-path code is in scope: request handlers, loops over collections, batch jobs, data transformation pipelines, render loops, or any code where the user has flagged performance as a concern. Also active when a change touches a benchmark, profiler output, or performance-tracking instrumentation.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Brendan Gregg** — *Systems Performance*; methodology, USE/RED, profiling, "know the cost of every operation"
 - **Martin Thompson** — Aeron / Disruptor author; mechanical sympathy, cache behavior, lock-free design, "measure, don't guess"

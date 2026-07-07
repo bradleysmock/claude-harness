@@ -1,6 +1,6 @@
 ## TypeScript & JavaScript Panel
 
-*Active when `**/*.ts`, `**/*.tsx`, `**/*.js`, `**/*.mjs`, `**/*.cjs`, `package.json`, or `tsconfig.json` are in scope. The UI panel covers JSX/TSX from a design-system angle; this panel covers types, async, and runtime semantics. Both can be active on the same file.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md`. The UI panel covers JSX/TSX from a design-system angle; this panel covers types, async, and runtime semantics. Both can be active on the same file.*
 
 - **Anders Hejlsberg** — TypeScript language lead; gradual typing philosophy, structural types, sound vs. useful tradeoffs
 - **Matteo Collina** — Node.js TSC member; event loop, streams, async iteration, Node runtime semantics

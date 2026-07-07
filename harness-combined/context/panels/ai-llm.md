@@ -1,6 +1,6 @@
 ## AI/LLM Panel
 
-*Active when files import or invoke LLM clients (`anthropic`, `openai`, `langchain`, `litellm`, `instructor`, `vercel/ai`, `langgraph`, `llama_index`, Bedrock/Vertex SDK calls); construct prompts (templates, chat-message arrays, system-prompt files); produce or consume embeddings or vector-store reads/writes (`pinecone`, `qdrant`, `weaviate`, `chroma`, `pgvector`); implement RAG pipelines, agent loops, tool-calling handlers, or LLM evaluation harnesses; or process LLM output (parsers, validators, downstream business logic conditioned on model output).*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Simon Willison** — creator of Datasette; simonwillison.net; coined "prompt injection" in the LLM context (2022); the working authority on LLM-application security, tool-use trust boundaries, and the *lethal trifecta*
 - **Hamel Husain** — independent AI consultant; *Your AI Product Needs Evals*; the canonical voice on evaluation discipline — "look at your data," LLM-as-judge calibration, data flywheels

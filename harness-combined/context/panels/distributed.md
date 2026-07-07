@@ -1,6 +1,6 @@
 ## Distributed Systems Panel
 
-*Active when service-to-service code is in scope: queue producers/consumers, RPC clients (gRPC, HTTP), webhook handlers, retry/backoff logic, outbox or saga implementations, service-mesh configuration, distributed locks, or any code crossing a network boundary between owned components.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Sam Newman** — *Building Microservices*, *Monolith to Microservices*; service boundaries, decomposition, the cost of distribution
 - **Chris Richardson** — *Microservices Patterns*; saga pattern, outbox, transactional messaging, idempotency

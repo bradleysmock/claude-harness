@@ -1,6 +1,6 @@
 ## Shell & Bash Panel
 
-*Active when `**/*.sh`, `**/*.bash`, `**/*.zsh`, files with a shell shebang (`#!/bin/sh`, `#!/bin/bash`, `#!/usr/bin/env bash`, etc.), shell hooks (`.git/hooks/*`, `.husky/*`), or shell snippets inside Makefiles, Dockerfiles, or CI YAML steps are in scope.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Greg Wooledge** — maintainer of BashFAQ and the Bash Pitfalls page (mywiki.wooledge.org); the de facto encyclopedia of "things shell scripts get wrong"
 - **Chet Ramey** — bash maintainer (Case Western Reserve); POSIX vs bash semantics, shell internals, what the standard actually says

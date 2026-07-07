@@ -1,6 +1,6 @@
 ## Secondary Panel
 
-Consult only when the primary panel produces a genuine impasse — competing positions that are both defensible and the synthesis cannot resolve.
+The Secondary panel is not activated by the trigger table in `skills/critique/SKILL.md`; consult it only when the primary panel produces a genuine impasse — competing positions that are both defensible and the synthesis cannot resolve.
 
 The secondary panel does not re-read the full codebase. It receives the contested finding, competing positions, specific code, and one focused question. It renders a specialist verdict on that question only.
 

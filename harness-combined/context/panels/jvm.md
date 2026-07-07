@@ -1,6 +1,6 @@
 ## JVM (Java & Kotlin) Panel
 
-*Active when `**/*.java`, `**/*.kt`, `**/*.kts`, `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle*`, or `gradle.properties` are in scope.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Brian Goetz** — Java language architect; *Java Concurrency in Practice*; JMM, virtual threads, the disciplined concurrency model
 - **Joshua Bloch** — *Effective Java*; API design, immutability, the cost of inheritance, the discipline that distinguishes good Java from bad

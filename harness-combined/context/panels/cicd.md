@@ -1,6 +1,6 @@
 ## CI/CD & Supply Chain Panel
 
-*Active when `.github/workflows/**`, `.gitlab-ci.yml`, `Jenkinsfile`, `*.cicd.yml`, `Dockerfile*`, `Makefile`, `.pre-commit-config.yaml`, or dependency lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `poetry.lock`, `Cargo.lock`, `go.sum`) are in scope.*
+*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Jez Humble & Dave Farley** — *Continuous Delivery*; deployment pipeline discipline, trunk-based development, fast feedback
 - **Liz Rice** — *Container Security*, Kubernetes contributor; supply chain security, container provenance, SBOM
