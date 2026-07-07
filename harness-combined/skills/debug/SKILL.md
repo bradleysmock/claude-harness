@@ -17,6 +17,15 @@ Read `.harness/config.py` if it exists to get `PROJECT_ROOT` (default `.`).
 
 2. Read the artifact — implementation, tests, `gate_results`, `attempts`.
 
+2.5. **Read the persisted critic findings when present.** If this run corresponds to a
+   ticket and `.tickets/XXXX-<slug>/critic-findings.md` exists, read it (see "Critic
+   findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). It holds the
+   per-round post-build critic reports and, on escalation, the diagnostic subagent's
+   root cause / fix strategy / target locations. **Cite those prior rounds and the
+   escalation diagnosis instead of re-deriving them** — build your classification on what
+   the escalation flow already established (what was tried, why it failed) rather than
+   starting from scratch.
+
 3. Classify the failure:
 
    **Class A — Spec ambiguity**: The spec description or acceptance criteria don't specify enough for unambiguous implementation. The implementation was reasonable but wrong.

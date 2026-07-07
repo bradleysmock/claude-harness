@@ -294,6 +294,29 @@ Must-fix vs. optional differs by review path:
 - **`/build` post-build critic** — BLOCKER **and** MAJOR are must-fix and trigger the auto-repair loop (Step 7a); `changes-requested` fires only when that loop is exhausted. MINOR / OBS are optional — listed for the lead, never auto-fixed.
 - **`review` skill (interactive)** — `changes-requested` fires on BLOCKER findings; MAJOR / MINOR / OBS appear in the report for the lead to decide on.
 
+### Critic findings file (`critic-findings.md`)
+
+The post-build critic's report is not only displayed — it is **persisted** to a
+per-ticket `critic-findings.md`, the durable sibling of `gate-findings.md`, at
+`.tickets/XXXX-<slug>/critic-findings.md`.
+
+- **Append-only, per-round sections.** `/build` Step 7 (round 1) and every
+  auto-repair round (Step 7a) append the round's structured report to the file,
+  each section headed by its round number and date (e.g. `## Round 2 — 2026-07-06`).
+  `repair-escalation.md` Phase 1 appends the diagnostic subagent's output (root
+  cause, fix strategy, target locations) as its own section. Nothing is ever
+  rewritten or truncated in place — the file is the run's durable critic history.
+- **Committed on the branch with each round.** Each append is committed inside the
+  worktree alongside the repair commit for that round; it never touches `main`
+  until the delivery squash archives it with the rest of the ticket.
+- **Consumed downstream.** `/deliver` Step 5 scans it (alongside `gate-findings.md`)
+  for candidate learnings; the `review` and `debug` skills read it when present and
+  cite prior rounds instead of re-deriving them.
+- The machine-readable counterpart is `.harness/memory.db`: escalated repair loops
+  and escalation diagnoses are also recorded via `memory(action="record", ...)`
+  under gate `"critic"` (diagnosis) or outcome `"escalated"` (exhausted loop), so
+  BM25 retrieval can warn a future repair away from an approach that already failed.
+
 ---
 
 ## Progress checklist

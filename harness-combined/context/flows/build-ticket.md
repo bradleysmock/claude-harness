@@ -173,7 +173,7 @@ If it fails:
 3. **Repair-integrity check.** Before accepting the round, run the repair-integrity check on **this round's own diff** — the changes this repair attempt introduced, not the cumulative branch. Since the fixes here are still uncommitted, pass `git -C .worktrees/XXXX-<slug> diff` (the working-tree changes) through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — under concurrent delivery `main` advances and its new test functions would read as spurious removals. If the check reports any violation (a net removal of test functions, an added skip/xfail marker, or a net-new bare suppression pragma), the round **fails**: do not accept the green gate. Re-enter repair with the corrective instruction to **restore the test and fix the implementation** (or add a reason suffix to a genuinely justified suppression) rather than weakening the safety net.
 4. Re-run `gate_run_on_dir`. Repeat up to `MAX_REPAIR_ATTEMPTS`.
 5. If pass: call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="passed", project_root=project_root)`.
-6. If still failing after `MAX_REPAIR_ATTEMPTS`: note the failure and continue to the next spec.
+6. If still failing after `MAX_REPAIR_ATTEMPTS`: record the exhausted loop so future repairs are warned away from it — call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="escalated", project_root=project_root)` — then note the failure and continue to the next spec. (This mirrors the existing `outcome="passed"` record on success; retrieval surfaces both, marking escalated entries with `⚠`.)
 
 **f. Checkpoint:**
 
@@ -218,6 +218,21 @@ The critic loads expert panels per the trigger table in `${CLAUDE_PLUGIN_ROOT}/s
 
 Display the critic's structured report to the user verbatim.
 
+**Persist this round's report.** Append the critic's structured report to the ticket's `critic-findings.md` (the durable sibling of `gate-findings.md` — see "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`), as a new append-only section headed by its round number and date:
+
+```
+## Round 1 — <today's date>
+
+<the critic's structured report verbatim>
+```
+
+Then commit it on the branch (branch-local — it must **not** touch `main`):
+
+```
+git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/critic-findings.md
+git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX critic findings round 1"
+```
+
 **Severity policy** (this is the core of the post-build loop):
 
 - **BLOCKER and MAJOR findings are must-fix.** `/build` does **not** stop for the lead's decision on them — it auto-repairs them in the worktree (Step 7a). The lead is only consulted if auto-repair cannot clear them after `MAX_REPAIR_ATTEMPTS`.
@@ -238,7 +253,7 @@ For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
 3. Re-run the integration gate so fixes don't regress: `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`. If it fails, repair the gate failures (same inner loop as Step 4e) before proceeding — a green gate is a precondition for re-review.
 3a. **Repair-integrity check.** Run the repair-integrity check on **this round's own diff** — the changes this repair round introduced. Capture the round's diff before its commit (`git -C .worktrees/XXXX-<slug> diff` on the still-uncommitted fixes, or `git -C .worktrees/XXXX-<slug> diff HEAD` if you staged them) and pass it through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — that is the cumulative branch diff against a moving tip and would re-flag earlier accepted changes and drift from concurrent deliveries. If it reports any violation (removed test functions, added skip/xfail markers, or net-new bare suppression pragmas), the round **fails**: re-enter repair with the instruction to **restore the test and fix the implementation instead** of silencing the gate. A green gate obtained by weakening the safety net does not count as repaired.
 4. Commit the repair round: `git -C .worktrees/XXXX-<slug> commit -am "fix: address post-build critic round N findings"`.
-5. Re-spawn the critic subagent (**Round**: `N+1`, same Phase/Ticket) to verify. Display its report verbatim.
+5. Re-spawn the critic subagent (**Round**: `N+1`, same Phase/Ticket) to verify. Display its report verbatim. **Persist this round's report**: append it to `critic-findings.md` as a new append-only section headed by its round number and date (`## Round N+1 — <today's date>`), and commit that append on the branch alongside the round (`git -C .worktrees/XXXX-<slug> commit -am "chore(ticket): XXXX critic findings round N+1"`) — never touching `main`. See "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`.
 6. **If the new report has no BLOCKER and no MAJOR findings** → repair succeeded. Go to Step 7b.
 7. **If BLOCKER / MAJOR findings remain** and attempts are left → loop to attempt `N+1`.
 

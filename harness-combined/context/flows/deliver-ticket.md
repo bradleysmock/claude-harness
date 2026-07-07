@@ -347,20 +347,31 @@ raw extracted text.
    `gate-findings.md`, the ticket number, and today's date. It returns a normalized,
    sanitized candidate list (≤ 5, BLOCKER/MAJOR prioritized).
 
+   **Also scan `critic-findings.md`** — the persisted per-round critic reports and
+   escalation diagnoses (see "Critic findings file" in
+   `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Call the same helper a second
+   time **with `source_kind="critic"`** so it uses the critic-report parser (Step 2c)
+   rather than the gate parser — the gate parser would return nothing, because
+   `critic-findings.md` has no `**Status**: FAIL` sections. Its records come back tagged
+   `gate="critic"`. Merge them with the gate candidates, then **dedup** on
+   `(gate, pattern)` and re-apply the ≤ 5 cap with BLOCKER/MAJOR prioritized, so
+   recurring critic-level patterns (not just gate findings) can reach `_learnings.md`.
+
    **Path note:** by this step the ticket directory has already been archived (Step 4)
-   and the worktree removed, so `gate-findings.md` now lives at
-   `.tickets/completed/XXXX-<slug>/gate-findings.md` — pass **that** path, not the
-   pre-archive `.tickets/XXXX-<slug>/` one, which no longer exists. If it is absent,
-   the helper returns no candidates and this step is skipped (below).
+   and the worktree removed, so `gate-findings.md` and `critic-findings.md` now live at
+   `.tickets/completed/XXXX-<slug>/` — pass **those** paths, not the pre-archive
+   `.tickets/XXXX-<slug>/` ones, which no longer exist. If a file is absent, the helper
+   returns no candidates for it, and this step is skipped when **both** are absent
+   (below).
 2. Call `${CLAUDE_PLUGIN_ROOT}/context/helpers/candidate-learnings-flow.md` with that
    candidate list and `.tickets/_learnings.md`. It deduplicates against existing
    content, presents ready-to-paste lines under a "Candidate learnings" section, runs a
    single accept/reject exchange, and appends only accepted entries — each built from
    the validated template fields (`date | gate | ticket | pattern`), never from raw text.
 
-If `gate-findings.md` is absent or empty (or parse-gate-findings.md returns no
-candidates), this step is **silently skipped** — no "Candidate learnings" section
-appears in the report.
+If **both** `gate-findings.md` and `critic-findings.md` are absent or empty (or the
+helper returns no candidates from either), this step is **silently skipped** — no
+"Candidate learnings" section appears in the report.
 
 **Opportunistic by design:** `gate-findings.md` is written by the `/gate` command, not
 by the default `/build` gate loop (which calls the gate MCP tool directly). So this

@@ -37,6 +37,8 @@ Read all implementation and test files in the worktree (`.worktrees/XXXX-<slug>/
 
 If `.tickets/XXXX-<slug>/gate-findings.md` exists, read it. **Do not re-flag what the gates already caught** — your value is the panel-level lens gates can't apply.
 
+If `.tickets/XXXX-<slug>/critic-findings.md` exists, read it too — it holds the persisted per-round post-build critic reports and any escalation diagnosis (see "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). **Cite prior rounds rather than re-deriving them**: reference what earlier rounds already found and what auto-repair changed, and focus your review on what remains open or regressed since the last round.
+
 Read everything before producing any findings.
 
 ### Step 5 — Conduct the review

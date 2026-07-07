@@ -1,16 +1,23 @@
 # Helper: parse-gate-findings
 
-Parse a ticket's `gate-findings.md` into a **normalized, sanitized candidate-learnings
-list**. This helper is called by `/deliver` (ticket mode) and produces *structured
-records* — never a ready-to-write string. Sanitization happens **here, at the source**,
-so the downstream `candidate-learnings-flow.md` never sees unsanitized content.
+Parse a ticket's findings file — `gate-findings.md` (`source_kind="gate"`) or
+`critic-findings.md` (`source_kind="critic"`) — into a **normalized, sanitized
+candidate-learnings list**. This helper is called by `/deliver` (ticket mode) and
+produces *structured records* — never a ready-to-write string. Sanitization happens
+**here, at the source**, for **both** kinds, so the downstream
+`candidate-learnings-flow.md` never sees unsanitized content.
 
 **Inputs**
-- `findings_path` — the caller-resolved path to the ticket's `gate-findings.md`. The
-  caller passes wherever the file currently lives: during `/build` that is
-  `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/gate-findings.md`; during `/deliver` the
-  ticket has already been archived, so it is `.tickets/completed/XXXX-<slug>/gate-findings.md`.
+- `findings_path` — the caller-resolved path to the findings file. The caller passes
+  wherever the file currently lives: during `/build` that is
+  `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/<file>`; during `/deliver` the
+  ticket has already been archived, so it is `.tickets/completed/XXXX-<slug>/<file>`.
   This helper does not assume a path — it reads whatever `findings_path` it is given.
+- `source_kind` — `"gate"` (default) or `"critic"`. Selects the parser:
+  `"gate"` reads the `/gate` output shape (Step 2), `"critic"` reads the persisted
+  `critic-findings.md` round/escalation sections (Step 2c). Everything downstream —
+  sanitization (Step 3), prioritization/cap (Step 4), return contract (Step 5) — is
+  **identical** for both kinds; only the section walk and the `gate` field differ.
 - `ticket_number` — the four-digit ticket number (e.g. `0005`).
 - `today` — today's date as `YYYY-MM-DD`.
 
@@ -27,11 +34,16 @@ sanitized and length-capped when it leaves this helper.
 
 ## Step 1 — Absent / empty short-circuit
 
-If `findings_path` does not exist, or contains no `##` gate section with a
-`**Status**: FAIL` line, return an **empty list**. The caller renders no section in
-that case (FR-8).
+If `findings_path` does not exist, return an **empty list**. Then, by `source_kind`:
 
-## Step 2 — Parse gate sections (tolerant)
+- **`"gate"`** — if the file contains no `##` gate section with a `**Status**: FAIL`
+  line, return an **empty list**.
+- **`"critic"`** — if the file contains no `## Round`/`## Escalation` section carrying
+  a `**BLOCKER**` or `**MAJOR**` finding, return an **empty list**.
+
+The caller renders no section in that case (FR-8).
+
+## Step 2 — Parse gate sections (tolerant) — `source_kind == "gate"`
 
 `gate-findings.md` is written by `/gate` (see `commands/gate.md`) with this shape:
 
@@ -58,6 +70,47 @@ types and languages). For each failing finding, capture:
 - `order` — source order (earlier lines are older; used only for recency ties).
 
 Skip sections whose `**Status**` is `PASS` and skip `clean` bullets.
+
+## Step 2c — Parse critic-report sections (tolerant) — `source_kind == "critic"`
+
+`critic-findings.md` is written by `/build` Step 7/7a and `repair-escalation.md` (see
+"Critic findings file" in `harness-reference.md`) with this shape:
+
+```markdown
+## Round N — <date>
+
+### BLOCKER
+
+**BLOCKER-1 — <one-line summary>.**
+<detail prose>
+
+### MAJOR
+
+**MAJOR-1 — <one-line summary>.**
+<detail prose>
+```
+
+Escalation sections (`## Escalation diagnosis — <date>`) use `**Root cause**` /
+`**Fix strategy**` / `**Target locations**` prose rather than BLOCKER/MAJOR bullets, so
+they satisfy the Step 1 non-empty check only when a round section elsewhere carries a
+finding; the diagnosis itself is already captured in `memory.db` (FR-2) and yields no
+learnings candidates here. Walk each `## Round`/`## Escalation` section and capture
+**only** its `**BLOCKER**` and `**MAJOR**` findings (ignore `MINOR`/`OBS` and the
+`Step 2.5` coverage recap). For each:
+
+- `gate` — the **literal string `critic`** (never the round heading or date). This is
+  the stable gate name that lets the memory records, dedup keys, and the rendered
+  `_learnings.md` line all agree.
+- `message` — the finding's one-line summary (the bold `**BLOCKER-n — …**` text) with
+  the redundant label stripped: remove a leading `**`, a `(BLOCKER|MAJOR)-<n> — ` prefix,
+  and the trailing `**` (the severity is already carried in its own `severity` field, so
+  the label is noise that would otherwise consume the 120-char cap). Fall back to the
+  first sentence of the detail prose if the summary is absent.
+- `severity_signal` — the explicit `BLOCKER` / `MAJOR` token (always high-priority here).
+- `order` — source order (later rounds are more recent; used only for recency ties).
+
+A section or finding missing a summary/message is **skipped, not errored** — the same
+tolerance Step 2 applies to gate sections.
 
 ## Step 3 — Sanitize the pattern field (before it is ever emitted)
 
@@ -108,9 +161,11 @@ ordering, so BLOCKER/MAJOR entries are retained ahead of MINOR/OBS (FR-1).
 Return the (≤5) candidate records to the caller. The caller (`/deliver` or, indirectly,
 `candidate-learnings-flow.md`) treats each record's `pattern` as already-safe: the
 append string is later constructed **only** from these validated template fields
-(`date`, `gate`, `ticket`, `pattern`) — never from the raw `gate-findings.md` text.
+(`date`, `gate`, `ticket`, `pattern`) — never from the raw findings-file text (whether
+`gate-findings.md` or `critic-findings.md`).
 
-**No external calls.** This helper reads only the local `gate-findings.md` (NFR-2).
+**No external calls.** This helper reads only the local findings file at
+`findings_path` (NFR-2).
 
 ## Candidate line rendering
 
