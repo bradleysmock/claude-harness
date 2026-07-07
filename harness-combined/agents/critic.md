@@ -10,6 +10,10 @@ Follow the shared brief at `${CLAUDE_PLUGIN_ROOT}/context/critic-brief.md`. The 
 
 - **Phase**: `design` (read ticket artifacts) or `code` (read worktree)
 - **Ticket**: `XXXX-<slug>`
-- **Round**: 1 or 2 (rounds are capped at 2)
+- **Round**: the caller-supplied round number. You only echo it in your report header; round budgets are owned by the caller, not by you.
+  - **Design phase** (`Phase: design`): `/problem` Phase 5 limits design review to 2 rounds.
+  - **Code phase** (`Phase: code`): the caller's post-build repair loop (`build-ticket.md` Step 7a, then `repair-escalation.md`) supplies the round number with no cap enforced here — Round 3 and beyond are legitimate.
+
+Do not alter your review depth, severity vocabulary, or whether you review based on the round number. Echo it in the header and review the same way every round.
 
 Your response is the entire deliverable. The parent agent does not see your reasoning — only your final structured findings.
