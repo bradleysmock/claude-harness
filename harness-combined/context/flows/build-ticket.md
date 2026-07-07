@@ -138,9 +138,12 @@ From here, **all** implementation status churn (`implementing`, `review-ready`, 
 If a task file exists: call `dag_load("XXXX-<slug>", project_root)` to get execution layers.
 If only spec files: treat each as a single-layer task.
 
-Call `checkpoint(action="read", task_id="XXXX-<slug>", project_root=project_root)` — skip specs already completed.
+Call `checkpoint(action="read", task_id="XXXX-<slug>", project_root=project_root)`. The read returns two lists:
 
-Show the user the layers and any checkpoint-skipped specs.
+- `completed` — specs whose recorded fingerprint still matches the current spec source. **Skip** these (Step 4a "✓ already passed").
+- `invalidated` — specs that were completed on a prior run but whose spec file (or the task file) has since been edited, plus any entry from a legacy checkpoint written before fingerprints existed. **Do not skip these.** Announce each one — "spec edited since last pass — will re-run" — and execute it normally in Step 4 so the fix is verified against the current source.
+
+Show the user the layers, the checkpoint-skipped (`completed`) specs, and the invalidated specs that will be re-run.
 
 ## Step 4 — Execute each spec
 

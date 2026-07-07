@@ -5,6 +5,7 @@ No API key required. Claude Code is the orchestrator.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -52,6 +53,18 @@ MAX_CHANGED_FILES = 10_000
 
 def _harness_dir(project_root: str) -> Path:
     return Path(project_root) / ".harness"
+
+
+def _sha256_file(path: Path) -> str | None:
+    """Return the sha256 hexdigest of a file, or None if it cannot be read.
+
+    Used to fingerprint checkpointed spec/task sources so an edited spec
+    invalidates its checkpoint entry (single small file — no perceptible latency).
+    """
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
 
 
 def _db_path(project_root: str) -> str:
@@ -759,20 +772,66 @@ def checkpoint(
     """
     Task resume checkpoints.
 
-    action="read": return completed spec IDs for a task. Returns {"task_id": ..., "completed": [...]}.
-    action="write": save completed spec IDs. Required: completed list. Returns "checkpoint saved".
+    action="read": return the still-valid completed spec IDs for a task. Each recorded
+        entry is kept only when the fingerprint of its spec source file (and of the task
+        file) still matches what was stored at write time; entries whose source changed
+        are dropped from "completed" and reported under "invalidated" so the build flow
+        can re-run them. Legacy checkpoints written without hashes are treated as fully
+        invalidated (never silently skipped). Returns
+        {"task_id": ..., "completed": [...], "invalidated": [...]}.
+    action="write": save completed spec IDs together with a content fingerprint (sha256)
+        of each spec source file and of the task file. Required: completed list. Returns
+        "checkpoint saved".
     """
-    checkpoint_dir = _harness_dir(project_root) / "checkpoints"
+    harness = _harness_dir(project_root)
+    checkpoint_dir = harness / "checkpoints"
     checkpoint_file = checkpoint_dir / f"{task_id}.json"
+
+    def _spec_hash(spec_id: str) -> str | None:
+        return _sha256_file(harness / "specs" / f"{spec_id}.py")
+
+    current_task_hash = _sha256_file(harness / "tasks" / f"{task_id}.py")
+
     if action == "read":
         if not checkpoint_file.exists():
-            return json.dumps({"task_id": task_id, "completed": []})
-        return checkpoint_file.read_text()
+            return json.dumps({"task_id": task_id, "completed": [], "invalidated": []})
+        try:
+            data = json.loads(checkpoint_file.read_text())
+        except (OSError, ValueError):
+            return json.dumps({"task_id": task_id, "completed": [], "invalidated": []})
+        recorded = data.get("completed") or []
+        hashes = data.get("hashes")
+        if not isinstance(hashes, dict):
+            # Legacy checkpoint (pre-hash): freshness cannot be verified — fail toward
+            # re-verification by invalidating every recorded entry.
+            return json.dumps(
+                {"task_id": task_id, "completed": [], "invalidated": list(recorded)}
+            )
+        task_changed = data.get("task_hash") != current_task_hash
+        still_valid: list[str] = []
+        invalidated: list[str] = []
+        for spec_id in recorded:
+            stored = hashes.get(spec_id)
+            if not task_changed and stored is not None and stored == _spec_hash(spec_id):
+                still_valid.append(spec_id)
+            else:
+                invalidated.append(spec_id)
+        return json.dumps(
+            {"task_id": task_id, "completed": still_valid, "invalidated": invalidated}
+        )
     if action == "write":
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        completed_list = completed or []
+        hashes = {
+            spec_id: h
+            for spec_id in completed_list
+            if (h := _spec_hash(spec_id)) is not None
+        }
         data = {
             "task_id": task_id,
-            "completed": completed or [],
+            "completed": completed_list,
+            "hashes": hashes,
+            "task_hash": current_task_hash,
             "updated": datetime.now(UTC).isoformat(),
         }
         checkpoint_file.write_text(json.dumps(data, indent=2))

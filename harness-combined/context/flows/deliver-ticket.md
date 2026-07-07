@@ -399,10 +399,12 @@ For each active ticket in `.tickets/` (not `.tickets/completed/`) that is not XX
 1. Read its `branch` from `status.md`. If empty, skip.
 2. Check for mid-rebase state: `git -C .worktrees/YYYY-<slug> rev-parse --git-dir`
 3. Attempt: `git -C .worktrees/YYYY-<slug> rebase main`
-   - Success: record "YYYY: rebased OK". If was `review-ready`, downgrade to `implementing` and note gates are invalidated.
+   - Success: record "YYYY: rebased OK", then **re-gate before deciding status** — a clean rebase must not downgrade a ticket by ceremony alone. Call `gate_run_on_dir(".worktrees/YYYY-<slug>", "auto", project_root)`:
+     - **Gate passes**: keep the ticket at `review-ready` and record "YYYY: re-gated clean after rebase". No status change, no branch commit.
+     - **Gate fails**: the rebase introduced a semantic conflict the merge did not flag. If the ticket was `review-ready`, downgrade it to `implementing` (record the failing gate). Only an actual gate failure downgrades a ticket.
    - Failure: run `git -C .worktrees/YYYY-<slug> rebase --abort`, record failure with manual recovery instructions.
 
-If any ticket was downgraded to `implementing` here, commit that transition **on its own branch** (inside its worktree — the `implementing` state is branch-only, never committed to `main`), and push:
+If any ticket was downgraded to `implementing` here (i.e. its post-rebase re-gate failed), commit that transition **on its own branch** (inside its worktree — the `implementing` state is branch-only, never committed to `main`), and push:
 ```
 git -C .worktrees/YYYY-<slug> add .tickets/YYYY-<slug>/status.md
 git -C .worktrees/YYYY-<slug> commit -m "chore(ticket): YYYY → implementing (rebased onto main)"
