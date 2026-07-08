@@ -4,7 +4,7 @@ This ticket modifies markdown instruction files, not Python code. These tests
 verify that the shared "Progress checklist" convention, the per-flow checklist
 blocks (each opening with the unique sentinel), the byte-identical shared
 labels, and the sub-flow notes are present — and that the sentinel appears in
-*exactly* the seven flow files and nowhere else under commands/, context/flows/,
+*exactly* the eight flow files and nowhere else under commands/, context/flows/,
 or skills/.
 
 Limitation: these tests verify the instructions exist, not that the model calls
@@ -17,9 +17,10 @@ ROOT = Path(__file__).parent.parent
 
 SENTINEL = "<!-- progress-checklist -->"
 
-# The seven flow files that must carry the sentinel (FR-2 / FR-5).
+# The eight flow files that must carry the sentinel (FR-2 / FR-5).
 SENTINEL_FILES = [
     "context/flows/autopilot-ticket.md",
+    "context/flows/autopilot-batch.md",
     "context/flows/build-ticket.md",
     "context/flows/build-spec.md",
     "commands/problem.md",
@@ -36,6 +37,13 @@ EXPECTED_LABELS = {
         "Critic + auto-repair",
         "Merge worktree",
         "Status → done + archive",
+        "Cleanup",
+    ],
+    "context/flows/autopilot-batch.md": [
+        "Create integration worktree",
+        "Build members in order",
+        "Combined critic + auto-repair",
+        "Batch deliver (1 push)",
         "Cleanup",
     ],
     "context/flows/build-ticket.md": [
@@ -147,7 +155,7 @@ def test_convention_has_true_state_on_early_exit() -> None:
     assert "early exit" in content
 
 
-# ── FR-2: sentinel + labels present in the seven flow files ───────────────
+# ── FR-2: sentinel + labels present in the eight flow files ───────────────
 
 def test_sentinel_present_in_each_flow_file() -> None:
     for rel in SENTINEL_FILES:
@@ -228,7 +236,7 @@ def _scan_dirs_for_sentinel() -> set[str]:
     return found
 
 
-def test_sentinel_appears_in_exactly_the_seven_files() -> None:
+def test_sentinel_appears_in_exactly_the_eight_files() -> None:
     assert _scan_dirs_for_sentinel() == set(SENTINEL_FILES)
 
 

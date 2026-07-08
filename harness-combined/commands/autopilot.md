@@ -2,6 +2,13 @@ Run `$ARGUMENTS` through the full autonomous pipeline: spec generation (if neede
 
 Requires the ticket to be at `status: solution`. If not, stop and tell the lead to run `/problem XXXX` first.
 
+## Mode selection — single vs. batch
+
+Count the 4-digit ticket IDs in `$ARGUMENTS`:
+
+- **One ID (or none)** → single-ticket mode. Resolve as in "Ticket Resolution" below, then follow `autopilot-ticket.md`.
+- **Two or more IDs** → **batch mode**: build all of them into one integration worktree, test them together, and deliver in a single atomic push (one squashed commit per member). Confirm **every** named ticket is at `status: solution` (resolve each under `.tickets/<id>*/` only — not `completed/`). If any is not at `solution`, stop and list the offenders. Then announce "Autopilot batch mode for XXXX + YYYY + … (lead: XXXX-slug)", read `${CLAUDE_PLUGIN_ROOT}/context/flows/autopilot-batch.md` in full, and follow it. Do **not** read `autopilot-ticket.md` in this case.
+
 ## Ticket Resolution
 
 If `$ARGUMENTS` begins with four digits, scan `.tickets/<arg>*/` first, then `.tickets/completed/<arg>*/` if not found (diagnostic fallback only — any ticket found there will fail the `status: solution` check, giving a clear error rather than "not found"). Confirm the matched ticket is at `status: solution`. If the status is not `solution`, stop and tell the lead to run `/problem XXXX` first.
@@ -12,4 +19,4 @@ If `$ARGUMENTS` is empty, scan `.tickets/` (not `.tickets/completed/`) for ticke
 
 If no ticket is found, stop and report.
 
-State the resolved ticket in one sentence — "Autopilot mode for XXXX-slug" — then read `${CLAUDE_PLUGIN_ROOT}/context/flows/autopilot-ticket.md` in full and follow it.
+State the resolved ticket in one sentence — "Autopilot mode for XXXX-slug" — then read `${CLAUDE_PLUGIN_ROOT}/context/flows/autopilot-ticket.md` in full and follow it. (This single-ticket path is unchanged; batch mode is handled above via `autopilot-batch.md`.)

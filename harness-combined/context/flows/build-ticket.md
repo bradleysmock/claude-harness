@@ -11,6 +11,13 @@ Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, and `M
 
 **Sub-flow note:** this flow may run as a sub-flow under `/autopilot`. If a checklist already exists for this run (autopilot created it), follow the convention's one-list-per-run rule — adopt that existing list and advance its stages, do **not** create a second one.
 
+<!-- batch-mode-override -->
+**Batch-mode override (autopilot batch only).** When this flow runs as a per-member sub-flow of `/autopilot`'s **batch** mode (see `${CLAUDE_PLUGIN_ROOT}/context/flows/autopilot-batch.md`), the batch flow supplies a shared integration worktree and drives these overrides — do **not** apply them for single-ticket `/build` or single-ticket `/autopilot`:
+
+- **Worktree.** `worktree_dir` is the shared batch worktree `.worktrees/batch-<lead-slug>` (created and seeded with this member's design artifacts by the batch flow), **not** `.worktrees/XXXX-<slug>`. **Skip Step 2 entirely** — do not resume or create the per-ticket worktree, and do not write the `.tickets/.active` sentinel (the batch flow owns it). Every `.worktrees/XXXX-<slug>` path in Steps 4–6 becomes `.worktrees/batch-<lead-slug>`.
+- **Commit boundary.** Step 5 commits this member's build as one commit on the batch branch (`feat: XXXX <desc>`); the batch flow records the resulting rev as the member's delivery boundary. Do **not** commit a per-member `→ review-ready` transition to a per-ticket branch (Step 6's status commit is skipped — the batch flow sets member statuses at delivery).
+- **Critic.** **Skip Step 7** (the per-ticket critic). The batch flow runs one combined critic over the union of all members after every member is built, and owns the auto-repair loop.
+
 ## Step 1 — Resolve ticket, ensure specs exist
 
 Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tickets/completed/`. Read `status.md` to get the slug. Use whichever location the ticket is found in for all subsequent file references in this flow.
@@ -211,6 +218,8 @@ Show a summary:
 - Which specs passed, which (if any) had integration failures
 
 ## Step 7 — Spawn post-build critic (automatic)
+
+*(Skipped under the batch-mode override — the batch flow runs one combined critic over the union of all members. See the override callout above.)*
 
 After the diff is shown, spawn the critic subagent (`critic`) with the following parameters:
 

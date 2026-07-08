@@ -9,6 +9,7 @@ Stdlib only. subprocess always called with argument lists.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from datetime import date
@@ -198,6 +199,31 @@ def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries:
     return full_slug
 
 
+def _fold_archive(repo: Path, slug: str) -> None:
+    """Fold a staged ticket dir into the pending delivery commit.
+
+    OS-mv the (staged) `.tickets/<slug>/` into `completed/`, rewrite its status →
+    `done`, then clear the staged old path and stage the archived one. Mirrors the
+    archive pattern (OS mv + `git rm --cached` + `git add`) — never `git mv`, which
+    is unsound against the index a `merge --squash` / `cherry-pick -n` leaves. The
+    code changes already staged by the caller remain staged. Idempotent: a ticket
+    already archived (dst present, src gone) is left as-is."""
+    completed = repo / ".tickets" / "completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    src = repo / ".tickets" / slug
+    dst = completed / slug
+    if src.is_dir() and not dst.exists():
+        src.rename(dst)
+    status_md = dst / "status.md"
+    if status_md.exists():
+        text = status_md.read_text(encoding="utf-8")
+        text = _rewrite_field(text, "status", "done")
+        text = _rewrite_field(text, "updated", date.today().isoformat())
+        status_md.write_text(text, encoding="utf-8")
+    git(repo, "rm", "-r", "--cached", "--", f".tickets/{slug}/", check=False)
+    git(repo, "add", "--", f".tickets/completed/{slug}/")
+
+
 def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
     """Deliver a ticket branch as a single squashed commit on the current branch.
 
@@ -209,26 +235,8 @@ def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
     #    and no merge commit, so commits-since-claim stays at one.
     git(repo, "merge", "--squash", branch)
 
-    # 2. Archive: OS mv the (squash-staged) ticket dir from root into completed/.
-    completed = repo / ".tickets" / "completed"
-    completed.mkdir(parents=True, exist_ok=True)
-    src = repo / ".tickets" / slug
-    dst = completed / slug
-    if src.is_dir() and not dst.exists():
-        src.rename(dst)
-
-    # 3. Rewrite status.md → done at the NEW path so the staged blob is `done`.
-    status_md = dst / "status.md"
-    if status_md.exists():
-        text = status_md.read_text(encoding="utf-8")
-        text = _rewrite_field(text, "status", "done")
-        text = _rewrite_field(text, "updated", date.today().isoformat())
-        status_md.write_text(text, encoding="utf-8")
-
-    # 4. Clear the squash-staged old path; stage the archived path. Code changes
-    #    staged by merge --squash remain staged.
-    git(repo, "rm", "-r", "--cached", "--", f".tickets/{slug}/", check=False)
-    git(repo, "add", "--", f".tickets/completed/{slug}/")
+    # 2-4. Fold the → done transition + completed/ archive into the pending commit.
+    _fold_archive(repo, slug)
 
     # 5. One commit: full code diff + completed/<slug>/ at done, no .tickets/<slug>/.
     subject = f"feat: {slug} {title} (squash)"
@@ -249,6 +257,73 @@ def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
     git(repo, "worktree", "remove", "--force", str(repo / ".worktrees" / slug), check=False)
     git(repo, "branch", "-D", branch, check=False)
     return subject
+
+
+def _batch_worktree(batch_branch: str) -> str:
+    """`.worktrees/` dir name for a batch branch: `batch/<slug>` → `batch-<slug>`
+    (worktree dir names cannot carry the branch's `/`)."""
+    return batch_branch.replace("/", "-", 1)
+
+
+def deliver_squash_batch(
+    repo: Path, batch_branch: str, members: list[dict[str, str]]
+) -> list[str]:
+    """Deliver a batch integration branch as one squashed commit *per member*.
+
+    `members` is an ordered list of `{"slug", "title", "head"}`, where `head` is
+    the boundary rev on `batch_branch` that ends that member's commit range. The
+    last member's `head` should be batch HEAD so combined-critic repairs (made
+    after the last member's build) fold into that member's commit.
+
+    Each member's cumulative delta is cherry-picked (`-n`, so its per-source
+    commits collapse to one) onto the current branch and committed as a single
+    `feat: <slug> <title> (squash)` commit that also folds that member's
+    `completed/<slug>/` archive at `done`. The commits publish in ONE push — so a
+    batch is atomic on `main` — and only on a successful publish are the batch
+    branch and every member's vestigial per-ticket branch/worktree removed. A
+    cherry-pick conflict or a rejected push raises with everything intact
+    (fail-closed), mirroring `deliver_squash`."""
+    subjects: list[str] = []
+    prev = "HEAD"
+    for member in members:
+        slug, title, head = member["slug"], member["title"], member["head"]
+        # Squash this member's range onto the delivery line. `cherry-pick -n` of a
+        # rev range applies every commit in prev..head with no per-commit history.
+        picked = git(repo, "cherry-pick", "--no-commit", f"{prev}..{head}", check=False)
+        if picked.returncode != 0:
+            git(repo, "cherry-pick", "--abort", check=False)
+            raise RuntimeError(
+                f"deliver_squash_batch: cherry-pick of member {slug!r} range "
+                f"{prev}..{head} conflicted: {picked.stderr.strip()} — batch branch "
+                f"{batch_branch!r} and all member branches left intact."
+            )
+        _fold_archive(repo, slug)
+        subject = f"feat: {slug} {title} (squash)"
+        git(repo, "commit", "-m", subject)
+        subjects.append(subject)
+        prev = head
+
+    # Publish all N commits atomically. Only on a successful publish do we destroy
+    # the source history — otherwise the squashed commits would survive only locally
+    # while their branches are deleted. On a rejected push, stop with everything
+    # intact so the lead can rebase and retry.
+    if not _push_current_branch(repo):
+        raise RuntimeError(
+            f"deliver_squash_batch: pushing the {len(subjects)} squashed commit(s) to "
+            f"origin was rejected — leaving the batch branch {batch_branch!r} and every "
+            f"member branch intact. Rebase onto the updated main and retry the delivery."
+        )
+
+    git(
+        repo, "worktree", "remove", "--force",
+        str(repo / ".worktrees" / _batch_worktree(batch_branch)), check=False,
+    )
+    git(repo, "branch", "-D", batch_branch, check=False)
+    for member in members:
+        slug = member["slug"]
+        git(repo, "worktree", "remove", "--force", str(repo / ".worktrees" / slug), check=False)
+        git(repo, "branch", "-D", f"ticket/{slug}", check=False)
+    return subjects
 
 
 def _main(argv: list[str]) -> int:
@@ -272,6 +347,19 @@ def _main(argv: list[str]) -> int:
             print("usage: ticket claim <slug> <title> [--push]", file=sys.stderr)
             return 2
         print(claim(repo, positional[0], positional[1], push=push))
+        return 0
+    if cmd == "deliver-batch":
+        positional = [a for a in argv[1:] if not a.startswith("--")]
+        if len(positional) < 2:
+            print(
+                "usage: ticket deliver-batch <batch-branch> <members.json>",
+                file=sys.stderr,
+            )
+            return 2
+        batch_branch, members_path = positional[0], positional[1]
+        members = json.loads(Path(members_path).read_text(encoding="utf-8"))
+        for subject in deliver_squash_batch(repo, batch_branch, members):
+            print(subject)
         return 0
     print(f"unknown command {cmd!r}", file=sys.stderr)
     return 2
