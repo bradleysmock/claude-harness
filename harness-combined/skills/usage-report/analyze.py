@@ -109,6 +109,8 @@ class Accumulator:
         self.human_prompts = 0
         self.tool_results = 0
         self.tool_errors = 0
+        self.tool_id_to_name = {}
+        self.tool_errors_by_tool = collections.Counter()
         self.claude_time = 0.0
         self.human_time = 0.0
         self.active_time = 0.0
@@ -167,6 +169,9 @@ def scan_assistant(record, acc, project):
                 acc.tools_main[block.get("name", "?")] += 1
             if sid:
                 acc.tools_per_session[sid] += 1
+            tool_id = block.get("id")
+            if tool_id:
+                acc.tool_id_to_name[tool_id] = block.get("name", "?")
     skill = record.get("attributionSkill")
     plugin = record.get("attributionPlugin")
     if skill:
@@ -188,6 +193,8 @@ def scan_user(record, acc):
         for block in content:
             if isinstance(block, dict) and block.get("is_error"):
                 acc.tool_errors += 1
+                tool_name = acc.tool_id_to_name.get(block.get("tool_use_id"), "unknown")
+                acc.tool_errors_by_tool[tool_name] += 1
         if epoch and sid:
             acc.sessions[sid].append((epoch, "tool_result"))
     elif isinstance(content, str) and not record.get("isMeta") and not side:
@@ -234,22 +241,33 @@ def scan_transcripts(projects_root, acc):
                         acc.sessions[sid].append((epoch, "system"))
 
 
-def compute_time(acc):
-    for events in acc.sessions.values():
+def _time_for_cap(sessions, idle_cap):
+    active_time = 0.0
+    claude_time = 0.0
+    human_time = 0.0
+    idle_excluded = 0.0
+    day_active = collections.defaultdict(float)
+    for events in sessions.values():
         events.sort(key=lambda item: item[0])
         for index in range(1, len(events)):
             gap = events[index][0] - events[index - 1][0]
             if gap <= 0:
                 continue
-            if gap > acc.idle_cap:
-                acc.idle_excluded += gap
+            if gap > idle_cap:
+                idle_excluded += gap
                 continue
-            acc.active_time += gap
-            acc.day_active[day_of(events[index][0])] += gap
+            active_time += gap
+            day_active[day_of(events[index][0])] += gap
             if events[index][1] == "human":
-                acc.human_time += gap
+                human_time += gap
             else:
-                acc.claude_time += gap
+                claude_time += gap
+    return active_time, claude_time, human_time, idle_excluded, day_active
+
+
+def compute_time(acc):
+    result = _time_for_cap(acc.sessions, acc.idle_cap)
+    acc.active_time, acc.claude_time, acc.human_time, acc.idle_excluded, acc.day_active = result
 
 
 def write_cost(counts, p_in):
@@ -449,6 +467,10 @@ def build_report(acc, home, billing_arg):
     tool_uses = list(acc.tools_per_session.values())
     prompts = list(acc.prompts_per_session.values())
     busiest = sorted(acc.day_active.items(), key=lambda item: -item[1])[:12]
+    sensitivity_active_hours = {
+        f"{cap}s": round(_time_for_cap(acc.sessions, cap)[0] / 3600, 1)
+        for cap in (120, 300, 600)
+    }
     return {
         "generated": day_of(dt.datetime.now(dt.timezone.utc).timestamp()),
         "transcripts": {
@@ -465,6 +487,7 @@ def build_report(acc, home, billing_arg):
                 "excluded_idle": hours(acc.idle_excluded),
                 "idle_cap_seconds": acc.idle_cap,
             },
+            "time_sensitivity_active_hours": sensitivity_active_hours,
             "model_turns": dict(acc.model_turns.most_common()),
             "tokens_total": dict(totals),
             "tokens_by_model": {m: dict(c) for m, c in acc.tok.items()},
@@ -480,6 +503,7 @@ def build_report(acc, home, billing_arg):
             "top_plugins": dict(acc.plugins.most_common(10)),
             "tool_results": acc.tool_results,
             "tool_errors": acc.tool_errors,
+            "tool_errors_by_tool": dict(acc.tool_errors_by_tool.most_common()),
             "tool_error_rate_pct": (
                 round(100 * acc.tool_errors / acc.tool_results, 1)
                 if acc.tool_results
