@@ -1,0 +1,13 @@
+{
+  "name": "harness-pi",
+  "version": "0.1.0",
+  "description": "Pi port of the harness-combined Claude Code plugin: MCP-bridge, hook-bridge, and subagent extensions plus converted prompt templates.",
+  "license": "MIT",
+  "keywords": ["pi-package", "sdlc", "gates", "ticket", "harness"],
+  "type": "module",
+  "pi": {
+    "extensions": ["./extensions"],
+    "prompts": ["./prompts"],
+    "skills": ["../harness-combined/skills"]
+  }
+}
