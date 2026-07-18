@@ -1,6 +1,7 @@
 status: claimed
 ticket: 0057
 title: Panel-detect script: deterministic trigger table in context/panels/triggers.md
+effort: medium
 branch: ticket/0057-panel-detect-triggers
 owner: bradleysmock@gmail.com
 source: local
