@@ -17,6 +17,9 @@ __pycache__/
 # Transient per-language gate execution logs written during gate runs / tests
 .harness/gate-logs/
 
+# Transient craft-polish reports (.harness/craft/<ticket>.json) — ephemeral, like results/
+.harness/craft/
+
 # macOS
 .DS_Store
 

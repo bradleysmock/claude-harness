@@ -398,6 +398,19 @@ per-ticket `critic-findings.md`, the durable sibling of `gate-findings.md`, at
 
 ---
 
+## Craft Polish Pass
+
+After functional acceptance — the critic's BLOCKER/MAJOR must-fix loop has cleared (or there were none) — `/build` runs a **craft polish pass** (`build-ticket.md` Step 7b.5). It is **ticket-mode only**: spec/standalone mode has no critic loop and is out of scope. It improves craft (naming, decomposition, restraint, load-bearing comments) **without changing behaviour**, and enforces that mechanically.
+
+- **The `craft` subagent** (`agents/craft.md`) is read-only-reasoning, modeled on the critic (asymmetric exposure — no implementer reasoning framing). It emits structured JSON — `reasoning`, `improvements[]` (`{category, location_hint, rationale}`), `polished_implementation`, `polished_tests` — where every improvement falls into exactly one of a bounded seven-value taxonomy (`rename | extract | inline | comment | delete | simplify | error_handling`) and cites a specific identifier or line. It never proposes behaviour changes: **behaviour must not change.**
+- **Gate-lock (behaviour preservation).** Before the loop, the pass pins the pre-polish HEAD SHA and the pre-polish test files. Each round: spawn the subagent, apply its output, then (a) re-run `gate_run_on_dir(worktree, "auto", project_root)` — reverting the round on any new failure or 0041 baseline regression — and (b) run the **pinned pre-polish tests** against the polished implementation (the `CRAFT_REQUIRE_TEST_SURVIVAL` anti-cheat guard) — reverting the round if any pinned test fails. This blocks the polisher from weakening a test to pass the gate, which the critic already treats as a BLOCKER. Reuses the existing gate machinery — no new gate runner.
+- **Per-round commits.** Each accepted round is its own commit (`polish: craft round N`), so the lead sees craft changes as a distinct, revertable slice in the Step 6 diff, never entangled with the functional implementation.
+- **Config.** `CRAFT_MAX_ITERATIONS` (default 3; `0` disables the pass — worktree returned unchanged) and optional `CRAFT_REQUIRE_TEST_SURVIVAL` (default true) live in `.harness/config.py`, declared alongside `MAX_REPAIR_ATTEMPTS`.
+- **Terminal statuses.** The loop ends with `final_status` = `converged` (subagent returned empty `improvements`), `max_iterations_reached` (hit `CRAFT_MAX_ITERATIONS` still proposing), or `disabled` (`CRAFT_MAX_ITERATIONS == 0`).
+- **Report.** A `CraftPolishReport` (`iterations_run`, `improvements_applied[]`, `improvements_rejected[]`, `final_status`) is written to `.harness/craft/<ticket>.json` — the transient, git-ignored sibling of `.harness/results/` and `.harness/critiques/`. The `craft.*` instrumentation is emitted as deterministic status lines (`started` / `iteration` / `improvement_applied` / `improvement_rejected` / `completed`), not an event bus.
+
+---
+
 ## Progress checklist
 
 Every multi-stage flow (one that runs more than one named stage before returning to the lead) shows its progress as a live checklist so the lead can always see where the run is. The mechanism is **instruction-based** — there is no hook that injects it; reliability comes from making it the flow's first action.

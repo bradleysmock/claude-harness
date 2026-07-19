@@ -18,7 +18,7 @@ All work follows the same four-stage pipeline. The design stages are skippable f
 ```
 /problem XXXX      → problem.md, requirements.md, solution.md, design critic → CHECKPOINT 1
 /write-spec XXXX   → (optional) pre-generate specs from solution.md into .harness/specs/
-/build XXXX        → auto-generates specs from solution.md if absent → worktree → spec engine → diff → post-build critic
+/build XXXX        → auto-generates specs from solution.md if absent → worktree → spec engine → diff → post-build critic → craft polish
                    ← review the critic's report; optionally run /review XXXX (interactive)
                      or /critique <files> (free-form comprehensive)
 /deliver XXXX      → merge branch → clean up → record learnings
@@ -181,6 +181,8 @@ These seven behaviors are skills rather than commands. Invoke them explicitly wi
 - **Pre-build (design)** — `/problem` Phase 5 spawns the critic subagent against `problem.md` / `requirements.md` / `solution.md`. Findings revise `solution.md` before Checkpoint 1. Max 2 rounds.
 - **Post-build (code)** — `/build` Step 7 spawns the critic subagent against the worktree, with `problem.md` / `requirements.md` / `solution.md` as the ticket baseline. BLOCKER and MAJOR findings are must-fix: `/build` auto-repairs them and re-spawns the critic to verify, looping up to `MAX_REPAIR_ATTEMPTS` (default 3); only on exhaustion does it set `changes-requested` and ask the lead. MINOR / OBS are optional — listed, never auto-fixed.
 
+**Craft polish (automatic, ticket mode only).** Once the post-build critic's BLOCKER/MAJOR findings are cleared, `/build` Step 7b.5 runs a **craft polish pass**: the `craft` subagent (`agents/craft.md`) proposes bounded, behaviour-preserving craft improvements (naming, structure, restraint, load-bearing comments) as structured JSON, and each round is accepted only if it survives a **gate re-run plus a pinned pre-polish test-survival** check — any candidate that breaks a gate or a pinned test is reverted. Accepted rounds land as their own `polish: craft round N` commits. Governed by `CRAFT_MAX_ITERATIONS` (default 3; `0` disables) and `CRAFT_REQUIRE_TEST_SURVIVAL` (default true); a `CraftPolishReport` is written to `.harness/craft/<ticket>.json`.
+
 Two **optional** manual follow-ups are available between `/build` and `/deliver`:
 
 - `/review XXXX` — same panel-aware review as the post-build critic, but **interactive**: findings stream in the conversation, lead can ask follow-up questions, request deeper dives, or skip ahead to verdict. Use when you want to walk the review conversationally rather than read a one-shot report.
@@ -285,7 +287,8 @@ harness-combined/
 │   ├── panels/            ← 29 expert review panels — see "Expert review panels" section below
 │   └── rules/             ← Per-language code generation rules
 ├── agents/
-│   └── critic.md          ← Critic subagent definition
+│   ├── critic.md          ← Critic subagent definition
+│   └── craft.md           ← Craft polish subagent (behaviour-preserving craft improvements)
 ├── CLAUDE.md              ← Working agreement (copy to project root)
 └── .claude-plugin/
     └── plugin.json        ← Plugin manifest

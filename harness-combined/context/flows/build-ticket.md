@@ -2,7 +2,7 @@
 
 Create a worktree, run the spec engine against it, write passing implementations to target files in the worktree, and present a diff for review.
 
-Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, and `MAX_REPAIR_ATTEMPTS` (defaults: auto-detect, `.`, 3).
+Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, `MAX_REPAIR_ATTEMPTS`, and `CRAFT_MAX_ITERATIONS` (defaults: auto-detect, `.`, 3, 3). The optional `CRAFT_REQUIRE_TEST_SURVIVAL` (default true) gates the Step 7b.5 pinned-test-survival check.
 
 <!-- progress-checklist -->
 **Progress checklist** — as the first action, create the `TodoWrite` checklist (see "Progress checklist" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
@@ -224,6 +224,7 @@ git -C .worktrees/XXXX-<slug> diff main
 Show a summary:
 - Files changed, lines added/removed
 - Which specs passed, which (if any) had integration failures
+- Any `polish: craft round N` commits from Step 7b.5 appear here as their own distinct, revertable slices of the diff — call them out separately so the lead can see the craft changes apart from the functional implementation.
 
 ## Step 7 — Spawn post-build critic (automatic)
 
@@ -263,7 +264,7 @@ git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX critic findings rou
 
 **Dry-run suppression:** if this run is a dry run (`DRY_RUN=true`, i.e. reached via `build-dry-run-ticket.md`), the auto-repair loop does **not** run — evaluate `should_auto_repair(dry_run)` (from `dry_run.py`) at this entry point; it returns `False` under dry-run. The critic still runs in Step 7 and its findings are shown, but no repair commit is made and no worktree is touched. A dry run stops after displaying the critic output. This check is placed at Step 7a entry (not Step 7) so the critic always runs.
 
-**If the critic surfaces no BLOCKER and no MAJOR findings**, skip to Step 7c.
+**If the critic surfaces no BLOCKER and no MAJOR findings**, skip the repair loop and go to **Step 7b.5** (craft polish), then Step 7c.
 
 Otherwise, enter the repair loop. Run up to `MAX_REPAIR_ATTEMPTS` (default 3) attempts:
 
@@ -275,17 +276,52 @@ For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
 3a. **Repair-integrity check.** Run the repair-integrity check on **this round's own diff** — the changes this repair round introduced. Capture the round's diff before its commit (`git -C .worktrees/XXXX-<slug> diff` on the still-uncommitted fixes, or `git -C .worktrees/XXXX-<slug> diff HEAD` if you staged them) and pass it through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — that is the cumulative branch diff against a moving tip and would re-flag earlier accepted changes and drift from concurrent deliveries. If it reports any violation (removed test functions, added skip/xfail markers, or net-new bare suppression pragmas), the round **fails**: re-enter repair with the instruction to **restore the test and fix the implementation instead** of silencing the gate. A green gate obtained by weakening the safety net does not count as repaired.
 4. Commit the repair round: `git -C .worktrees/XXXX-<slug> commit -am "fix: address post-build critic round N findings"`.
 5. Re-spawn the critic subagent (**Round**: `N+1`, same Phase/Ticket) to verify. Display its report verbatim. **Persist this round's report**: append it to `critic-findings.md` as a new append-only section headed by its round number and date (`## Round N+1 — <today's date>`), and commit that append on the branch alongside the round (`git -C .worktrees/XXXX-<slug> commit -am "chore(ticket): XXXX critic findings round N+1"`) — never touching `main`. See "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`.
-6. **If the new report has no BLOCKER and no MAJOR findings** → repair succeeded. Go to Step 7b.
+6. **If the new report has no BLOCKER and no MAJOR findings** → repair succeeded. Go to Step 7b (which runs the Step 7b.5 craft polish before the delivery handoff).
 7. **If BLOCKER / MAJOR findings remain** and attempts are left → loop to attempt `N+1`.
 
 ### Step 7b — Auto-repair succeeded
 
 - Keep `status.md` at `status: review-ready`.
-- Tell the user:
+- **Run Step 7b.5 (craft polish) before the delivery handoff**, then tell the user:
   > The post-build critic's BLOCKER/MAJOR findings were auto-repaired in N round(s) and re-verified clean. Options:
   > - Proceed to delivery with `/deliver XXXX`.
   > - For an interactive panel-aware re-review (e.g., to dig into remaining MINOR / OBS findings conversationally), run `/review XXXX`.
   > - For a comprehensive panel review of selected files, run `/critique <files>`.
+
+### Step 7b.5 — Craft polish pass (gate-locked, behaviour-preserving)
+
+Runs **after** the critic's BLOCKER/MAJOR must-fix findings are cleared (Step 7b, or Step 7c when there were none to begin with — polish is still wanted on functionally-accepted code) and **before** the delivery handoff. This stage improves craft — naming, structure, restraint, load-bearing comments — **without changing behaviour**, and proves behaviour preservation mechanically. It is **ticket-mode only** (spec/standalone mode has no critic loop and is out of scope).
+
+Read `CRAFT_MAX_ITERATIONS` (default 3) and `CRAFT_REQUIRE_TEST_SURVIVAL` (default true) from `.harness/config.py`.
+
+This step is entered from the resolved must-fix loop — either from Step 7b (auto-repair succeeded) or from the no-must-fix skip in Step 7a. It is **not** entered from Step 7d (auto-repair exhausted): polishing code the critic has not accepted is out of scope. At its end it returns to the delivery-options handoff (Step 7b's message for the repaired case, Step 7c's for the no-must-fix case).
+
+**Disabled path.** If `CRAFT_MAX_ITERATIONS == 0`, skip the loop entirely: the worktree is returned unchanged, write the report with `final_status="disabled"` and `iterations_run=0`, and return to the delivery-options handoff. (This is the immediate off switch — no craft subagent is spawned.)
+
+**Dry-run suppression.** As with Step 7a, if this run is a dry run (`should_auto_repair(dry_run)` is `False`), skip the polish loop — no worktree is touched.
+
+**Before the loop — pin the baseline (the anti-cheat reference).** Record the worktree's current HEAD SHA (the post-repair, functionally-accepted state) and capture the **pre-polish test files** exactly as committed at Step 5 / 7a. This pinned test set is the drift guard: it is re-run against every polished implementation and never itself polished in place for the survival check.
+
+Announce `started` (once per invocation).
+
+For each iteration `N` (1 … `CRAFT_MAX_ITERATIONS`):
+
+1. **Spawn the `craft` subagent** (`craft`) with `Ticket: XXXX-<slug>`, the ticket intent (`solution.md` description + constraints), and the current worktree implementation + tests. Announce `iteration` (once per iteration, including the terminal convergence one). It returns JSON: `reasoning`, `improvements[]` (`{category, location_hint, rationale}`), `polished_implementation`, `polished_tests`.
+   - **If `improvements` is empty** → the code has converged: set `final_status="converged"`, stop. This counts as an iteration run (`iterations_run` includes it). The worktree is unchanged.
+2. **Apply** `polished_implementation` / `polished_tests` to the worktree files.
+3. **Behaviour-preservation gate (discard-on-break).** Both sub-checks must pass or the round is reverted:
+   a. **Re-run the gate:** `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`. On **any new failure or 0041 baseline regression**, revert this round — `git -C .worktrees/XXXX-<slug> checkout .` back to the pre-round (prior good) state — record every improvement in the round as `was_applied=False` with `rejection_reason` naming the failing gate (announce `improvement_rejected`), and continue to iteration `N+1` from the prior good state.
+   b. **Pinned-test-survival** (when `CRAFT_REQUIRE_TEST_SURVIVAL` is true): run the **pinned pre-polish test files** against the **polished implementation** in a scratch overlay. If any pre-polish test now fails, the polish changed behaviour (or weakened a test to pass the gate) — revert the round with `rejection_reason="pinned test <id> failed"` (announce `improvement_rejected`), and continue to `N+1` from the prior good state. This is the primary drift guard: it blocks the specific failure mode of the polisher loosening an assertion to make the gate green, which the critic already treats as a BLOCKER (`critic-brief.md` Step 2.5).
+4. **If both pass → accept and commit the round** as its own commit so the lead sees craft changes as a distinct, revertable slice in the Step 6 diff, never entangled with the functional implementation:
+   ```
+   git -C .worktrees/XXXX-<slug> commit -am "polish: craft round N"
+   ```
+   Record each improvement as `was_applied=True` (announce `improvement_applied`). The accepted state becomes the new pre-round baseline for `N+1`.
+5. **Reaching `CRAFT_MAX_ITERATIONS`** with the subagent still proposing (non-empty) improvements → set `final_status="max_iterations_reached"`, stop.
+
+**Report + status lines.** Write `.harness/craft/XXXX-<slug>.json` — a `CraftPolishReport` with `iterations_run`, `improvements_applied[]`, `improvements_rejected[]`, and `final_status` (one of `disabled`, `converged`, `max_iterations_reached`) — and display its `formatted()` summary. The `craft.*` instrumentation is emitted as **deterministic status lines** (no event bus): `started` / `iteration` / `improvement_applied` / `improvement_rejected` / `completed`, with `started` and `completed` fired exactly once per invocation. Announce `completed` and return to the delivery-options handoff (Step 7b or Step 7c per the entry above).
+
+**Failure-memory composition (optional).** A rejected polish round is a `passed`-adjacent learning: record it via `memory(action="record", gate="craft", errors_text=<gate or pinned test that broke>, outcome="escalated", resolution=<what the polish tried>)` so a future craft round in the same area avoids the same dead-end proposal.
 
 ### Step 7c — No must-fix findings (or only MINOR / OBS remain)
 

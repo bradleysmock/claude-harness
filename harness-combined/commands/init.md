@@ -10,6 +10,7 @@ Initialize the harness pipeline in the current project.
 ├── tasks/        ← task DAG files go here
 ├── results/      ← run artifacts go here
 ├── critiques/    ← /critique reports go here (git-ignored like the rest of .harness/)
+├── craft/        ← craft-polish reports (.harness/craft/<ticket>.json) go here (git-ignored)
 └── checkpoints/  ← task resume state
 .tickets/         ← SDLC ticket directory (active tickets live here)
 .tickets/completed/ ← archived tickets (status: done or cancelled)
@@ -28,6 +29,16 @@ PROJECT_ROOT = "."
 
 # Maximum repair attempts before escalating
 MAX_REPAIR_ATTEMPTS = 3
+
+# Maximum craft-polish iterations after critic acceptance (ticket mode).
+# 0 disables the craft polish pass entirely (worktree returned unchanged,
+# final_status="disabled").
+CRAFT_MAX_ITERATIONS = 3
+
+# When true, each polish round re-runs the pinned pre-polish tests against the
+# polished implementation and reverts the round if any fail (the anti-cheat /
+# test-survival guard). Optional; default true.
+CRAFT_REQUIRE_TEST_SURVIVAL = True
 ```
 
 ### 3 — Write `.tickets/NEXT_TICKET`
@@ -47,7 +58,7 @@ Ensure each of these entries is present in `.gitignore` (append any that are mis
 .tickets/.ticket.lock # transient ticket-number claim lock
 ```
 
-`.harness/` is machine-local scaffolding and is ignored **wholesale** — so `results/`, `critiques/` (the `/critique` reports), `checkpoints/`, and the `memory.db` failure trail all stay out of git under the same rule; none of them should ever land in a commit. `.tickets/` itself (status.md, problem/requirements/solution.md, NEXT_TICKET, the lead-curated `_standards.md` / `_learnings.md`) **stays tracked** — the harness commits each status transition to `main` (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Only the `.harness/` tree and the two transient `.tickets/` sentinels above are ignored. `.tickets/completed/` is also tracked — archived tickets are committed to git just like active ones.
+`.harness/` is machine-local scaffolding and is ignored **wholesale** — so `results/`, `critiques/` (the `/critique` reports), `craft/` (the craft-polish reports), `checkpoints/`, and the `memory.db` failure trail all stay out of git under the same rule; none of them should ever land in a commit. `.tickets/` itself (status.md, problem/requirements/solution.md, NEXT_TICKET, the lead-curated `_standards.md` / `_learnings.md`) **stays tracked** — the harness commits each status transition to `main` (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Only the `.harness/` tree and the two transient `.tickets/` sentinels above are ignored. `.tickets/completed/` is also tracked — archived tickets are committed to git just like active ones.
 
 ### 5 — Write lead-curated stub files
 
