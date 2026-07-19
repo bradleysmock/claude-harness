@@ -1,5 +1,11 @@
 Generate a concise ticket status summary from the `.tickets/` directory.
 
+> **Source of truth (harness-tickets model).** In-flight tickets no longer live on `main` — the number claim and coarse lifecycle live on the `harness-tickets` ledger, and the ticket dir lives only on its feature branch. Enumerate in-flight and completed tickets from the ledger (which joins worktree fine status and `main`'s `completed/`):
+> ```bash
+> python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" list-json   # [{number,slug,title,status,owner,effort,depends_on,branch,completed}]
+> ```
+> The `.tickets/*` scan below still surfaces any local/legacy copies and each ticket's worktree status, but the ledger is authoritative for *which* tickets are in flight (a `.tickets/*` scan on `main` alone would see zero in-flight tickets).
+
 ## Step 1 — Read all status files
 
 ```bash

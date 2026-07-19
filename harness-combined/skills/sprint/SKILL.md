@@ -32,6 +32,22 @@ Reject any unrecognised flag with a one-line usage message and stop.
 
 ## Step 1 — Collect ticket records (read-only, no `eval`)
 
+**Source of truth (harness-tickets model).** Open (in-flight) tickets no longer
+live on `main` — the number claim and coarse lifecycle live on the
+`harness-tickets` ledger, and each ticket dir lives only on its feature branch.
+Enumerate from the ledger, which already joins the worktree's fine
+`status`/`effort`/`depends_on` and `main`'s `completed/`:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" list-json
+```
+
+Its rows carry exactly the fields `compute.py` needs (`number`, `title`,
+`effort`, `depends_on`, `status`, `completed`), so the assembled JSON array can be
+piped straight to Step 2 — a bare `.tickets/*` glob on `main` alone would plan
+against **zero** in-flight tickets. The `.tickets/*.status.md` glob below is a
+legacy/local fallback for repos that predate the ledger.
+
 Glob open tickets from `.tickets/*/status.md` (exclude `completed/`) and completed
 tickets from `.tickets/completed/*/status.md`. For each, extract `ticket`,
 `title`, `effort`, and `depends-on` with a fixed-field `grep`/`cut`, never by

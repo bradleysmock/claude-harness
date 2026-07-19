@@ -72,8 +72,11 @@ def test_abandon_command_exists() -> None:
 
 
 def test_abandon_sets_abandoned_status() -> None:
+    # NEW CONTRACT: the terminal signal is an `abandoned` event on the
+    # harness-tickets ledger (main-free), not a `status: abandoned` commit on main.
     c = read("commands/abandon.md")
-    assert "status: abandoned" in c or "→ abandoned" in c
+    assert "abandoned" in c
+    assert 'ticket.py" abandon XXXX --push' in c
 
 
 def test_abandon_distinct_from_cancelled() -> None:

@@ -122,8 +122,13 @@ def test_spec_remediation_commits_on_branch() -> None:
     assert "git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/" in c
 
 
-# ── Regression guard: harness-reference keeps the two-commits-on-main invariant ─
-def test_reference_still_asserts_two_commits_on_main() -> None:
+# ── Regression guard: harness-reference asserts the one-commit-on-main invariant ─
+# NEW CONTRACT: ticket coordination (number claim + lifecycle) moved off `main`
+# onto the `harness-tickets` ledger, so `main` now carries exactly ONE commit per
+# ticket — the delivery squash — not two. Old assertion: "Two commits on `main`".
+def test_reference_still_asserts_one_commit_on_main() -> None:
     c = read("context/harness-reference.md")
-    assert "Two commits on `main`" in c
+    assert "One commit on `main`" in c
+    assert "Two commits on `main`" not in c
+    assert "harness-tickets" in c  # coordination branch is documented
     assert "git merge --squash" in read("context/flows/deliver-ticket.md")

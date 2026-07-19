@@ -51,9 +51,17 @@ Resolve the idle threshold, in this strict precedence order (first match wins):
 ## Step 2 — Scan ticket status files (structural extraction only)
 
 <!-- shared with status/SKILL.md — keep in sync -->
-Scan `.tickets/*/status.md` — **one level deep only**. This depth implicitly excludes
-`.tickets/completed/*/status.md` (two levels deep), so completed tickets are never scanned. If
-`.tickets/` does not exist or contains no `status.md` files, treat the ticket set as empty.
+**Source of truth (harness-tickets model).** In-flight tickets no longer live on `main`: the
+number claim and coarse lifecycle live on the `harness-tickets` ledger, and the ticket dir lives
+only on its feature branch. Enumerate the in-flight set from the ledger —
+`python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" list-json` (each in-flight row carries `branch` and,
+when the worktree is local, the live `status`/`updated`). A bare `.tickets/*` scan on `main` would
+see zero in-flight tickets.
+
+Scan `.tickets/*/status.md` — **one level deep only** — for any local/legacy copies. This depth
+implicitly excludes `.tickets/completed/*/status.md` (two levels deep), so completed tickets are
+never scanned. If `.tickets/` does not exist or contains no `status.md` files, fall back to the
+ledger enumeration above; treat a ticket set that is empty in both as empty.
 
 **Worktree-aware read.** Post-claim states are branch-only, so when a ticket's worktree exists
 locally (`.worktrees/<slug>/`), read `.worktrees/<slug>/.tickets/<slug>/status.md` for the live

@@ -25,7 +25,7 @@ Every member has been confirmed at `status: solution`.
 
 ## Step 1 — Create the integration worktree
 
-`main` carries only each member's `claimed` stub; the design artifacts live on each member's `ticket/XXXX-<slug>` branch. Fork a fresh integration worktree from `main` and set the batch sentinel:
+`main` is untouched by any in-flight member — each member's number claim lives on the `harness-tickets` ledger, and its `claimed` stub + design artifacts live on its `ticket/XXXX-<slug>` branch. The batch delivery (Step 5, one atomic push) is the first time `main` sees these tickets, and it also appends one `delivered` ledger event per member. Fork a fresh integration worktree from `main` and set the batch sentinel:
 
 ```
 git worktree add .worktrees/batch-<lead-slug> -b batch/<lead-slug> main

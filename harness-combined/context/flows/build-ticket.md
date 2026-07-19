@@ -139,7 +139,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX implementing --push   
 
 Run with the worktree as the cwd so the helper resolves the worktree's `.tickets/` and commits to the branch; `--push` publishes the branch (setting upstream on first push).
 
-From here, **all** implementation status churn (`implementing`, `review-ready`, `changes-requested`) is **branch only** — committed inside the worktree and pushed, never to `main`. `main` keeps showing `claimed` until `/deliver` squash-merges the branch.
+From here, **all** implementation status churn (`implementing`, `review-ready`, `changes-requested`) is **branch only** — committed inside the worktree and pushed, never to `main`. `main` stays untouched — the coarse `claimed` state lives on the `harness-tickets` ledger, not on `main` — until `/deliver` squash-merges the branch.
 
 ## Step 3 — Load DAG and checkpoint
 
