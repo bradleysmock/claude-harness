@@ -1,0 +1,116 @@
+{"event":"claim","number":1,"slug":"ticket-archiving","title":"Archive Completed and Cancelled Tickets","owner":"bradleysmock@gmail.com","branch":"ticket/0001-ticket-archiving","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":2,"slug":"feature-suggestion-skill","title":"Feature Suggestion Skill","owner":"bradleysmock@gmail.com","branch":"ticket/0002-feature-suggestion-skill","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":2,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":3,"slug":"conventional-commit-lint-gate","title":"Conventional-commit lint gate","owner":"bradleysmock@gmail.com","branch":"ticket/0003-conventional-commit-lint-gate","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":3,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":4,"slug":"stale-ticket-detector","title":"Stale ticket detector","owner":"bradleysmock@gmail.com","branch":"ticket/0004-stale-ticket-detector","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":4,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":5,"slug":"automated-learnings-capture","title":"Automated Learnings Capture","owner":"bradleysmock@gmail.com","branch":"ticket/0005-automated-learnings-capture","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":5,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":6,"slug":"standards-md-validator","title":"_standards.md schema validator","owner":"bradleysmock@gmail.com","branch":"ticket/0006-standards-md-validator","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":6,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":7,"slug":"ticket-list-command","title":"Ticket List Command","owner":"bradleysmock@gmail.com","branch":"ticket/0007-ticket-list-command","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":7,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":8,"slug":"pre-deliver-rebase-guard","title":"Pre-deliver rebase guard","owner":"bradleysmock@gmail.com","branch":"ticket/0008-pre-deliver-rebase-guard","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":8,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":9,"slug":"gate-timeout-config","title":"Gate timeout configuration","owner":"bradleysmock@gmail.com","branch":"ticket/0009-gate-timeout-config","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":9,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":10,"slug":"changelog-generator","title":"Changelog generator","owner":"bradleysmock@gmail.com","branch":"ticket/0010-changelog-generator","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":10,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":11,"slug":"coverage-enforcement-gate","title":"Coverage Enforcement Gate","owner":"bradleysmock@gmail.com","branch":"ticket/0011-coverage-enforcement-gate","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":11,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":12,"slug":"dependency-freshness-vulnerability-gate","title":"Dependency Freshness and Vulnerability Gate","owner":"bradleysmock@gmail.com","branch":"ticket/0012-dependency-freshness-vulnerability-gate","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":12,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":13,"slug":"build-dry-run-mode","title":"Build --dry-run mode","owner":"bradleysmock@gmail.com","branch":"ticket/0013-build-dry-run-mode","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":13,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":14,"slug":"spec-coverage-map","title":"Spec Coverage Map","owner":"bradleysmock@gmail.com","branch":"ticket/0014-spec-coverage-map","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":14,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":15,"slug":"bisect-helper","title":"Bisect Helper","owner":"bradleysmock@gmail.com","branch":"ticket/0015-bisect-helper","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":15,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":16,"slug":"health-dashboard","title":"Build health dashboard","owner":"bradleysmock@gmail.com","branch":"ticket/0016-health-dashboard","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":16,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":17,"slug":"multi-language-polyglot-gate","title":"Multi-language polyglot gate","owner":"bradleysmock@gmail.com","branch":"ticket/0017-multi-language-polyglot-gate","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":17,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":18,"slug":"milestone-epic-grouping","title":"Milestone and Epic Grouping","owner":"bradleysmock@gmail.com","branch":"ticket/0018-milestone-epic-grouping","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":18,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":19,"slug":"post-merge-smoke-test","title":"Post-merge smoke test","owner":"bradleysmock@gmail.com","branch":"ticket/0019-post-merge-smoke-test","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":19,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":20,"slug":"rollback-skill","title":"Rollback Skill","owner":"bradleysmock@gmail.com","branch":"ticket/0020-rollback-skill","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":20,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":21,"slug":"velocity-report","title":"Ticket velocity report","owner":"bradleysmock@gmail.com","branch":"ticket/0021-velocity-report","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":21,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":22,"slug":"per-language-gate-doctor","title":"Per-language gate /doctor","owner":"bradleysmock@gmail.com","branch":"ticket/0022-per-language-gate-doctor","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":22,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":23,"slug":"spec-diff-on-refine","title":"Spec diff on refine","owner":"bradleysmock@gmail.com","branch":"ticket/0023-spec-diff-on-refine","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":23,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":24,"slug":"ticket-export","title":"Ticket export (JSON/CSV)","owner":"bradleysmock@gmail.com","branch":"ticket/0024-ticket-export","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":24,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":25,"slug":"sast-security-gate","title":"SAST Security Gate","owner":"bradleysmock@gmail.com","branch":"ticket/0025-sast-security-gate","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":25,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":26,"slug":"test-flakiness-detector","title":"Test Flakiness Detector","owner":"bradleysmock@gmail.com","branch":"ticket/0026-test-flakiness-detector","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":26,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":27,"slug":"ticket-template-customization","title":"Ticket template customization","owner":"bradleysmock@gmail.com","branch":"ticket/0027-ticket-template-customization","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":27,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":28,"slug":"github-pr-auto-creation","title":"GitHub PR auto-creation","owner":"bradleysmock@gmail.com","branch":"ticket/0028-github-pr-auto-creation","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":28,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":29,"slug":"secrets-credential-gate","title":"Secrets/Credential Gate","owner":"bradleysmock@gmail.com","branch":"ticket/0029-secrets-credential-gate","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":29,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":30,"slug":"selective-gate-skipping","title":"Selective Gate Skipping","owner":"bradleysmock@gmail.com","branch":"ticket/0030-selective-gate-skipping","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":30,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":31,"slug":"inline-pr-comments","title":"Inline PR Comment Posting","owner":"bradleysmock@gmail.com","branch":"ticket/0031-inline-pr-comments","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":31,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":32,"slug":"ticket-dependency-dag","title":"Ticket dependency field and DAG visualization","owner":"bradleysmock@gmail.com","branch":"ticket/0032-ticket-dependency-dag","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":32,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":33,"slug":"replan-command","title":"Replan command","owner":"bradleysmock@gmail.com","branch":"ticket/0033-replan-command","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":33,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":34,"slug":"requirements-integrity-review-skill","title":"Requirements integrity review skill","owner":"bradleysmock@gmail.com","branch":"ticket/0034-requirements-integrity-review-skill","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":34,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":35,"slug":"sprint-planning-command","title":"Sprint Planning Command","owner":"bradleysmock@gmail.com","branch":"ticket/0035-sprint-planning-command","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":35,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":36,"slug":"parallel-gate-execution","title":"Parallel gate execution","owner":"bradleysmock@gmail.com","branch":"ticket/0036-parallel-gate-execution","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":36,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":37,"slug":"sarif-gate-output-ide-integration","title":"SARIF gate output and IDE integration","owner":"bradleysmock@gmail.com","branch":"ticket/0037-sarif-gate-output-ide-integration","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":37,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":38,"slug":"tech-stack-advisor","title":"Tech Stack Advisor","owner":"bradleysmock@gmail.com","branch":"ticket/0038-tech-stack-advisor","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":38,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":39,"slug":"worktree-first-ticket-resolution","title":"Worktree-first ticket resolution and branch-only commit fixes","owner":"bradleysmock@gmail.com","branch":"ticket/0039-worktree-first-ticket-resolution","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":39,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":40,"slug":"repair-integrity-guard","title":"Repair-integrity guard against gate gaming","owner":"bradleysmock@gmail.com","branch":"ticket/0040-repair-integrity-guard","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":40,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":41,"slug":"ts-test-gate-regression-scope","title":"TypeScript test gate must catch regressions in unchanged tests","owner":"bradleysmock@gmail.com","branch":"ticket/0041-ts-test-gate-regression-scope","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":41,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":42,"slug":"persist-critic-findings-memory","title":"Persist critic findings and escalation diagnoses; record failures to memory","owner":"bradleysmock@gmail.com","branch":"ticket/0042-persist-critic-findings-memory","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":42,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":43,"slug":"visible-gate-tool-skips","title":"Missing gate tools must be visible, never silent passes","owner":"bradleysmock@gmail.com","branch":"ticket/0043-visible-gate-tool-skips","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":43,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":44,"slug":"critic-round-cap-contract","title":"Fix the critic agent's round-cap contract","owner":"bradleysmock@gmail.com","branch":"ticket/0044-critic-round-cap-contract","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":44,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":45,"slug":"problem-phase6-score-spec","title":"Make /problem Phase 6 actually run the spec score check","owner":"bradleysmock@gmail.com","branch":"ticket/0045-problem-phase6-score-spec","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":45,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":46,"slug":"gate-config-modernization","title":"Gate config modernization \u2014 respect project configs, ESLint flat config, current toolchain pins","owner":"bradleysmock@gmail.com","branch":"ticket/0046-gate-config-modernization","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":46,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":47,"slug":"unsupported-stack-detection","title":"Honest handling of unsupported and mis-detected stacks","owner":"bradleysmock@gmail.com","branch":"ticket/0047-unsupported-stack-detection","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":47,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":48,"slug":"panel-roster-gaps","title":"Panel roster gaps and stale activation headers","owner":"bradleysmock@gmail.com","branch":"ticket/0048-panel-roster-gaps","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":48,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":49,"slug":"critique-output-location","title":"Move /critique output out of cwd into .harness/critiques/","owner":"bradleysmock@gmail.com","branch":"ticket/0049-critique-output-location","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":49,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":50,"slug":"score-spec-testability-rubric","title":"Testability rubric for score-spec (WARN tier)","owner":"bradleysmock@gmail.com","branch":"ticket/0050-score-spec-testability-rubric","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":50,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":51,"slug":"checkpoint-invalidation-rebase-regate","title":"Checkpoint invalidation on spec edits and post-rebase re-gating","owner":"bradleysmock@gmail.com","branch":"ticket/0051-checkpoint-invalidation-rebase-regate","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":51,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":52,"slug":"hook-gate-alignment-memory-resolution","title":"Align hook gates with MCP gates; record resolutions in failure memory","owner":"bradleysmock@gmail.com","branch":"ticket/0052-hook-gate-alignment-memory-resolution","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"delivered","number":52,"ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":53,"slug":"llm-python-boundary","title":"LLM/Python boundary rule in CLAUDE.md","owner":"bradleysmock@gmail.com","branch":"ticket/0053-llm-python-boundary","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":54,"slug":"score-spec-validator","title":"Score-spec Python validator: mechanical checks 1-6","owner":"bradleysmock@gmail.com","branch":"ticket/0054-score-spec-validator","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":55,"slug":"refine-touched-flag-persist","title":"Persist refine-touched flag to disk (Step S writes, Step B checks, deliver clears)","owner":"bradleysmock@gmail.com","branch":"ticket/0055-refine-touched-flag-persist","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":56,"slug":"ticket-lock-in-claim","title":"Move ticket lock into ticket.py claim (atomic acquire/release)","owner":"bradleysmock@gmail.com","branch":"ticket/0056-ticket-lock-in-claim","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":57,"slug":"panel-detect-triggers","title":"Panel-detect script: deterministic trigger table in context/panels/triggers.md","owner":"bradleysmock@gmail.com","branch":"ticket/0057-panel-detect-triggers","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":58,"slug":"severity-tiers-single-source","title":"Single-source severity tiers: define BLOCKER/MAJOR/MINOR/OBS in harness-reference only","owner":"bradleysmock@gmail.com","branch":"ticket/0058-severity-tiers-single-source","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":62,"slug":"stable-critic-finding-ids","title":"Stable critic finding IDs: emit file:line:severity:code keys so repair loop reconciles findings across rounds","owner":"bradleysmock@gmail.com","branch":"ticket/0062-stable-critic-finding-ids","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":63,"slug":"command-file-token-diet","title":"Command-file token diet: move helper internals to docstrings; dedupe the critic-round persistence block","owner":"bradleysmock@gmail.com","branch":"ticket/0063-command-file-token-diet","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":64,"slug":"critique-report-slimming","title":"Critique report slimming: write full report to .harness/critiques; show only header, verdict, finding table","owner":"bradleysmock@gmail.com","branch":"ticket/0064-critique-report-slimming","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":65,"slug":"tdd-order-build-step4","title":"TDD-order build Step 4: red test gate before implementation; write files directly instead of fenced blocks","owner":"bradleysmock@gmail.com","branch":"ticket/0065-tdd-order-build-step4","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":66,"slug":"autopilot-mode-flag","title":"Autopilot mode flag: build-ticket.md branches explicitly; shrink autopilot-ticket.md to mode plus steps S/A/B","owner":"bradleysmock@gmail.com","branch":"ticket/0066-autopilot-mode-flag","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":67,"slug":"incremental-critic-rounds","title":"Incremental critic rounds: rounds 2+ review repair diff plus prior BLOCKER/MAJOR list, not the full worktree","owner":"bradleysmock@gmail.com","branch":"ticket/0067-incremental-critic-rounds","ts":"2026-07-19T17:08:36+00:00"}
+{"event":"claim","number":68,"slug":"slim-deliver-ticket","title":"Slim deliver-ticket.md: move merge/archive/learnings mechanics behind ticket.py, mirroring the claim path","owner":"bradleysmock@gmail.com","branch":"ticket/0068-slim-deliver-ticket","ts":"2026-07-19T17:08:36+00:00"}
