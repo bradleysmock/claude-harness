@@ -1,6 +1,6 @@
 ---
 name: critique
-description: Apply domain-specialist panels to the current diff or specified files — Python idioms, HTTP/API design, UI patterns, AI/LLM security — each with a distinct mental model, not just a harder general scan. Also produces a Codebase Patterns section that looks beyond the changed files to surface systemic habits. TRIGGER when the user wants a specific expert lens applied to a change, names a domain ("security review", "Python idioms", "what would an API designer say"), or asks for panel review (e.g. "critique the auth route", "panel review of the new handler", "what's wrong with this from an API design perspective"). SKIP for ticket-scoped post-build reviews (use the review skill, which reads problem/requirements/solution as baseline), for general correctness or style checks (use /code-review), and when the user only wants lint output (use /gate).
+description: Apply domain-specialist panels to a chosen scope — Python idioms, HTTP/API design, UI patterns, AI/LLM security — each with a distinct mental model, not just a harder general scan. Scope is set by argument (files, globs, a git ref/range, or a scope keyword); when no argument is given the command ASKS which scope to run against, defaulting to the whole codebase focused on changes since the last critique — it does not silently assume uncommitted changes. Also produces a Codebase Patterns section that looks beyond the changed files to surface systemic habits. TRIGGER when the user wants a specific expert lens applied to a change, names a domain ("security review", "Python idioms", "what would an API designer say"), or asks for panel review (e.g. "critique the auth route", "panel review of the new handler", "what's wrong with this from an API design perspective"). SKIP for ticket-scoped post-build reviews (use the review skill, which reads problem/requirements/solution as baseline), for general correctness or style checks (use /code-review), and when the user only wants lint output (use /gate).
 ---
 
 # Expert Code Critique
@@ -91,13 +91,33 @@ The Secondary panel (`${CLAUDE_PLUGIN_ROOT}/context/panels/secondary.md`) is loa
 
 ---
 
-## Target
+## Scope
 
 ```
 $ARGUMENTS
 ```
 
-If `$ARGUMENTS` is empty, review all changed files (`git diff --name-only`). If a specific file or glob is given, review those files. Read every file in scope before writing a single finding.
+Resolve the review scope **before** reading any code. Do not assume uncommitted changes.
+
+- **`$ARGUMENTS` names files or globs** (e.g. `src/auth.py`, `web/**/*.svelte`, `problem.md requirements.md`) → review exactly those files. No prompt.
+- **`$ARGUMENTS` is a git ref or range** (e.g. `main..HEAD`, a branch name, a commit SHA) → review the files that ref/range touches (`git diff --name-only <range>`). No prompt.
+- **`$ARGUMENTS` is a scope keyword** → resolve it, no prompt:
+  - `codebase` / `all` → every tracked file (`git ls-files`).
+  - `uncommitted` / `working` → `git diff --name-only HEAD` plus untracked files.
+  - `since-last-critique` → the whole codebase focused on the diff since the last critique (see **Resolving "since last critique"** below).
+- **`$ARGUMENTS` is empty** → **ask the user** which scope to run against with the `AskUserQuestion` tool. Offer these options (first is the default/recommended); do not read code until answered:
+  1. **Since last critique (recommended)** — the whole codebase as context, findings focused on what changed since the previous critique.
+  2. **Uncommitted changes** — `git diff` + untracked files only.
+  3. **Entire codebase** — every tracked file, no change-focus.
+  4. **Specific files or ref** — the user names a path, glob, or git range (route their answer through the rules above).
+
+**Resolving "since last critique".** The scope's *context* is the whole codebase — panel activation and the Codebase Patterns section see everything — while the *focus* (the files that receive "this change" findings) is the diff since the previous critique:
+
+1. Find the previous critique's anchor: scan `.harness/critiques/` (resolved at the main project root, never inside a worktree — see Output Format) for the newest report and read its `Base commit:` header line.
+2. The focused file set is `git diff --name-only <base>..HEAD` plus current uncommitted and untracked changes.
+3. If no prior report exists or none records a `Base commit:` (first run, or legacy reports), fall back to reviewing every tracked file and note in the report's Summary that no prior critique anchor was found, so this run establishes the baseline.
+
+Read every file in the focused set — and enough of the surrounding codebase to activate the right panels and surface Codebase Patterns — before writing a single finding.
 
 ---
 
@@ -114,7 +134,9 @@ Write the critique as a structured report. Do not write anything until you have 
 **Report destination.** Write the report to `.harness/critiques/<report-file>`, creating the `.harness/critiques/` directory if it does not exist. This sits beside `.harness/results/` and `.harness/memory.db` in the harness state home, so it inherits the same git-ignore treatment and never leaks into delivered code.
 
 - **Resolve `.harness/` at the main project root, never inside a worktree.** If the current directory is inside a `.worktrees/<slug>/` checkout (a ticket worktree), do **not** write the report there — a report committed into a worktree would be swept into the delivery squash. Resolve the main working tree's root (e.g. the directory holding `.tickets/` and `.harness/`; from within a worktree, the parent of `git rev-parse --git-common-dir`) and write the report to *its* `.harness/critiques/`.
-- **Filename: `<YYYY-MM-DD>-<NN>-<target-slug>.md`.** The date leads the filename so a plain reverse-lexical sort of the reports is globally newest-first **regardless of target** — put the date first, not the slug, or reports for different targets interleave by name instead of by time. `<YYYY-MM-DD>` is today's date. `<NN>` is a two-digit counter (`01`, `02`, …): scan `.harness/critiques/` for existing `<YYYY-MM-DD>-*.md` files (any target) and use the next unused value, so same-day re-runs never collide. `<target-slug>` is a short kebab-case slug of the review target (the file/glob in `$ARGUMENTS`, or `working-tree` when reviewing the current diff). This makes filenames sort chronologically and collision-free across same-day re-runs, so successive critiques never overwrite each other. Call this resolved path `<report-path>` below.
+- **Filename: `<YYYY-MM-DD>-<NN>-<target-slug>.md`.** The date leads the filename so a plain reverse-lexical sort of the reports is globally newest-first **regardless of target** — put the date first, not the slug, or reports for different targets interleave by name instead of by time. `<YYYY-MM-DD>` is today's date. `<NN>` is a two-digit counter (`01`, `02`, …): scan `.harness/critiques/` for existing `<YYYY-MM-DD>-*.md` files (any target) and use the next unused value, so same-day re-runs never collide. `<target-slug>` is a short kebab-case slug of the review target (the file/glob in `$ARGUMENTS`, or the resolved scope when none was given — `since-last-critique`, `uncommitted`, or `codebase`). This makes filenames sort chronologically and collision-free across same-day re-runs, so successive critiques never overwrite each other. Call this resolved path `<report-path>` below.
+
+**Base-commit anchor.** The report header's `Base commit:` line is machine-read: the `since-last-critique` scope resolves the previous anchor by reading the newest report's `Base commit:` (see Scope). Always emit it — a report without it cannot anchor the next incremental critique, forcing a full-codebase fallback. Record `git rev-parse HEAD` at the time the review is conducted.
 
 **Ticket-pointer rule.** When the critique's target files belong to a ticket — a path inside a ticket worktree (`.worktrees/<slug>/…`) or inside a ticket directory (`.tickets/<slug>/…`) — append a one-line pointer to that ticket's `critic-findings.md` (the durable per-ticket findings index; see "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`), so the report is discoverable from the ticket later. The line carries four fields — date, target, verdict, and report path:
 
@@ -147,7 +169,9 @@ The report is structured for a reader who *skims first, dives second*. Verdict c
   Target: [file(s) reviewed]
   Active panels: [Core | + Python | + TypeScript/JS | + Angular | + React | + Vue | + Svelte | + SolidJS | + Go | + Rust | + JVM | + C/C++ | + Shell | + HTTP/API | + Hypermedia | + Identity | + Cryptography | + UI | + USWDS | + AI/LLM | + CI/CD | + Database | + Data Engineering | + Infrastructure | + Testing | + Observability | + Performance | + Distributed]
   Panels considered, deferred: [list of panels whose triggers were ambiguous, with one-line reason each — or "none"]
+  Scope: [how scope was resolved — e.g. "since last critique (<base>..HEAD)", "uncommitted", "codebase", or the files/glob/ref given]
   Date: [today's date]
+  Base commit: [`git rev-parse HEAD` at review time — the anchor a later "since last critique" run diffs from]
 ═══════════════════════════════════════════════════════
 
 ## Verdict
