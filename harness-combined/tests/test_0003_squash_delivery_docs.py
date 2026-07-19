@@ -47,10 +47,14 @@ def test_problem_writes_artifacts_in_worktree() -> None:
     assert "into the worktree" in c.lower()
 
 
-# ── FR-4: the claim commit is the only main commit before delivery ───────────
-def test_problem_claim_is_only_main_commit_pre_delivery() -> None:
+# ── FR-4: the claim makes NO main commit — the ledger is the arbiter ─────────
+# NEW CONTRACT: was "the claim commit is the only main commit before delivery".
+# Number allocation moved to the harness-tickets ledger, so the claim writes
+# nothing to main; the delivery squash is the ONLY main commit per ticket.
+def test_problem_claim_makes_no_main_commit() -> None:
     c = read("commands/problem.md")
-    assert "only" in c and "before delivery" in c
+    assert "nothing to `main`" in c
+    assert "harness-tickets" in c and "ledger" in c
 
 
 def test_reference_documents_two_commits_on_main() -> None:
@@ -94,21 +98,30 @@ def test_reopen_forks_fresh_branch_from_main() -> None:
 
 
 def test_reopen_restores_onto_branch() -> None:
+    # NEW CONTRACT: reopen delegates to the helper, which restores the dir onto the
+    # fresh branch from its archive (main's completed/ or harness-tickets). Old
+    # assertion pinned the hand-rolled `git -C .worktrees/... rm -r --cached
+    # .tickets/completed/...` command.
     c = read("commands/reopen.md")
-    assert "git -C .worktrees/XXXX-<slug> rm -r --cached .tickets/completed/XXXX-<slug>/" in c
+    assert 'ticket.py" reopen XXXX --push' in c
+    assert "restore" in c.lower() and "archive" in c.lower()
 
 
-# ── FR-7: /cancel and /abandon remove worktree+branch, route via set-status ──
-def test_cancel_routes_terminal_via_set_status() -> None:
+# ── FR-7: /cancel and /abandon are main-free, routed via the ledger helper ───
+# NEW CONTRACT: terminal handling moved off `main`. Cancel/abandon append a
+# `cancelled`/`abandoned` ledger event and archive docs onto harness-tickets via
+# the helper (`ticket.py cancel|abandon`), instead of a main-side set-status +
+# completed/ archive commit.
+def test_cancel_routes_terminal_via_ledger_helper() -> None:
     c = read("commands/cancel.md")
-    assert "set-status XXXX cancelled --push" in c
-    assert "claim time" in c  # worktree+branch exist from claim
+    assert 'ticket.py" cancel XXXX --push' in c
+    assert "main-free" in c
 
 
-def test_abandon_routes_terminal_via_set_status() -> None:
+def test_abandon_routes_terminal_via_ledger_helper() -> None:
     c = read("commands/abandon.md")
-    assert "set-status XXXX abandoned --push" in c
-    assert "claim time" in c
+    assert 'ticket.py" abandon XXXX --push' in c
+    assert "main-free" in c
 
 
 # ── FR-8: the commit guard scans worktrees (documented in the reference) ─────

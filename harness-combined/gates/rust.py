@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -9,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import gates._baseline as _bl
 from gates import (
     GateTimeoutConfig,
     ProcessResult,
@@ -250,6 +252,118 @@ def run_rust_suite(
 _RUST_SCOPE = ["*.rs", "Cargo.toml", "Cargo.lock"]
 
 
+# ── Directory-mode test gate: full run + baseline-delta ────────────────────────
+#
+# Like the TypeScript gate (ticket 0041), the directory-mode ``cargo test`` gate
+# runs the entire suite and fails only on failures absent from the cached merge-base
+# baseline (plus any previously-passing test now deleted). Shared machinery lives in
+# ``gates/_baseline.py``. Text mode keeps the human ``cargo test`` gate
+# (``_test_gate``) — temp-dir builds have no git baseline to diff against.
+
+#: One libtest result line: ``test <crate::mod::name> ... ok|FAILED``.
+_CARGO_TEST_LINE = re.compile(r"^test (?P<name>\S+) \.\.\. (?P<status>ok|FAILED)$")
+
+
+def _run_cargo_test_dir(directory: str | Path, timeout: int) -> ProcessResult:
+    """Run the full Rust suite, letting every test binary run (``--no-fail-fast``).
+
+    The stable libtest text output (``test <name> ... ok|FAILED``) is parsed for IDs;
+    ``--no-fail-fast`` ensures a failure in one binary does not skip the rest, so the
+    failing set is complete.
+    """
+    return _exec(["cargo", "test", "--no-fail-fast"], directory, timeout=timeout)
+
+
+def _parse_cargo_test_output(
+    output: str, returncode: int,
+) -> tuple[bool, set[str], dict[str, GateError]]:
+    """Parse ``cargo test`` output into ``(parsed_ok, present_ids, {failing: err})``.
+
+    Each ``test <name> ... ok|FAILED`` line yields the stable ID ``<name>``
+    (``crate::mod::test`` form). ``parsed_ok`` is False when no test line parsed and
+    the run exited non-zero (a compile failure prints diagnostics but no test lines),
+    so the caller falls back to exit-code strictness surfacing the build error.
+    """
+    present: set[str] = set()
+    failing: dict[str, GateError] = {}
+    for raw in output.splitlines():
+        m = _CARGO_TEST_LINE.match(raw.strip())
+        if not m:
+            continue
+        name = m.group("name")
+        present.add(name)
+        if m.group("status") == "FAILED":
+            failing[name] = GateError(
+                message=f"{name}: test failed", file=None, line=None, column=None,
+                code="TEST_FAILURE", severity="error",
+            )
+    parsed_ok = bool(present) or returncode == 0
+    return parsed_ok, present, failing
+
+
+def _merge_base_sha(root: Path, base: str) -> str | None:
+    return _bl.merge_base_sha(root, base)
+
+
+def _collect_baseline(root: Path, sha: str, timeout: int) -> _bl.SuiteCollection | None:
+    """Run the full Rust suite at ``sha`` in a throwaway detached worktree."""
+    def _run(base_root: Path) -> _bl.SuiteCollection | None:
+        try:
+            result = _run_cargo_test_dir(base_root, timeout)
+        except subprocess.TimeoutExpired:
+            return None
+        ok, present, failing = _parse_cargo_test_output(result.output, result.returncode)
+        if not ok:
+            return None
+        return _bl.SuiteCollection.of(set(failing), present)
+
+    return _bl.run_in_detached_baseline_worktree(
+        root, sha, _run, tmp_prefix="harness_rs_baseline_",
+    )
+
+
+def _baseline(directory: Path, base: str = "main", timeout: int = 180) -> _bl.SuiteCollection | None:
+    """Present+failing baseline at the merge base; None → run strict full-suite."""
+    return _bl.load_baseline(
+        directory, base, timeout,
+        merge_base_fn=_merge_base_sha, compute_fn=_collect_baseline,
+        read_cache=_bl.read_collection_cache, write_cache=_bl.write_collection_cache,
+    )
+
+
+def _removed_error(tid: str) -> GateError:
+    return GateError(
+        message=f"{tid}: previously-passing test removed (present at baseline, absent now)",
+        file=None, line=None, column=None, code="TEST_REMOVED", severity="error",
+    )
+
+
+def _test_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
+    """Directory-mode ``cargo test`` gate: full suite run + baseline-delta comparison.
+
+    Fails only on failures absent from the cached merge-base baseline (and any
+    previously-green test now deleted); falls back to full-suite strictness when the
+    baseline is unavailable. Reports ``mode`` and ``baseline_excluded``.
+    """
+    start = time.monotonic()
+    root = Path(directory)
+    timeout = config.timeout_for("test", 180) if config else 180
+    try:
+        result = _run_cargo_test_dir(root, timeout)
+    except subprocess.TimeoutExpired:
+        return _timeout_error("test", timeout)
+    ok, present, failing = _parse_cargo_test_output(result.output, result.returncode)
+    if not ok:
+        return _bl.strict_exit_result(
+            "test", start, result.returncode, result.output,
+            fallback_msg="cargo test produced no parseable output",
+        )
+    baseline = _baseline(root, timeout=timeout)
+    return _bl.build_delta_result(
+        "test", start, present, failing, baseline, removed_error=_removed_error,
+    )
+
+
 def run_rust_suite_on_dir(
     directory: str, fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
@@ -272,7 +386,7 @@ def run_rust_suite_on_dir(
     gate_defs: list[tuple[str, GateSpec]] = [
         ("check", GateSpec(_check_gate, _RUST_SCOPE)),
         ("clippy", GateSpec(_clippy_gate, _RUST_SCOPE)),
-        ("test", GateSpec(_test_gate, _RUST_SCOPE)),
+        ("test", GateSpec(_test_gate_dir, _RUST_SCOPE)),
     ]
     return run_dir_gates_scheduled(
         gate_defs, RUST_GATE_GRAPH, directory, log_namespace="rust",

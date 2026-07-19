@@ -12,17 +12,38 @@ def _mk(root: Path, name: str) -> None:
     (root / name / "status.md").write_text("status: solution\n", encoding="utf-8")
 
 
+def _seed_claims(repo: Path, numbers: list[int]) -> None:
+    """Append `claim` events for the given numbers directly to the ledger."""
+    for n in numbers:
+        ticket.ledger_append(
+            repo,
+            lambda recs, n=n: (
+                [{
+                    "event": "claim", "number": n, "slug": f"t{n}",
+                    "title": f"T{n}", "owner": "a@x.c",
+                    "branch": f"ticket/{n:04d}-t{n}", "ts": "t",
+                }],
+                None,
+            ),
+            push=False,
+        )
+
+
 def test_next_number_empty(tmp_path: Path) -> None:
-    (tmp_path / ".tickets").mkdir()
-    assert ticket.next_number(tmp_path / ".tickets") == 1
+    # NEW CONTRACT: next_number reads the .harness-tickets ledger, not .tickets/*.
+    # A repo with no ledger (no claim ever made) starts at 1.
+    repo = _init_repo(tmp_path)
+    assert ticket.next_number(repo) == 1
 
 
-def test_next_number_scans_active_and_completed(tmp_path: Path) -> None:
-    tickets = tmp_path / ".tickets"
-    _mk(tickets, "0001-alpha")
-    _mk(tickets, "completed/0007-archived")
-    _mk(tickets, "0003-beta")
-    assert ticket.next_number(tickets) == 8  # max(1,3,7)+1, completed counts
+def test_next_number_derives_from_ledger(tmp_path: Path) -> None:
+    # NEW CONTRACT: was "scans .tickets/* + completed/*"; number allocation now
+    # derives from the ledger's claim events (max(claim.number)+1). The old
+    # filesystem scan survives only for one-time migration (see test file
+    # test_harness_tickets_branch.py::test_migrate_seeds_from_filesystem).
+    repo = _init_repo(tmp_path)
+    _seed_claims(repo, [1, 3, 7])
+    assert ticket.next_number(repo) == 8  # max(1,3,7)+1 from the ledger
 
 
 def test_format_number_zero_pads() -> None:
@@ -103,15 +124,32 @@ def _init_remote_clone(tmp_path: Path, name: str) -> tuple[Path, Path]:
     return bare, clone
 
 
-def test_claim_writes_stub_and_commits(tmp_path: Path) -> None:
+def _main_commit_count(repo: Path) -> int:
+    return int(subprocess.run(
+        ["git", "-C", str(repo), "rev-list", "--count", "HEAD"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip())
+
+
+def test_claim_writes_stub_on_branch_no_main_commit(tmp_path: Path) -> None:
+    # NEW CONTRACT: claim no longer commits a stub to `main`. The number-allocation
+    # arbiter is the `claim` line on the .harness-tickets ledger; the `claimed`
+    # stub is written on the feature branch (its worktree), and `main` is untouched.
     _, clone = _init_remote_clone(tmp_path, "alice")
+    main_before = _main_commit_count(clone)
     slug = ticket.claim(clone, "add-widget", "Add widget")
-    status_md = clone / ".tickets" / slug / "status.md"
+    # stub lives on the branch's worktree — NOT in main's working tree
+    status_md = clone / ".worktrees" / slug / ".tickets" / slug / "status.md"
     parsed = ticket.parse_status(status_md)
     assert slug == "0001-add-widget"
     assert parsed["status"] == "claimed"
     assert parsed["owner"] == "alice@x.c"
     assert parsed["source"] == "local"
+    # main got no new commit, and no active ticket dir landed on main
+    assert _main_commit_count(clone) == main_before
+    assert not (clone / ".tickets" / slug).exists()
+    # the ledger records the claim (the arbiter)
+    assert any(r["event"] == "claim" and r["number"] == 1 for r in ticket.ledger_read(clone))
 
 
 def test_cli_claim_dispatches(tmp_path, monkeypatch) -> None:
@@ -127,7 +165,9 @@ def test_cli_claim_dispatches(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(repo)
     rc = ticket._main(["claim", "widget", "Widget"])
     assert rc == 0
-    assert (repo / ".tickets" / "0001-widget" / "status.md").exists()
+    # NEW CONTRACT: the claimed stub is written on the branch's worktree, not main.
+    assert (repo / ".worktrees" / "0001-widget" / ".tickets" / "0001-widget" / "status.md").exists()
+    assert not (repo / ".tickets" / "0001-widget").exists()
 
 
 def test_claim_renumbers_when_number_taken_on_push(tmp_path: Path) -> None:
@@ -141,8 +181,10 @@ def test_claim_renumbers_when_number_taken_on_push(tmp_path: Path) -> None:
     bob_slug = ticket.claim(bob, "beta", "Beta", push=True)         # must renumber to 0002
     assert alice_slug == "0001-alpha"
     assert bob_slug == "0002-beta"
-    assert (bob / ".tickets" / bob_slug / "status.md").exists()
-    assert ticket.parse_status(bob / ".tickets" / bob_slug / "status.md")["status"] == "claimed"
+    # NEW CONTRACT: the winning stub lives on bob's feature branch worktree, not main
+    stub = bob / ".worktrees" / bob_slug / ".tickets" / bob_slug / "status.md"
+    assert stub.exists()
+    assert ticket.parse_status(stub)["status"] == "claimed"
 
 
 def _branch_exists(repo: Path, branch: str) -> bool:

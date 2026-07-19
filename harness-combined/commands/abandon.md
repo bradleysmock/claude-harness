@@ -1,25 +1,21 @@
-Mark an in-flight ticket as `abandoned` — work was started but dropped (distinct from `cancelled`, which means a deliberate decision not to do the work). Frees the ticket for someone else to `/reopen` and signals on `main` that no one is actively driving it. This is `/cancel --abandon` with a dedicated, memorable name.
+Mark an in-flight ticket as `abandoned` — work was started but dropped (distinct from `cancelled`, which means a deliberate decision not to do the work). Frees the ticket for someone else to `/reopen`. This is `/cancel --abandon` with a dedicated, memorable name. Like `/cancel`, it is **main-free**: an abandoned ticket never merged, so nothing about it lands on `main` — the terminal signal is an `abandoned` event on the `harness-tickets` ledger.
 
 ## Ticket Resolution
 
-If a ticket number is provided, scan `.tickets/<arg>*/` then `.tickets/completed/<arg>*/`. Otherwise scan `.tickets/` for tickets whose status is `implementing`; if exactly one, use it, else list them and require the lead to choose.
+If a ticket number is provided, resolve it from the `harness-tickets` ledger's `claim` events and its worktree. Otherwise list in-flight tickets whose live status is `implementing`; if exactly one, use it, else list them and require the lead to choose.
 
 ## Steps
 
-1. **Read `status.md`.** The status should be `implementing` (work was started but dropped). If it is `done`, `cancelled`, or `abandoned`, tell the lead and stop.
+1. **Read the live `status.md`** from the worktree (`.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/status.md`). The status should be `implementing` (work was started but dropped). If it is `done`, `cancelled`, or `abandoned`, tell the lead and stop.
 
-2. **Confirm with the lead.** Show what will happen: the worktree (if any) is removed, the branch deleted, status.md → abandoned, the `.active` sentinel cleared if it matches, and the ticket archived to `.tickets/completed/`. Stop if the lead declines.
+2. **Confirm with the lead.** Show what will happen (main-free): an `abandoned` event is appended to the `harness-tickets` ledger and pushed, the ticket docs are archived onto `harness-tickets` under `abandoned/XXXX-<slug>/`, the worktree is removed, the branch deleted (local + origin), and the `.active` sentinel cleared if it matches. Stop if the lead declines.
 
-3. **Remove the worktree** if `.worktrees/XXXX-<slug>` exists: `git worktree remove --force .worktrees/XXXX-<slug>`. The worktree exists from **claim time** for any ticket past claim. Warn and continue on failure.
+3. **Clear sentinels:** `rm -f .tickets/.active` (if it names this ticket) and `rm -f .tickets/.ticket.lock`.
 
-4. **Delete the branch** if it exists: `git branch -D ticket/XXXX-<slug>`. The branch also exists from claim time and is unmerged, so use `-D`. Warn and continue on failure.
+4. **Abandon via the helper** — one main-free transaction (ledger `abandoned` event pushed first-wins, docs archived onto `harness-tickets`, worktree + branch removed local and origin):
 
-5. **Clear sentinels:** `rm -f .tickets/.active` (if it names this ticket) and `rm -f .tickets/.ticket.lock`.
+   `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" abandon XXXX --push`
 
-6. **Set status to abandoned** with the helper (atomic edit + scoped commit + push):
+   Idempotent by `(event, number)` — a second run appends nothing and only finishes cleanup.
 
-   `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX abandoned --push`
-
-7. **Archive the ticket directory** to `.tickets/completed/` using the same mv + `git rm -r --cached` + `git add -- .tickets/completed/XXXX-<slug>/` + commit pattern as `/cancel` Step 8, then `git push`. Apply the same **Idempotency** and **Partial-move guard** rules. This is always a separate commit.
-
-8. **Report completion.** Note the archive location and that `/reopen XXXX` resumes the ticket.
+5. **Report completion.** Note that **no `main` commit was made**, the docs are archived on `harness-tickets`, and that `/reopen XXXX` restores the ticket onto a fresh branch.

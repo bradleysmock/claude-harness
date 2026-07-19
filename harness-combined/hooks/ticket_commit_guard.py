@@ -19,12 +19,82 @@ No-op when git is unavailable or no checkout has a `.tickets/` directory.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 IGNORED = {".tickets/.ticket.lock", ".tickets/.active"}
+
+# The coordination branch (the design's ".harness-tickets"; git ref names cannot
+# begin with a dot, so the on-disk branch drops the leading dot).
+TICKETS_BRANCH = "harness-tickets"
+# In-flight ticket dir: `.tickets/XXXX-<slug>/...`, but NOT `.tickets/completed/...`.
+_INFLIGHT_TICKET_RE = re.compile(r"^\.tickets/\d{4}-[^/]+/")
+
+
+def _run(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(root), *args], capture_output=True, text=True, check=False
+    )
+
+
+def _has_remote(root: Path) -> bool:
+    return bool(_run(root, "remote").stdout.strip())
+
+
+def unpushed_ledger_commits(project_root: Path) -> list[str]:
+    """Local `harness-tickets` commits not present on `origin/harness-tickets`.
+
+    A locally-appended-but-unpushed ledger mutation reserves nothing (§1a push
+    invariant) and races the next writer, so the turn must not end on one. No-op
+    when git is unavailable, the branch is absent, or there is no remote at all
+    (a local-only ledger is expected — nothing to publish to)."""
+    if shutil.which("git") is None:
+        return []
+    roots = _checkout_roots(project_root)
+    if not roots:
+        return []
+    main_root = roots[0]
+    if _run(main_root, "rev-parse", "--verify", "--quiet", f"refs/heads/{TICKETS_BRANCH}").returncode != 0:
+        return []  # no local coordination branch
+    if not _has_remote(main_root):
+        return []  # local-only repo: nothing to publish to
+    origin_ref = f"refs/remotes/origin/{TICKETS_BRANCH}"
+    if _run(main_root, "rev-parse", "--verify", "--quiet", origin_ref).returncode != 0:
+        # a local ledger branch with no origin counterpart is entirely unpushed
+        rev = _run(main_root, "rev-list", TICKETS_BRANCH)
+    else:
+        rev = _run(main_root, "rev-list", f"{origin_ref}..{TICKETS_BRANCH}")
+    return [line for line in rev.stdout.splitlines() if line.strip()]
+
+
+def is_tickets_branch_merge(source_ref: str) -> bool:
+    """True when `source_ref` names the coordination branch — such a merge into
+    `main` must be refused (the orphan branch is never merged)."""
+    name = source_ref.strip()
+    if name.startswith("refs/heads/"):
+        name = name[len("refs/heads/"):]
+    if "/" in name:
+        name = name.rsplit("/", 1)[1]
+    return name == TICKETS_BRANCH
+
+
+def staged_inflight_ticket_dirs(project_root: Path) -> list[str]:
+    """Staged (index) paths under an in-flight `.tickets/XXXX-<slug>/` dir on the
+    current branch — `completed/` is allowed, an in-flight dir on a `main` commit
+    is not (Option 1: only delivered ticket docs reach `main`)."""
+    if shutil.which("git") is None:
+        return []
+    proc = _run(project_root, "diff", "--cached", "--name-only", "--", ".tickets/")
+    if proc.returncode != 0:
+        return []
+    return [
+        line.strip()
+        for line in proc.stdout.splitlines()
+        if line.strip() and _INFLIGHT_TICKET_RE.match(line.strip())
+    ]
 
 
 def _checkout_roots(start: Path) -> list[Path]:
@@ -106,14 +176,24 @@ def main() -> int:
         payload = {}
     project_root = Path(payload.get("cwd") or Path.cwd())
     dirty = dirty_ticket_files(project_root)
-    if not dirty:
+    unpushed = unpushed_ledger_commits(project_root)
+    if not dirty and not unpushed:
         return 0
-    sys.stderr.write(
-        "ticket_commit_guard blocked completion — uncommitted ticket metadata:\n\n"
-        + "\n".join(f"  {p}" for p in dirty)
-        + "\n\nCommit each ticket's metadata before ending the turn "
-        "(use `ticket set-status <id> <status>` or a scoped `git add .tickets/<id>/`).\n"
-    )
+    if dirty:
+        sys.stderr.write(
+            "ticket_commit_guard blocked completion — uncommitted ticket metadata:\n\n"
+            + "\n".join(f"  {p}" for p in dirty)
+            + "\n\nCommit each ticket's metadata before ending the turn "
+            "(use `ticket set-status <id> <status>` or a scoped `git add .tickets/<id>/`).\n"
+        )
+    if unpushed:
+        sys.stderr.write(
+            f"\nticket_commit_guard blocked completion — {len(unpushed)} unpushed "
+            f"{TICKETS_BRANCH} ledger commit(s):\n\n"
+            + "\n".join(f"  {sha}" for sha in unpushed)
+            + "\n\nA local-only ledger mutation reserves nothing and races the next "
+            "writer. Push harness-tickets to origin before ending the turn.\n"
+        )
     return 2
 
 

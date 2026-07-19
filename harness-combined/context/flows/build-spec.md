@@ -32,6 +32,18 @@ Decide by what `$ARGUMENTS` is and whether a file matches:
 - `spec_load("$ARGUMENTS", project_root)`
 - `context_fetch(reference_files, target_file, project_root)`
 
+**Proactive gotchas (before generating).** Query failure memory for *resolved* past
+failures in this spec's area, so the first attempt pre-empts them:
+
+```
+memory(action="gotchas", target_file=spec.target_file, description=spec.description, language=language, project_root=project_root)
+```
+
+If the returned block is non-empty, prepend it to the generation context as a hard
+"avoid these known failure modes (and apply their known fixes)" note. If empty,
+generate normally. This is additive to — not a replacement for — the reactive
+`memory(action="retrieve", ...)` call in the repair loop below.
+
 **Generate** implementation and tests in fenced code blocks.
 
 **Gate + repair loop:**
@@ -42,9 +54,9 @@ If fail: save via `artifact(action="save", ...)` → run_id. Then repeat up to `
 2. Generate unified diff → `repair_run(run_id, diff, language, project_root)`
 3. If `{"fallback": "rewrite"}`: full rewrite → `gate_run`
 
-On pass: `memory(action="record", ..., outcome="passed")`, `artifact(action="save", ..., outcome="passed")`. Tell the user: run `/deliver <run-id>`.
+On pass: `memory(action="record", ..., outcome="passed", target_file=spec.target_file)`, `artifact(action="save", ..., outcome="passed")`. Tell the user: run `/deliver <run-id>`. Threading `target_file` is what makes this record retrievable proactively (via `action="gotchas"`) for future builds in the same area — not only via the legacy error-keyed `retrieve`.
 
-On exhaustion: `artifact(action="escalate", run_id=run_id, project_root=project_root)`, `memory(action="record", ..., outcome="escalated")`. Tell the user: invoke the **debug** skill to investigate.
+On exhaustion: `artifact(action="escalate", run_id=run_id, project_root=project_root)`, `memory(action="record", ..., outcome="escalated", target_file=spec.target_file)`. Tell the user: invoke the **debug** skill to investigate.
 
 ## Task path
 

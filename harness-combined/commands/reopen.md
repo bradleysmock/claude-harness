@@ -1,59 +1,42 @@
-Move an archived ticket from `.tickets/completed/` back to `.tickets/` root and set its status to `solution`. Only tickets with status `done`, `cancelled`, or `abandoned` in `.tickets/completed/` are eligible.
+Reopen a terminal ticket onto a fresh branch forked from `main` HEAD and set its status to `solution`. Eligible tickets are those with a terminal event on the `harness-tickets` ledger — `delivered`, `cancelled`, or `abandoned`. The ticket dir is restored from its archive: `main`'s `.tickets/completed/XXXX-<slug>/` for a **delivered** ticket, or the `harness-tickets` `cancelled/`/`abandoned/XXXX-<slug>/` archive for a **cancelled/abandoned** one.
 
 ## Ticket Resolution
 
-If a ticket number is provided as an argument, scan `.tickets/completed/<arg>*/`. If not found there, check `.tickets/<arg>*/` — if the ticket is already at root and its status is active, tell the lead it is not archived and stop. Otherwise scan `.tickets/completed/` for all tickets with status `done`, `cancelled`, or `abandoned`. If exactly one exists, use it. If multiple exist, list them and require the lead to specify one before continuing.
+If a ticket number is provided as an argument, resolve it from the `harness-tickets` ledger's `claim` events. Confirm it carries a terminal event (`delivered`/`cancelled`/`abandoned`) and no later `reopened`/`claim` re-activation. If it has no terminal event it is still in-flight — tell the lead it is not archived and stop. Otherwise list all tickets whose latest ledger event is terminal; if exactly one, use it, else list them and require the lead to choose.
 
 ## Steps
 
-1. **Read `status.md`** for the resolved ticket. Extract:
+1. **Read the archived `status.md`** for the resolved ticket (`main`'s `.tickets/completed/XXXX-<slug>/status.md` for a delivered ticket, else the `harness-tickets` archive). Extract:
    - `status` — must be `done`, `cancelled`, or `abandoned`. If it is any other value, tell the lead and stop.
    - `ticket` — the four-digit number
    - `slug` — the full `XXXX-<slug>` directory name
 
-2. **Check for partial-move-back state.**
-   If `.tickets/XXXX-<slug>/` already exists at root, warn the lead:
+2. **Check for partial-reopen state.**
+   If `.worktrees/XXXX-<slug>/` already exists at root, warn the lead:
    ```
-   Warning: .tickets/XXXX-<slug>/ already exists at root. Partial-move-back state detected.
-   Root copy is treated as authoritative. Verify its contents and run /build XXXX to resume.
+   Warning: .worktrees/XXXX-<slug>/ already exists at root. Partial-reopen state detected.
+   The existing worktree is treated as authoritative. Verify its contents and run /build XXXX to resume.
    ```
    Stop — do not overwrite.
 
 3. **Confirm with the lead** before proceeding:
    ```
-   Ready to reopen ticket XXXX:
-     git worktree add .worktrees/XXXX-<slug> -b ticket/XXXX-<slug> main   (fresh branch from main HEAD)
-     mv .tickets/completed/XXXX-<slug>/ .tickets/XXXX-<slug>/   (in the worktree)
-     status.md → solution
-     git rm -r --cached .tickets/completed/XXXX-<slug>/
-     git add -- .tickets/XXXX-<slug>/
-     git commit -m "chore(ticket): XXXX → solution (reopened)"   (on the branch, then push)
+   Ready to reopen ticket XXXX onto a fresh branch from main HEAD:
+     git worktree add .worktrees/XXXX-<slug> -b ticket/XXXX-<slug> main
+     restore the ticket dir from its archive (main's completed/, or harness-tickets)
+     status.md → solution   (committed on the branch, then pushed)
+     append {"event":"reopened","number":XXXX} to the harness-tickets ledger
    Re-run /build XXXX before resuming work. Proceed? (yes/no)
    ```
    Stop if the lead says no.
 
-4. **Fork a fresh branch + worktree from `main` HEAD.**
-   The prior delivery squash-merged **and deleted** the original `ticket/XXXX-<slug>` branch, so its per-commit history is gone — the squashed commit on `main` is the new base. Fork a fresh branch from `main` HEAD and check it out in a worktree:
+4. **Reopen via the helper** — one transaction. It forks `ticket/XXXX-<slug>` from `main` HEAD into a worktree, restores the ticket dir from its archive (`main`'s `completed/` for a delivered ticket via `git rm -r --cached` + `git add`, else the `harness-tickets` archive), sets `status: solution` on the branch, pushes it, and appends a `reopened` ledger event:
    ```
-   git worktree add .worktrees/XXXX-<slug> -b ticket/XXXX-<slug> main
+   python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" reopen XXXX --push
    ```
-   If the branch already exists (a stale leftover), pick it up instead: `git worktree add .worktrees/XXXX-<slug> ticket/XXXX-<slug>`. If worktree creation fails, report and stop.
+   `main` keeps the delivered `completed/XXXX-<slug>/` archive until the next `/deliver` squash; reopening never touches `main`.
 
-5. **Restore the ticket dir onto the branch.** All of the following happen **in the worktree** (`.worktrees/XXXX-<slug>/`), committed on the branch — never on `main`. `main` keeps the archived `completed/XXXX-<slug>/` until the next `/deliver` squash.
-   ```
-   mv .tickets/completed/XXXX-<slug>/ .tickets/XXXX-<slug>/
-   ```
-   If the mv fails, report the error and stop.
-
-6. **Set status and commit the reopen transition on the branch** (see "Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Set `status.md` to `status: solution` with an updated date, then:
-   ```
-   git -C .worktrees/XXXX-<slug> rm -r --cached .tickets/completed/XXXX-<slug>/
-   git -C .worktrees/XXXX-<slug> add -- .tickets/XXXX-<slug>/
-   git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX → solution (reopened)"
-   git -C .worktrees/XXXX-<slug> push
-   ```
-
-7. **Report completion.**
+5. **Report completion.**
    Confirm the ticket dir is restored at `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/` with `status: solution` on the fresh branch. Remind the lead:
    - Run `/build XXXX` before resuming implementation — existing specs may be stale; `/build` resumes this worktree.
    - The next `/deliver` squashes the reopened work into a **further** commit on `main`.

@@ -18,7 +18,7 @@ All work follows the same four-stage pipeline. The design stages are skippable f
 ```
 /problem XXXX      → problem.md, requirements.md, solution.md, design critic → CHECKPOINT 1
 /write-spec XXXX   → (optional) pre-generate specs from solution.md into .harness/specs/
-/build XXXX        → auto-generates specs from solution.md if absent → worktree → spec engine → diff → post-build critic
+/build XXXX        → auto-generates specs from solution.md if absent → worktree → spec engine → diff → post-build critic → craft polish
                    ← review the critic's report; optionally run /review XXXX (interactive)
                      or /critique <files> (free-form comprehensive)
 /deliver XXXX      → merge branch → clean up → record learnings
@@ -81,6 +81,17 @@ All three hooks import from the `gates/` module — one canonical gate implement
 | Go | build → vet → tests | build → vet → staticcheck → tests |
 | Rust | check → clippy → tests | check → clippy → tests → audit |
 
+In **directory mode** the `test` gate uses **baseline-delta** regression tolerance
+for all four languages: it runs the full suite, subtracts the set of tests already
+failing at the merge base (computed once per merge-base SHA in a throwaway detached
+`git worktree`, cached under `.harness/test-baselines/`), and fails only on the
+remainder plus any previously-passing test now deleted. Pre-existing failures are
+reported as `baseline_excluded` (informational) so an unrelated already-red test
+never blocks an unrelated ticket; when git or the merge base is unavailable it falls
+back to strict full-suite (fail-closed). The shared engine lives in
+`gates/_baseline.py`. When a delta failure is later fixed, the repair is recorded via
+`memory(action="record", gate="test", outcome="passed", resolution=…)`.
+
 ---
 
 ## Memory contract
@@ -89,11 +100,11 @@ Two layers, no overlap:
 
 | Layer | Audience | Written by | Read by |
 |---|---|---|---|
-| `.harness/memory.db` | machine only (opaque) | `memory(action="record", ...)` after each gate cycle | `memory(action="retrieve", ...)` before each repair attempt |
+| `.harness/memory.db` | machine only (opaque) | `memory(action="record", ...)` after each gate cycle (threading `target_file`) | `memory(action="retrieve", ...)` before each repair attempt, **and** `memory(action="gotchas", ...)` before generation |
 | `.tickets/_learnings.md` | lead-curated | `/deliver` and `/harvest-learnings` (append-only, after lead approval) | loaded as context at `/problem` and `/build` |
 | `.tickets/_standards.md` | lead only | the lead, by hand | loaded as context at `/problem` and `/build` |
 
-The machine maintains its own BM25-searchable failure trail in `memory.db` and consults it during repair. `_standards.md` is hand-edited by the lead only. `_learnings.md` (must-fix patterns) is appended to by `/deliver` and `/harvest-learnings` — but only entries the lead accepts, via a template-field-only write path that never overwrites existing content or writes raw extracted text. `/harvest-learnings` reads the auto-populated `memory.db` for recurring cross-ticket patterns and is the always-available capture path; `/deliver`'s capture is opportunistic — it fires only when the ticket has a `gate-findings.md` (e.g. from a manual `/gate` run).
+The machine maintains its own BM25-searchable failure trail in `memory.db` and now consults it in **both directions**: reactively during repair (`action="retrieve"`, keyed on gate error text) and proactively before generation (`action="gotchas"`, keyed on the spec's `target_file` + `description`), so a resolved failure in one area pre-empts the first attempt of a later build in the same area — carrying the known fix, not just the symptom. Neither direction ever writes to the lead-curated files. `_standards.md` is hand-edited by the lead only. `_learnings.md` (must-fix patterns) is appended to by `/deliver` and `/harvest-learnings` — but only entries the lead accepts, via a template-field-only write path that never overwrites existing content or writes raw extracted text. `/harvest-learnings` reads the auto-populated `memory.db` for recurring cross-ticket patterns and is the always-available capture path; `/deliver`'s capture is opportunistic — it fires only when the ticket has a `gate-findings.md` (e.g. from a manual `/gate` run).
 
 `/init` creates `_standards.md` and `_learnings.md` as stubs so the harness finds the files it expects from the first session. Edit the standards file before your first `/problem`.
 
@@ -108,7 +119,7 @@ The harness server exposes these tools to Claude:
 | `gate_run` | Spec/build | Run gates on generated code (text mode, temp dir) |
 | `gate_run_on_dir` | Ticket/SDLC | Run gates on a worktree; `fail_fast=True` (default) for repair loop, `fail_fast=False` for gate-findings.md |
 | `repair_run` | Spec/build | Apply a unified diff server-side and re-run gates |
-| `memory` | Both | `action="record"` saves a failure/resolution; `action="retrieve"` BM25-searches past failures |
+| `memory` | Both | `action="record"` saves a failure/resolution (+`target_file`); `action="retrieve"` BM25-searches past failures reactively; `action="gotchas"` returns resolved area-local gotchas before generation |
 | `spec_load` | Spec/build | Load a `.harness/specs/<id>.py` as structured JSON |
 | `context_fetch` | Spec/build | Read reference files + adjacent directory listing |
 | `artifact` | Spec/build | `action="save"` persists a run; `action="load"` reads by run_id; `action="escalate"` marks exhausted |
@@ -169,6 +180,8 @@ These seven behaviors are skills rather than commands. Invoke them explicitly wi
 
 - **Pre-build (design)** — `/problem` Phase 5 spawns the critic subagent against `problem.md` / `requirements.md` / `solution.md`. Findings revise `solution.md` before Checkpoint 1. Max 2 rounds.
 - **Post-build (code)** — `/build` Step 7 spawns the critic subagent against the worktree, with `problem.md` / `requirements.md` / `solution.md` as the ticket baseline. BLOCKER and MAJOR findings are must-fix: `/build` auto-repairs them and re-spawns the critic to verify, looping up to `MAX_REPAIR_ATTEMPTS` (default 3); only on exhaustion does it set `changes-requested` and ask the lead. MINOR / OBS are optional — listed, never auto-fixed.
+
+**Craft polish (automatic, ticket mode only).** Once the post-build critic's BLOCKER/MAJOR findings are cleared, `/build` Step 7b.5 runs a **craft polish pass**: the `craft` subagent (`agents/craft.md`) proposes bounded, behaviour-preserving craft improvements (naming, structure, restraint, load-bearing comments) as structured JSON, and each round is accepted only if it survives a **gate re-run plus a pinned pre-polish test-survival** check — any candidate that breaks a gate or a pinned test is reverted. Accepted rounds land as their own `polish: craft round N` commits. Governed by `CRAFT_MAX_ITERATIONS` (default 3; `0` disables) and `CRAFT_REQUIRE_TEST_SURVIVAL` (default true); a `CraftPolishReport` is written to `.harness/craft/<ticket>.json`.
 
 Two **optional** manual follow-ups are available between `/build` and `/deliver`:
 
@@ -274,7 +287,8 @@ harness-combined/
 │   ├── panels/            ← 29 expert review panels — see "Expert review panels" section below
 │   └── rules/             ← Per-language code generation rules
 ├── agents/
-│   └── critic.md          ← Critic subagent definition
+│   ├── critic.md          ← Critic subagent definition
+│   └── craft.md           ← Craft polish subagent (behaviour-preserving craft improvements)
 ├── CLAUDE.md              ← Working agreement (copy to project root)
 └── .claude-plugin/
     └── plugin.json        ← Plugin manifest

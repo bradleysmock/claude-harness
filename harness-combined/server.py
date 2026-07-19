@@ -766,25 +766,40 @@ def memory(
     outcome: str = "",
     limit: int = 3,
     resolution: str = "",
+    target_file: str = "",
+    description: str = "",
+    language: str = "",
 ) -> str:
     """
     Gate failure memory.
 
-    action="record": save a failure/resolution. Required: spec_id, gate, errors_text, attempt, outcome ('passed'|'escalated'). Optional: resolution — a one-line summary of HOW a passed failure was fixed, surfaced in future retrievals.
-    action="retrieve": BM25 search for similar past failures. Required: errors_text, gate. Optional: limit (default 3).
+    action="record": save a failure/resolution. Required: spec_id, gate, errors_text, attempt, outcome ('passed'|'escalated'). Optional: resolution — a one-line summary of HOW a passed failure was fixed, surfaced in future retrievals; target_file — the spec's target file, so the record is retrievable proactively via action="gotchas".
+    action="retrieve": BM25 search for similar past failures (reactive; during repair). Required: errors_text, gate. Optional: limit (default 3).
+    action="gotchas": proactive, pre-generation lookup of resolved past failures in a target area. Required: target_file, description, language. Optional: limit (default 3). Returns a "Known gotchas" block (with each failure's known fix) to inject before the first gate, or an empty string when nothing is relevant.
 
-    Returns "recorded" or formatted failure narratives.
+    Returns "recorded", formatted failure narratives, or a gotchas block.
     """
     try:
         if action == "record":
             _memory(project_root).record(
-                spec_id, gate, errors_text, attempt, outcome, resolution or None
+                spec_id, gate, errors_text, attempt, outcome,
+                resolution or None, target_file or None,
             )
             return "recorded"
         if action == "retrieve":
             narratives = _memory(project_root).retrieve_similar(errors_text, gate, limit)
             return "\n---\n".join(narratives) if narratives else "No similar past failures found."
-        return json.dumps({"error": f"Unknown action: {action}. Use record|retrieve."})
+        if action == "gotchas":
+            gotchas = _memory(project_root).retrieve_gotchas(
+                target_file, description, language, limit
+            )
+            if not gotchas:
+                return ""
+            return (
+                "Known gotchas in this area (resolved past failures):\n"
+                + "".join(f"  {g}" for g in gotchas)
+            )
+        return json.dumps({"error": f"Unknown action: {action}. Use record|retrieve|gotchas."})
     except Exception as e:
         return f"memory failed: {e}"
 

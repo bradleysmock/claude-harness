@@ -244,11 +244,14 @@ Ready to deliver ticket XXXX:
   mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/   (archive)
   ↑ status → done and the archive are both folded into the single squash commit
   [smoke test: <smoke_test_command>  (mode <smoke_test_mode>, timeout <smoke_test_timeout>s)]   ← only when configured (Step 4b)
-  git push
+  git push      (main first — the durable product record)
+  append {"event":"delivered","number":XXXX,"sha":<squash sha>} to the harness-tickets ledger (pushed; idempotent)
   git worktree remove .worktrees/XXXX-<slug>
   git branch -D <branch>      (-D, not -d: a squash leaves the branch without merge ancestry)
 Proceed? (yes/no)
 ```
+
+> **This is the ticket's only `main` commit.** Under the harness-tickets model nothing about the ticket touched `main` before now — the number claim and coarse lifecycle lived on the `harness-tickets` ledger, and the ticket dir lived on its feature branch. `deliver_squash()` pushes `main` first, then appends the `delivered` ledger event (idempotent by `(event, number)`, so a ledger race never blocks delivery), then removes the worktree + branch.
 
 Stop if the user says no.
 
