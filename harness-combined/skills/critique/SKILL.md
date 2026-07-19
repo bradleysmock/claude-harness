@@ -129,7 +129,12 @@ After loading active panel files and reading all files in scope, produce finding
 
 ## Output Format
 
-Write the critique as a structured report. Do not write anything until you have read all target files. After producing the report, write it to the harness critiques directory — **never** to `CRITIQUE.md` in the current working directory, and **never** inside a worktree.
+The critique has **two outputs with different destinations**:
+
+1. **The full structured report → the file only.** Build the complete report (the template below) and write it to `<report-path>`. Do **not** print the full report to the terminal — not the Finding Table, not the BLOCKER/MAJOR Detail, not Codebase Patterns. The file is the complete artifact.
+2. **A compact summary → the terminal.** After the file is written, print only the **Terminal summary** block defined below. This is the operator's entire on-screen output.
+
+Do not read files or write anything until you have read all target files. The report is written to the harness critiques directory — **never** to `CRITIQUE.md` in the current working directory, and **never** inside a worktree.
 
 **Report destination.** Write the report to `.harness/critiques/<report-file>`, creating the `.harness/critiques/` directory if it does not exist. This sits beside `.harness/results/` and `.harness/memory.db` in the harness state home, so it inherits the same git-ignore treatment and never leaks into delivered code.
 
@@ -161,7 +166,7 @@ print(format_summary(result))
 
 BLOCKER and MAJOR findings become inline review comments on their `file:line`; MINOR and OBS become COMMENT-type inline comments whose body is prefixed `[suggestion]` (they do **not** use GitHub's code-suggestion markdown). Findings without a `file:line` post as top-level PR comments. `post_findings` deduplicates against existing comments (critic key: `file:line:severity:code`, stable across re-renders) and submits everything in one batched `gh api .../reviews` call, falling back to terminal-only output — with a specific reason — when `gh` is unavailable/unauthenticated, no open PR exists, or the dedup fetch fails. Without `--comment`, do not post.
 
-The report is structured for a reader who *skims first, dives second*. Verdict comes before findings so the reader knows whether to read on; the Finding Table is the punch list; BLOCKER/MAJOR Detail is the substantive read; MINOR/OBS findings stay in tabular form because the table row already says what's needed. Two-paragraph synthesis on a MINOR-severity stylistic note does not pull its weight.
+**The block below is the written report — the contents of `<report-path>`, not terminal output.** It is structured for a reader who *skims first, dives second*. Verdict comes before findings so the reader knows whether to read on; the Finding Table is the punch list; BLOCKER/MAJOR Detail is the substantive read; MINOR/OBS findings stay in tabular form because the table row already says what's needed. Two-paragraph synthesis on a MINOR-severity stylistic note does not pull its weight.
 
 ```
 ═══════════════════════════════════════════════════════
@@ -239,6 +244,26 @@ For each observation:
 
 [2–4 things the code does well. Be specific — name the exact pattern or decision and why it reflects good practice. Skip this section if there's nothing genuinely worth highlighting; don't pad to balance the negatives.]
 ```
+
+### Terminal summary (the only thing printed to the operator)
+
+After `<report-path>` is written, print **only** this compact block — nothing else. Never echo the full report, the Finding Table, per-finding detail, or Codebase Patterns to the terminal; those live in the file.
+
+```
+Critique complete — <verdict> · <N> BLOCKER · <N> MAJOR · <N> MINOR · <N> OBS
+Scope: <resolved scope, e.g. since last critique (<base>..HEAD)>   Panels: <Core + …>
+Must change to ship: <one sentence — the highest-leverage required fix, or "Approved as-is">
+Top items:
+  • [BLOCKER] C-01 — <one-line title>   (`file:line`)
+  • [MAJOR]   C-04 — <one-line title>   (`file:line`)
+Full report: <report-path>
+```
+
+Rules for the summary:
+- List **only BLOCKER and MAJOR** one-liners under "Top items", capped at the five highest-impact. If there are none, replace the list with a single line: `No blockers or majors — see report for MINOR/OBS.`
+- The counts, verdict, and "Must change to ship" line mirror the report's Verdict section exactly.
+- Always end with the `Full report:` path so the operator can open the complete critique.
+- When invoked with `--comment`, add one final line after the summary stating how many findings were posted to the PR (or why posting was skipped), per the `--comment` block above.
 
 **Per-file grouping for multi-file reviews.** When more than five files are in scope, group the BLOCKER & MAJOR Detail section by file rather than by finding ID. Findings within each file group still use the compact `C-XX` format; the grouping is a reader affordance for scoping remediation to one file at a time.
 
