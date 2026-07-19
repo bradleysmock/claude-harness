@@ -26,6 +26,9 @@ import sys
 from pathlib import Path
 
 IGNORED = {".tickets/.ticket.lock", ".tickets/.active"}
+# Rename-verify steal temps (ticket 0056): transient, almost always removed
+# within the same `claim()` call — a prefix rule, not an exact-match value.
+IGNORED_STALE_PREFIX = ".tickets/.ticket.lock.stale-"
 
 # The coordination branch (the design's ".harness-tickets"; git ref names cannot
 # begin with a dot, so the on-disk branch drops the leading dot).
@@ -154,7 +157,7 @@ def dirty_ticket_files(project_root: Path) -> list[str]:
             path = line[3:].strip()  # strip the 2-char status code + space
             if " -> " in path:  # rename: keep the destination path
                 path = path.rsplit(" -> ", 1)[1]
-            if path in IGNORED:
+            if path in IGNORED or path.startswith(IGNORED_STALE_PREFIX):
                 continue
             # Prefix worktree findings so the lead can tell which checkout they
             # are in; main-root findings keep their bare `.tickets/...` path.

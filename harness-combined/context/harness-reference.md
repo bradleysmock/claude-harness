@@ -10,7 +10,7 @@ All SDLC work is tracked under `.tickets/`.
 
 ```
 .tickets/
-  .ticket.lock       # Lock file — present only during a same-machine number claim (format: pid:epoch)
+  .ticket.lock       # `claim()` acquires/releases this itself (atomic O_CREAT|O_EXCL, rename-verify steal) — path and pid:epoch format unchanged
   .active            # Active session ticket slug (scopes stop hook)
   _standards.md
   _learnings.md

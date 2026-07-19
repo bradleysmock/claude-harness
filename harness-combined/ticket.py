@@ -34,6 +34,17 @@ LEDGER_FILE = "ledger.jsonl"
 # even on repos whose remote has no configured fetch refspec (`git remote add`).
 _LEDGER_REFSPEC = f"+refs/heads/{TICKETS_BRANCH}:refs/remotes/origin/{TICKETS_BRANCH}"
 
+# ── local same-machine claim lock (.tickets/.ticket.lock) ──────────────────
+# Guards `claim()`'s number-scan-through-branch-creation critical section
+# against concurrent same-machine claims (concurrent autopilots are routine);
+# the ledger's push-first-wins race remains the cross-machine arbiter. Path
+# and `pid:epoch` content format are unchanged from the prior hand-run Bash
+# protocol — only the acquire/steal/heartbeat/release logic moved into Python.
+_LOCK_STALE_SECONDS = 60
+_LOCK_LIVE_RETRIES = 5
+_LOCK_SLEEP_SECONDS = 2
+_LOCK_MAX_ITERATIONS = 25
+
 
 def find_tickets_root(start: Path) -> Path:
     cur = start.resolve()
@@ -423,6 +434,192 @@ def _create_branch_and_worktree(
         _push_current_branch(worktree)
 
 
+def _lock_path(tickets_root: Path) -> Path:
+    return tickets_root / ".ticket.lock"
+
+
+def _parse_lock_content(text: str) -> tuple[int, int] | None:
+    """Parse `pid:epoch` lock content. Returns None for anything malformed —
+    a non-integer field or a non-positive pid — which must never reach
+    `os.kill`."""
+    pid_str, _, epoch_str = text.partition(":")
+    try:
+        pid, epoch = int(pid_str), int(epoch_str)
+    except ValueError:
+        return None
+    if pid <= 0:
+        return None
+    return pid, epoch
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _lock_is_stale(parsed: tuple[int, int]) -> bool:
+    pid, epoch = parsed
+    return (int(time.time()) - epoch > _LOCK_STALE_SECONDS) or not _pid_alive(pid)
+
+
+def _lock_capture(lock: Path, expected: str) -> bool:
+    """Rename-verify steal/release primitive shared by the acquire loop and
+    `_release_ticket_lock`. Renames *lock* to a per-own-pid temp and re-reads
+    it: if the temp's content still matches *expected*, the capture succeeded
+    (unlink the temp, return True) — the caller may proceed as if the lock
+    were removed. If it differs, a fresh lock was recreated between the
+    caller's observation and this rename; restore it non-clobberingly
+    (`os.link` the temp back, `FileExistsError` means a third process's lock
+    already occupies the path — just drop the temp) and report failure so the
+    caller treats the lock as live rather than double-acquiring. A
+    `FileNotFoundError` at the rename or the re-read means the lock/temp
+    vanished under us — also a failed capture."""
+    temp = lock.with_name(f"{lock.name}.stale-{os.getpid()}")
+    try:
+        os.rename(lock, temp)
+    except FileNotFoundError:
+        return False
+    try:
+        observed = temp.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False
+    if observed == expected:
+        temp.unlink(missing_ok=True)
+        return True
+    try:
+        os.link(temp, lock)
+    except FileExistsError:
+        pass  # a third process's lock already occupies the path
+    temp.unlink(missing_ok=True)
+    return False
+
+
+def _reap_stale_lock_temps(tickets_root: Path, lock: Path) -> None:
+    """Self-heal orphaned `.ticket.lock.stale-<pid>` temps (left by a process
+    killed mid-steal). A temp whose FILENAME-suffix pid is still alive is
+    owned by a running steal-in-progress and is left untouched. Otherwise: if
+    its content's pid is alive, restore the content to *lock* non-clobberingly
+    (skipped if a live lock already occupies the path); either way, the temp
+    itself is removed."""
+    for temp in tickets_root.glob(".ticket.lock.stale-*"):
+        suffix = temp.name.rsplit("-", 1)[-1]
+        try:
+            filename_pid = int(suffix)
+        except ValueError:
+            filename_pid = None
+        if filename_pid is not None and filename_pid > 0 and _pid_alive(filename_pid):
+            continue
+        try:
+            content = temp.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        parsed = _parse_lock_content(content)
+        if parsed is not None and _pid_alive(parsed[0]) and not lock.exists():
+            try:
+                os.link(temp, lock)
+            except FileExistsError:
+                pass
+        temp.unlink(missing_ok=True)
+
+
+def _lock_timeout_error(lock: Path, raw_content: str) -> RuntimeError:
+    parsed = _parse_lock_content(raw_content) if raw_content else None
+    holder = f"pid {parsed[0]}" if parsed is not None else f"unknown holder (raw content: {raw_content!r})"
+    return RuntimeError(f"timed out acquiring {lock} — held by {holder}")
+
+
+def _acquire_ticket_lock(tickets_root: Path) -> None:
+    """Atomically acquire `.tickets/.ticket.lock` (`O_CREAT|O_EXCL`), stealing
+    a stale lock via the rename-verify primitive and retrying a live one up to
+    `_LOCK_LIVE_RETRIES` times. A whole-loop ceiling of `_LOCK_MAX_ITERATIONS`
+    bounds every path (steal attempts and live-retry sleeps combined) so an
+    adversarial re-steal loop cannot spin forever."""
+    tickets_root.mkdir(parents=True, exist_ok=True)
+    lock = _lock_path(tickets_root)
+    live_retries = 0
+    last_observed = ""
+    for _iteration in range(_LOCK_MAX_ITERATIONS):
+        _reap_stale_lock_temps(tickets_root, lock)
+        try:
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            pass
+        else:
+            with os.fdopen(fd, "w") as f:
+                f.write(f"{os.getpid()}:{int(time.time())}")
+            return
+        try:
+            last_observed = lock.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            continue  # vanished mid-read — retry O_EXCL immediately
+        parsed = _parse_lock_content(last_observed)
+        if parsed is None or _lock_is_stale(parsed):
+            if _lock_capture(lock, last_observed):
+                continue  # lock is gone — retry O_EXCL immediately
+            # a rename-verify race: someone else already resolved it this round
+        live_retries += 1
+        if live_retries > _LOCK_LIVE_RETRIES:
+            raise _lock_timeout_error(lock, last_observed)
+        time.sleep(_LOCK_SLEEP_SECONDS)
+    raise _lock_timeout_error(lock, last_observed)
+
+
+def _release_ticket_lock(tickets_root: Path) -> None:
+    """Never raises — called from `finally`, so it can never mask a primary
+    exception. A missing lock or a read error is a no-op (leaves the lock in
+    place); ownership is checked via the same rename-verify primitive as
+    steal, so a foreign lock (one this process no longer owns) is left
+    untouched."""
+    lock = _lock_path(tickets_root)
+    try:
+        current = lock.read_text(encoding="utf-8")
+    except OSError:
+        return
+    parsed = _parse_lock_content(current)
+    if parsed is not None and parsed[0] == os.getpid():
+        _lock_capture(lock, current)
+
+
+def _heartbeat_ticket_lock(tickets_root: Path) -> bool:
+    """Refresh the lock's epoch if this process still owns it; called once per
+    `_tickets_txn` retry/renumber iteration from `claim()`'s `build()`
+    closure. Returns False (and warns to stderr) the moment ownership is lost
+    — a missing lock or a foreign pid — so the caller stops heartbeating and
+    the final release is skipped, never overwriting a successor's lock."""
+    lock = _lock_path(tickets_root)
+    try:
+        current = lock.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print(f"warning: {lock} vanished during heartbeat — lock ownership lost", file=sys.stderr)
+        return False
+    parsed = _parse_lock_content(current)
+    if parsed is None or parsed[0] != os.getpid():
+        print(
+            f"warning: {lock} is no longer owned by this process (a successor "
+            "holds it) — stopping heartbeat and skipping release",
+            file=sys.stderr,
+        )
+        return False
+    lock.write_text(f"{os.getpid()}:{int(time.time())}", encoding="utf-8")
+    return True
+
+
+class _LockOwnershipLost(RuntimeError):
+    """Raised by `claim()`'s `build()` closure when heartbeat detects the lock
+    was stolen mid-claim. Fail-closed: in a local-only repo (no remote) the
+    ledger's `update-ref` has no compare-and-swap, so letting `build()` return
+    a claim event anyway would let a second, now-concurrent claimant silently
+    lose its update — exactly the double-claim bug this lock exists to
+    prevent. Aborting before any ledger write is cheap and self-contained;
+    `claim()`'s `finally` already skips `_release_ticket_lock` on this path,
+    so the successor's lock is never touched."""
+
+
 def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries: int = 5) -> str:
     """Claim the next ticket number on `.harness-tickets` and open its branch.
 
@@ -430,11 +627,27 @@ def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries:
     commit): append `claim`, commit + push `.harness-tickets` first-wins; on a
     rejected push, renumber against the newer ledger and retry (§1a). Only AFTER
     the winning push do we create the branch/worktree and write the `claimed`
-    stub ON THE BRANCH. **No `main` commit.**"""
+    stub ON THE BRANCH. **No `main` commit.**
+
+    Raises `_LockOwnershipLost` if a heartbeat during a retry/renumber iteration
+    detects that a successor has stolen `.tickets/.ticket.lock` — this aborts
+    before any ledger write, fail-closed against a lost double-claim guard."""
     who = owner(repo)
     ensure_tickets_branch(repo, push=push)
 
+    tickets_root = repo / ".tickets"
+    _acquire_ticket_lock(tickets_root)
+    lock_owned = True
+
     def build(records: list[dict]) -> tuple[list[dict], str]:
+        nonlocal lock_owned
+        if lock_owned:
+            lock_owned = _heartbeat_ticket_lock(tickets_root)
+            if not lock_owned:
+                raise _LockOwnershipLost(
+                    f"claim() aborted: lock ownership of {_lock_path(tickets_root)} "
+                    "was lost mid-claim (a successor now holds it)"
+                )
         number = _next_number(records)
         full = f"{format_number(number)}-{slug}"
         event = {
@@ -448,10 +661,14 @@ def claim(repo: Path, slug: str, title: str, *, push: bool = False, max_retries:
         }
         return [event], full
 
-    full_slug = ledger_append(repo, build, push=push, max_retries=max_retries)
-    # Create-after-push: only the winning number reaches here.
-    _create_branch_and_worktree(repo, full_slug, slug, title, who, push=push)
-    return full_slug
+    try:
+        full_slug = ledger_append(repo, build, push=push, max_retries=max_retries)
+        # Create-after-push: only the winning number reaches here.
+        _create_branch_and_worktree(repo, full_slug, slug, title, who, push=push)
+        return full_slug
+    finally:
+        if lock_owned:
+            _release_ticket_lock(tickets_root)
 
 
 def _fold_archive(repo: Path, slug: str) -> None:

@@ -37,15 +37,11 @@ If the request is sufficiently clear, proceed without asking. Do not ask questio
 
 Ticket number assignment must be atomic across developers. The claim is an append to the `harness-tickets` ledger (`ledger.jsonl`) pushed immediately — first-push-wins; a loser re-numbers against the newer ledger and retries. **Nothing lands on `main`.** The ledger `claim` line is the durable "work started / number taken" signal other developers see; the number is `max(claim.number) + 1` over the ledger.
 
-1. Acquire the local lock `.tickets/.ticket.lock` (format `pid:epoch`) exactly as before — it serializes multiple agents on *this* machine and avoids wasted round-trips. Treat a lock whose timestamp is >60s old or whose pid is dead (`kill -0 <pid>` nonzero) as stale and delete it; otherwise `sleep 2` and retry up to 5 times, then report the conflict.
-
-2. Claim the number with the `ticket.py claim` helper. It ensures the orphan `harness-tickets` branch exists, computes the next number from the ledger, appends a `claim` event and **pushes it first-wins** (on a rejected push it re-fetches, re-numbers against the newer ledger, and retries up to 5 times — §1a push invariant). **Only after the winning ledger push** does it create the branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` and write the `status: claimed` stub (`title`, `branch`, `owner:` from `git config user.email`) **on the branch** — so a renumber-on-reject leaves no orphaned branch or worktree (create-after-push), and **no `main` commit is made**:
+1. Claim the number with the `ticket.py claim` helper. It ensures the orphan `harness-tickets` branch exists, computes the next number from the ledger, appends a `claim` event and **pushes it first-wins** (on a rejected push it re-fetches, re-numbers against the newer ledger, and retries up to 5 times — §1a push invariant). **Only after the winning ledger push** does it create the branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` and write the `status: claimed` stub (`title`, `branch`, `owner:` from `git config user.email`) **on the branch** — so a renumber-on-reject leaves no orphaned branch or worktree (create-after-push), and **no `main` commit is made**. `claim()` also acquires `.tickets/.ticket.lock` atomically itself (`O_CREAT|O_EXCL`) before computing the next number and releases it on every exit path, so no separate manual lock step is needed here:
 
    `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" claim <slug> "<title>" --push`
 
    The command prints the claimed `XXXX-<slug>`. Record XXXX. If it exits non-zero after retries, stop and report the conflict to the lead.
-
-3. Release the lock: `rm -f .tickets/.ticket.lock`.
 
 The claim writes **nothing to `main`** — the arbiter is the ledger `claim` line, and the `claimed` stub lives on the branch. The branch `ticket/XXXX-<slug>` + worktree `.worktrees/XXXX-<slug>` exist for the rest of the design and build. **Phases 2–4 write `problem.md`, `requirements.md`, and `solution.md` into the worktree (`.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/`) and commit+push them on the branch — never to `main`.**
 
