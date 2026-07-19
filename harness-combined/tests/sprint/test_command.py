@@ -74,6 +74,18 @@ def test_skill_collects_open_and_completed_tickets():
     assert ".tickets/completed/*/status.md" in content
 
 
+def test_skill_enumerates_in_flight_from_ledger():
+    # Harness-tickets model: in-flight tickets no longer live on `main`, so the
+    # skill must enumerate them from the ledger (`ticket.py list-json`); the
+    # `.tickets/*` glob is retained only as a documented legacy/local fallback.
+    content = _skill()
+    lower = content.lower()
+    assert "list-json" in content, "must enumerate in-flight tickets via `ticket.py list-json`"
+    assert "harness-tickets" in lower and "ledger" in lower
+    assert "legacy" in lower or "fallback" in lower, \
+        "the `.tickets/*` glob must be framed as a legacy/local fallback, not the sole source"
+
+
 def test_skill_forbids_eval_and_uses_pipefail():
     content = _skill()
     assert "set -euo pipefail" in content

@@ -39,6 +39,19 @@ def test_scan_excludes_completed_via_depth():
     assert "completed" in lower, "must document excluding completed/ tickets"
 
 
+def test_enumerates_in_flight_from_ledger():
+    # Harness-tickets model: in-flight tickets are no longer on `main`, so the
+    # in-flight set is enumerated from the ledger (`ticket.py list-json`); the
+    # `.tickets/*` scan above is a documented legacy/local fallback, not the sole
+    # source (a bare `main` scan would see zero newly-claimed tickets).
+    content = _content()
+    lower = content.lower()
+    assert "list-json" in content, "must enumerate the in-flight set via `ticket.py list-json`"
+    assert "harness-tickets" in lower and "ledger" in lower
+    assert "legacy" in lower or "fallback" in lower, \
+        "the `.tickets/*` scan must be framed as a legacy/local fallback"
+
+
 def test_structural_prefix_extraction_of_three_fields_only():
     content = _content()
     for field in ["title:", "status:", "updated:"]:

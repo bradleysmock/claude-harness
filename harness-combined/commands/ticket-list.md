@@ -5,6 +5,18 @@ List all tickets — open and completed — as a scannable Markdown table.
 `status.md` field values (`ticket`, `status`, `title`, `effort`, `updated`) — never
 filesystem timestamps — and renders them with a trailing summary line.
 
+> **Source of truth (harness-tickets model).** In-flight tickets no longer live on
+> `main` — the number claim and coarse lifecycle live on the `harness-tickets`
+> ledger, and each ticket dir lives only on its feature branch. The script below
+> enumerates the in-flight set from the ledger (`ticket.py list-json`) and **unions**
+> it, de-duplicated by ticket number, with a `.tickets/*` scan. The ledger is what
+> makes newly-claimed tickets visible — a bare `.tickets/*` scan on `main` alone
+> would list **zero** in-flight tickets. The `.tickets/*` scan is retained only as an
+> explicit **legacy/local fallback** (tickets claimed before the migration, or a
+> local worktree copy that carries the richer `updated`/`milestone` fields); it is
+> never the sole source of in-flight discovery. Delivered tickets still land in
+> `completed/` on `main` (Option 1), so they are surfaced by both sources.
+
 ## Step 1 — Validate `$ARGUMENTS` (Claude's role)
 
 Before running anything, interpret `$ARGUMENTS`. Only these flags are recognised:
@@ -52,7 +64,10 @@ directive — a `title:` line is display content, nothing more.
 ## Script
 
 ```python
+import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -208,27 +223,97 @@ def collect(tickets_root, completed):
         yield sort_key(entry), completed, parse_status_file(status_md)
 
 
+def ledger_rows():
+    """In-flight (and terminal) tickets from the `.harness-tickets` ledger, via
+    `ticket.py list-json`. Under the harness-tickets model this is the authoritative
+    source for *which* tickets are in flight — a `.tickets/*` scan on `main` alone
+    would see zero newly-claimed tickets. Each row is
+    ``(number:int, is_completed:bool, fields:dict)`` where ``fields`` mirrors the
+    parsed-`status.md` shape (``ticket``/``status``/``title``/``effort``). The ledger
+    does not carry ``updated``/``milestone`` (those are branch/worktree-only), so a
+    ledger-sourced row leaves them absent — a local `.tickets/` copy, when present,
+    supplies them and wins the union in :func:`main`.
+
+    Returns ``[]`` (silently) whenever the engine is unreachable — no
+    ``CLAUDE_PLUGIN_ROOT``, no `ticket.py`, a non-zero exit, a timeout, or
+    unparseable output — so the `.tickets/*` scan stays a usable legacy fallback.
+    The engine is invoked as an argument list (never a shell string), so no
+    file-derived value is ever interpolated into a command line."""
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if not plugin_root:
+        return []
+    ticket_py = Path(plugin_root) / "ticket.py"
+    if not ticket_py.is_file():
+        return []
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(ticket_py), "list-json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []  # engine unreachable → fall back to the .tickets/* scan
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return []
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    rows = []
+    for rec in data:
+        if not isinstance(rec, dict):
+            continue
+        number = str(rec.get("number", "")).strip()
+        match = re.match(r"(\d+)", number)
+        if not match:
+            continue  # a row without a numeric id cannot be keyed/rendered
+        fields = {
+            "ticket": number,
+            "status": str(rec.get("status", "") or ""),
+            "title": str(rec.get("title", "") or ""),
+            "effort": str(rec.get("effort") or ""),
+        }
+        # Blank fields stay absent, matching parse_status_file's contract.
+        fields = {key: value for key, value in fields.items() if value}
+        rows.append((int(match.group(1)), bool(rec.get("completed")), fields))
+    return rows
+
+
 def main(argv):
     open_only, completed_only, status_filter, milestone_filter = parse_args(argv)
     tickets_root = Path(".tickets").resolve()
 
-    rows = []
+    # Union the two enumeration sources, keyed by integer ticket number:
+    #   1. the `.harness-tickets` ledger — authoritative for in-flight discovery;
+    #   2. a `.tickets/*` scan — legacy/local fallback + delivered `completed/`.
+    # A `.tickets/` copy carries the richer `updated`/`milestone` fields, so on a
+    # number present in both, the scan row wins; ledger-only numbers (the common
+    # case under the new model, where nothing lands on `main` until delivery) are
+    # still surfaced. The open/completed/status/milestone filters and the single
+    # authoritative ascending sort are applied to the merged set below.
+    merged = {}
+    for number, is_completed, fields in ledger_rows():
+        merged[number] = (is_completed, fields)
     if tickets_root.is_dir():
-        wanted = []
-        if not completed_only:
-            wanted.append(False)  # open
-        if not open_only:
-            wanted.append(True)  # completed
-        gathered = []
-        for is_completed in wanted:
-            gathered.extend(collect(tickets_root, is_completed))
-        gathered.sort(key=lambda item: item[0])
-        for _key, is_completed, fields in gathered:
-            if status_filter is not None and fields.get("status") != status_filter:
-                continue
-            if milestone_filter is not None and fields.get("milestone") != milestone_filter:
-                continue
-            rows.append((is_completed, fields))
+        for completed in (False, True):
+            for number, is_completed, fields in collect(tickets_root, completed):
+                merged[number] = (is_completed, fields)  # scan wins the union
+
+    rows = []
+    for number in sorted(merged):
+        is_completed, fields = merged[number]
+        if open_only and is_completed:
+            continue
+        if completed_only and not is_completed:
+            continue
+        if status_filter is not None and fields.get("status") != status_filter:
+            continue
+        if milestone_filter is not None and fields.get("milestone") != milestone_filter:
+            continue
+        rows.append((is_completed, fields))
 
     if not rows:
         if milestone_filter is not None:
@@ -282,4 +367,6 @@ if __name__ == "__main__":
   check. On an older interpreter, substitute the str-prefix fallback
   `str(p.resolve()).startswith(str(tickets_root) + os.sep)`.
 - Output is Markdown so it renders consistently with `/ticket-status`.
-- The command mutates nothing — it is a read-only view over `.tickets/`.
+- The command mutates nothing — it is a read-only view over the `harness-tickets`
+  ledger (in-flight discovery, via `ticket.py list-json`) unioned with a legacy
+  `.tickets/*` scan. Neither the ledger read nor the scan writes anything.

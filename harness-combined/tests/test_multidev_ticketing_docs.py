@@ -104,6 +104,19 @@ def test_ticket_status_shows_owner() -> None:
     assert "owner" in read("commands/ticket-status.md").lower()
 
 
+def test_ticket_status_enumerates_in_flight_from_ledger() -> None:
+    # Harness-tickets model: in-flight tickets no longer live on `main`, so
+    # /ticket-status must enumerate the in-flight set from the ledger
+    # (`ticket.py list-json`) rather than relying on a `.tickets/*` scan on `main`
+    # (which would show zero newly-claimed tickets). The scan is a legacy fallback.
+    content = read("commands/ticket-status.md")
+    lower = content.lower()
+    assert "list-json" in content, "must enumerate in-flight tickets via `ticket.py list-json`"
+    assert "harness-tickets" in lower and "ledger" in lower
+    assert "legacy" in lower or "authoritative" in lower, \
+        "the `.tickets/*` scan must be framed as legacy / non-authoritative for in-flight"
+
+
 # ── Task 10: harness-reference.md lifecycle, state-split, NEXT_TICKET, GitHub seam ──
 def test_reference_has_claimed_and_abandoned() -> None:
     c = read("context/harness-reference.md")

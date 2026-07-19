@@ -6,10 +6,22 @@ no duplicated script) and run it as a subprocess against fixture ``.tickets/`` t
 asserting rendered table content and exit codes. Plus two content tests: the FR-13
 `effort:` template change in commands/problem.md and the canonical VALID_STAGES
 allow-list ownership.
+
+Harness-tickets model (ticket "harness-feedback-gaps"): under the
+`.harness-tickets` branch design, in-flight tickets no longer live on `main`, so
+the script enumerates the in-flight set from the ledger (`ticket.py list-json`)
+and **unions** it, de-duplicated by ticket number, with a `.tickets/*` scan. The
+``run_cmd``-based tests below (which set no ``CLAUDE_PLUGIN_ROOT``) now exercise
+the **legacy `.tickets/*` fallback** — still a supported source for tickets
+claimed before migration and for local worktree copies. The
+``test_ledger_*`` tests exercise the newly-introduced ledger-enumeration path via
+a stub ``ticket.py`` that emits a fake ``list-json`` payload.
 """
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import re
 import subprocess
 import sys
@@ -309,3 +321,195 @@ def test_valid_stages_is_canonical():
     # inside the python block (the tuple + its error message), not as prose.
     prose = text.split("```python", 1)[0]
     assert "VALID_STAGES" in prose
+
+
+# ── harness-tickets model: ledger enumeration (new contract) ─────────────────
+#
+# Under the `.harness-tickets` branch design, in-flight tickets are no longer on
+# `main`; the script enumerates them from the ledger via `ticket.py list-json` and
+# unions that, de-duped by number, with the legacy `.tickets/*` scan. These tests
+# stub `ticket.py list-json` (pointed at by CLAUDE_PLUGIN_ROOT) to drive the
+# ledger path deterministically without a real ledger/git.
+
+
+def write_ledger_stub(plugin_dir: Path, rows: list[dict]) -> None:
+    """Create a stub `ticket.py` whose `list-json` subcommand prints ``rows`` — the
+    shape the real `ticket.py list-json` emits from the ledger
+    (``{number, slug, title, status, effort, depends_on, branch, completed, ...}``).
+    ``rows`` is written to a sidecar JSON file the stub loads, so no test data is
+    baked into the generated script body."""
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "ledger_rows.json").write_text(json.dumps(rows), encoding="utf-8")
+    (plugin_dir / "ticket.py").write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        "if sys.argv[1:2] == ['list-json']:\n"
+        "    print(Path(__file__).with_name('ledger_rows.json').read_text(encoding='utf-8'))\n"
+        "    sys.exit(0)\n"
+        "sys.exit(2)\n",
+        encoding="utf-8",
+    )
+
+
+def write_failing_stub(plugin_dir: Path) -> None:
+    """A stub `ticket.py` whose `list-json` exits non-zero — models an unreachable
+    or erroring engine, which must degrade to the `.tickets/*` legacy scan."""
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "ticket.py").write_text(
+        "import sys\nsys.exit(1)\n", encoding="utf-8"
+    )
+
+
+def run_cmd_env(cwd: Path, plugin_dir: Path | None, *flags: str) -> subprocess.CompletedProcess[str]:
+    """Like :func:`run_cmd`, but with an explicit ``CLAUDE_PLUGIN_ROOT`` (or its
+    removal) so the ledger-enumeration branch of the script can be driven."""
+    script_path = cwd / "_ticket_list_script.py"
+    script_path.write_text(extract_script(), encoding="utf-8")
+    env = dict(os.environ)
+    if plugin_dir is not None:
+        env["CLAUDE_PLUGIN_ROOT"] = str(plugin_dir)
+    else:
+        env.pop("CLAUDE_PLUGIN_ROOT", None)
+    return subprocess.run(
+        [sys.executable, str(script_path), *flags],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def ledger_row(number, status, title, effort=None, completed=False):
+    row = {
+        "number": number,
+        "slug": f"{number}-{title.lower().replace(' ', '-')}",
+        "title": title,
+        "status": status,
+        "owner": "dev@example.com",
+        "effort": effort,
+        "depends_on": "",
+        "branch": f"ticket/{number}-slug",
+        "completed": completed,
+    }
+    return row
+
+
+def count_rows(stdout: str, ticket: str) -> int:
+    return sum(1 for line in stdout.splitlines() if line.startswith(f"| {ticket} |"))
+
+
+def test_ledger_only_in_flight_ticket_appears(tmp_path):
+    """A newly-claimed in-flight ticket exists ONLY in the ledger (nothing on
+    `main`). It must still be listed — this is the core of the new contract."""
+    root = tmp_path / "repo"
+    (root / ".tickets").mkdir(parents=True)  # present but empty of open tickets
+    plugin = tmp_path / "plugin"
+    write_ledger_stub(plugin, [ledger_row("0009", "implementing", "Ledger only work", "medium")])
+    proc = run_cmd_env(root, plugin)
+    assert proc.returncode == 0, proc.stderr
+    assert "| 0009 |" in proc.stdout
+    assert "Ledger only work" in proc.stdout
+    assert "1 ticket (1 open, 0 completed)" in proc.stdout
+
+
+def test_ledger_and_scan_union_dedup_scan_wins(tmp_path):
+    """A number present in BOTH the ledger and a local `.tickets/` copy appears
+    exactly once, and the richer scan row (carrying `updated`) wins the union."""
+    root = make_root(
+        tmp_path,
+        open_tickets=[field("0001-alpha", "0001", "solution", "Local copy", "small")],
+    )
+    plugin = tmp_path / "plugin"
+    # Ledger reports the same number with a *different* status and no `updated`.
+    write_ledger_stub(plugin, [ledger_row("0001", "implementing", "Ledger copy", "large")])
+    proc = run_cmd_env(root, plugin)
+    assert proc.returncode == 0, proc.stderr
+    assert count_rows(proc.stdout, "0001") == 1, "union must de-duplicate by number"
+    row = next(line for line in proc.stdout.splitlines() if line.startswith("| 0001 |"))
+    assert "solution" in row and "2026-06-21" in row, "scan row (richer) wins the union"
+    assert "1 ticket (1 open, 0 completed)" in proc.stdout
+
+
+def test_ledger_completed_ticket_routes_to_completed(tmp_path):
+    """A ledger row flagged completed (delivered/cancelled) is a completed ticket:
+    excluded by --open, included by --completed."""
+    root = tmp_path / "repo"
+    (root / ".tickets").mkdir(parents=True)
+    plugin = tmp_path / "plugin"
+    write_ledger_stub(
+        plugin,
+        [
+            ledger_row("0007", "implementing", "Still going", "small", completed=False),
+            ledger_row("0008", "cancelled", "Dropped", "medium", completed=True),
+        ],
+    )
+    proc_all = run_cmd_env(root, plugin)
+    assert proc_all.returncode == 0, proc_all.stderr
+    assert "2 tickets (1 open, 1 completed)" in proc_all.stdout
+
+    proc_open = run_cmd_env(root, plugin, "--open")
+    assert "| 0007 |" in proc_open.stdout
+    assert "| 0008 |" not in proc_open.stdout
+
+    proc_done = run_cmd_env(root, plugin, "--completed")
+    assert "| 0008 |" in proc_done.stdout
+    assert "| 0007 |" not in proc_done.stdout
+
+
+def test_ledger_status_filter_applies_to_ledger_rows(tmp_path):
+    """--status filters the merged set, including ledger-sourced rows."""
+    root = tmp_path / "repo"
+    (root / ".tickets").mkdir(parents=True)
+    plugin = tmp_path / "plugin"
+    write_ledger_stub(
+        plugin,
+        [
+            ledger_row("0011", "solution", "Design phase", "small"),
+            ledger_row("0012", "implementing", "Build phase", "medium"),
+        ],
+    )
+    proc = run_cmd_env(root, plugin, "--status", "solution")
+    assert proc.returncode == 0, proc.stderr
+    assert "| 0011 |" in proc.stdout
+    assert "| 0012 |" not in proc.stdout
+
+
+def test_ledger_failure_falls_back_to_scan(tmp_path):
+    """When the engine errors (non-zero `list-json`), the `.tickets/*` legacy scan
+    still renders — the ledger is additive, never load-bearing for local copies."""
+    root = make_root(
+        tmp_path,
+        open_tickets=[field("0002-beta", "0002", "implementing", "Legacy scan", "medium")],
+    )
+    plugin = tmp_path / "plugin"
+    write_failing_stub(plugin)
+    proc = run_cmd_env(root, plugin)
+    assert proc.returncode == 0, proc.stderr
+    assert "| 0002 |" in proc.stdout
+    assert "Legacy scan" in proc.stdout
+
+
+def test_ledger_union_merges_distinct_numbers(tmp_path):
+    """Legacy `.tickets/` ticket + ledger-only ticket both appear (union), sorted."""
+    root = make_root(
+        tmp_path,
+        open_tickets=[field("0053-legacy", "0053", "implementing", "Pre-migration", "small")],
+    )
+    plugin = tmp_path / "plugin"
+    write_ledger_stub(plugin, [ledger_row("0070", "solution", "New model", "medium")])
+    proc = run_cmd_env(root, plugin)
+    assert proc.returncode == 0, proc.stderr
+    assert "| 0053 |" in proc.stdout  # legacy scan
+    assert "| 0070 |" in proc.stdout  # ledger
+    positions = [proc.stdout.index(f"| {tk} |") for tk in ("0053", "0070")]
+    assert positions == sorted(positions), "merged rows stay ascending by number"
+    assert "2 tickets (2 open, 0 completed)" in proc.stdout
+
+
+def test_command_documents_ledger_source():
+    """The prose must document ledger enumeration + the legacy-scan fallback."""
+    text = (ROOT / "commands" / "ticket-list.md").read_text(encoding="utf-8")
+    lower = text.lower()
+    assert "list-json" in text, "must invoke `ticket.py list-json`"
+    assert "harness-tickets" in lower and "ledger" in lower
+    assert "legacy" in lower, "must frame the `.tickets/*` scan as a legacy fallback"
