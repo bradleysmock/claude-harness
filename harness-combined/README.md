@@ -81,6 +81,17 @@ All three hooks import from the `gates/` module — one canonical gate implement
 | Go | build → vet → tests | build → vet → staticcheck → tests |
 | Rust | check → clippy → tests | check → clippy → tests → audit |
 
+In **directory mode** the `test` gate uses **baseline-delta** regression tolerance
+for all four languages: it runs the full suite, subtracts the set of tests already
+failing at the merge base (computed once per merge-base SHA in a throwaway detached
+`git worktree`, cached under `.harness/test-baselines/`), and fails only on the
+remainder plus any previously-passing test now deleted. Pre-existing failures are
+reported as `baseline_excluded` (informational) so an unrelated already-red test
+never blocks an unrelated ticket; when git or the merge base is unavailable it falls
+back to strict full-suite (fail-closed). The shared engine lives in
+`gates/_baseline.py`. When a delta failure is later fixed, the repair is recorded via
+`memory(action="record", gate="test", outcome="passed", resolution=…)`.
+
 ---
 
 ## Memory contract

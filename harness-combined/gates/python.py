@@ -20,6 +20,7 @@ from gates import (
     append_tool_error_if_silent,
     run_dir_gates_scheduled,
 )
+import gates._baseline as _bl
 from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
 
@@ -424,47 +425,131 @@ def _type_check_gate_dir(directory: str, config: GateTimeoutConfig | None = None
     )
 
 
+# ── Directory-mode test gate: full run + baseline-delta ────────────────────────
+#
+# Like the TypeScript gate (ticket 0041), the directory-mode pytest gate runs the
+# *entire* suite and fails only on failures absent from the cached merge-base
+# baseline (plus any previously-passing test now deleted). The shared machinery
+# lives in ``gates/_baseline.py``; this module supplies the pytest-specific run and
+# ID parser. When no baseline is available it falls back to full-suite strictness.
+
+#: One line of ``pytest -rA`` short-summary output: ``STATUS <node-id>[ - reason]``.
+_PYTEST_LINE = re.compile(
+    r"^(?P<status>PASSED|FAILED|ERROR|XPASS|XFAIL|SKIPPED)\s+"
+    r"(?P<id>\S+)(?:\s+-\s+(?P<reason>.*))?$"
+)
+#: Statuses that count as a test having run to a pass/fail conclusion.
+_PYTEST_PRESENT = {"PASSED", "FAILED", "ERROR", "XPASS"}
+_PYTEST_FAILING = {"FAILED", "ERROR"}
+
+
+def _run_pytest_collect_dir(directory: str | Path, timeout: int) -> ProcessResult:
+    """Run the full pytest suite with the per-test short summary (``-rA``) enabled.
+
+    ``-rA`` prints one ``PASSED``/``FAILED``/``ERROR`` line per test regardless of
+    ``-q``, giving stable ``path::test`` node IDs without needing the optional
+    ``pytest-json-report`` plugin.
+    """
+    return _exec_dir([
+        sys.executable, "-m", "pytest", "-rA", "-q", "--tb=no",
+        "-p", "no:cacheprovider",
+    ], str(directory), timeout=timeout)
+
+
+def _parse_pytest_report(
+    output: str, returncode: int,
+) -> tuple[bool, set[str], dict[str, GateError]]:
+    """Parse ``pytest -rA`` output into ``(parsed_ok, present_ids, {failing_id: err})``.
+
+    ``present_ids`` is every test that ran to a pass/fail conclusion; the failing dict
+    holds only failures/errors. ``parsed_ok`` is False when nothing parsed and pytest
+    exited non-zero (a crash / collection blow-up with no per-test lines) so the
+    caller falls back to exit-code strictness.
+    """
+    present: set[str] = set()
+    failing: dict[str, GateError] = {}
+    for raw in output.splitlines():
+        m = _PYTEST_LINE.match(raw.strip())
+        if not m:
+            continue
+        status = m.group("status")
+        tid = m.group("id")
+        if status in _PYTEST_PRESENT:
+            present.add(tid)
+        if status in _PYTEST_FAILING:
+            reason = (m.group("reason") or "test failed").strip()
+            failing[tid] = GateError(
+                message=f"{tid}: {reason}"[:600],
+                file=tid.split("::")[0] if "::" in tid else None,
+                line=None, column=None, code="TEST_FAILURE", severity="error",
+            )
+    parsed_ok = bool(present) or returncode == 0
+    return parsed_ok, present, failing
+
+
+def _merge_base_sha(root: Path, base: str) -> str | None:
+    return _bl.merge_base_sha(root, base)
+
+
+def _collect_baseline(root: Path, sha: str, timeout: int) -> _bl.SuiteCollection | None:
+    """Run the full pytest suite at ``sha`` in a throwaway detached worktree."""
+    def _run(base_root: Path) -> _bl.SuiteCollection | None:
+        try:
+            result = _run_pytest_collect_dir(base_root, timeout)
+        except subprocess.TimeoutExpired:
+            return None
+        ok, present, failing = _parse_pytest_report(result.output, result.returncode)
+        if not ok:
+            return None
+        return _bl.SuiteCollection.of(set(failing), present)
+
+    return _bl.run_in_detached_baseline_worktree(
+        root, sha, _run, tmp_prefix="harness_py_baseline_",
+    )
+
+
+def _baseline(directory: Path, base: str = "main", timeout: int = 180) -> _bl.SuiteCollection | None:
+    """Present+failing baseline at the merge base; None → run strict full-suite."""
+    return _bl.load_baseline(
+        directory, base, timeout,
+        merge_base_fn=_merge_base_sha, compute_fn=_collect_baseline,
+        read_cache=_bl.read_collection_cache, write_cache=_bl.write_collection_cache,
+    )
+
+
+def _removed_error(tid: str) -> GateError:
+    return GateError(
+        message=f"{tid}: previously-passing test removed (present at baseline, absent now)",
+        file=tid.split("::")[0] if "::" in tid else None,
+        line=None, column=None, code="TEST_REMOVED", severity="error",
+    )
+
+
 def _test_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
+    """Directory-mode pytest gate: full suite run + baseline-delta comparison.
+
+    Runs the entire suite, then fails only on failures absent from the cached
+    merge-base baseline (and any previously-green test now deleted). Falls back to
+    full-suite strictness when the baseline is unavailable (git absent / unknown base
+    / dirty cache). Reports ``mode`` and ``baseline_excluded`` on the result.
+    """
     start = time.monotonic()
+    root = Path(directory)
     timeout = config.timeout_for("test", 180) if config else 180
     try:
-        result = _exec_dir([
-            sys.executable, "-m", "pytest", "--tb=short", "--no-header", "-q",
-        ], directory, timeout=timeout)
+        result = _run_pytest_collect_dir(root, timeout)
     except subprocess.TimeoutExpired:
         return _timeout_error("test", timeout)
-    if result.returncode == 0:
-        return GateResult(gate="test", passed=True, errors=[],
-                          duration_ms=int((time.monotonic() - start) * 1000))
-    errors: list[GateError] = []
-    current: str | None
-    lines: list[str]
-    current, lines = None, []
-    for line in result.output.splitlines():
-        if line.startswith("FAILED"):
-            if current and lines:
-                errors.append(GateError(
-                    message=f"{current}: {' | '.join(lines)}",
-                    file=None, line=None, column=None,
-                    code="TEST_FAILURE", severity="error",
-                ))
-            current = line.split("::")[1].strip() if "::" in line else line.strip()
-            lines = []
-        elif line.startswith("E ") and current:
-            lines.append(line[2:].strip())
-    if current and lines:
-        errors.append(GateError(
-            message=f"{current}: {' | '.join(lines)}",
-            file=None, line=None, column=None,
-            code="TEST_FAILURE", severity="error",
-        ))
-    if not errors:
-        errors.append(GateError(
-            message=result.output[:800], file=None,
-            line=None, column=None, code="TEST_FAILURE", severity="error",
-        ))
-    return GateResult(gate="test", passed=False, errors=errors,
-                      duration_ms=int((time.monotonic() - start) * 1000))
+    ok, present, failing = _parse_pytest_report(result.output, result.returncode)
+    if not ok:
+        return _bl.strict_exit_result(
+            "test", start, result.returncode, result.output,
+            fallback_msg="pytest produced no parseable output",
+        )
+    baseline = _baseline(root, timeout=timeout)
+    return _bl.build_delta_result(
+        "test", start, present, failing, baseline, removed_error=_removed_error,
+    )
 
 
 def _security_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:

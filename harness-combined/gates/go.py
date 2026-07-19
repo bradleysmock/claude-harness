@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -8,6 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import gates._baseline as _bl
 from gates import (
     GateTimeoutConfig,
     ProcessResult,
@@ -226,6 +228,125 @@ def run_go_suite(
 _GO_SCOPE = ["*.go", "go.mod", "go.sum"]
 
 
+# ── Directory-mode test gate: full run + baseline-delta ────────────────────────
+#
+# Like the TypeScript gate (ticket 0041), the directory-mode ``go test`` gate runs
+# the entire suite via ``-json`` and fails only on failures absent from the cached
+# merge-base baseline (plus any previously-passing test now deleted). Shared
+# machinery lives in ``gates/_baseline.py``. Text mode keeps the human ``go test -v``
+# gate (``_test_gate``) — temp-dir builds have no git baseline to diff against.
+
+def _run_go_test_json_dir(directory: str | Path, timeout: int) -> ProcessResult:
+    """Run the full Go suite with machine-readable per-test JSON events.
+
+    Keeps ``-race`` so the directory-mode gate preserves the race-detection parity
+    documented for the Go MCP gate (a data race must not pass here while failing the
+    ``-race`` Stop hook).
+    """
+    return _exec(["go", "test", "-json", "-race", "./..."], directory, timeout=timeout)
+
+
+def _parse_go_test_json(
+    output: str, returncode: int,
+) -> tuple[bool, set[str], dict[str, GateError]]:
+    """Parse ``go test -json`` events into ``(parsed_ok, present_ids, {failing: err})``.
+
+    Each per-test ``pass``/``fail`` action yields the stable ID ``<package>.<Test>``.
+    Package-level events (no ``Test`` key) and non-terminal actions (``run``,
+    ``output``) are ignored. ``parsed_ok`` is False when no per-test result parsed and
+    the run exited non-zero (a compile failure emits diagnostics but no test events),
+    so the caller falls back to exit-code strictness surfacing the build error.
+    """
+    present: set[str] = set()
+    failing: dict[str, GateError] = {}
+    for raw in output.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(obj, dict):
+            continue
+        test = obj.get("Test")
+        action = obj.get("Action")
+        if not test or action not in ("pass", "fail"):
+            continue
+        tid = f"{obj.get('Package', '?')}.{test}"
+        present.add(tid)
+        if action == "fail":
+            failing[tid] = GateError(
+                message=f"{tid}: test failed", file=None, line=None, column=None,
+                code="TEST_FAILURE", severity="error",
+            )
+    parsed_ok = bool(present) or returncode == 0
+    return parsed_ok, present, failing
+
+
+def _merge_base_sha(root: Path, base: str) -> str | None:
+    return _bl.merge_base_sha(root, base)
+
+
+def _collect_baseline(root: Path, sha: str, timeout: int) -> _bl.SuiteCollection | None:
+    """Run the full Go suite at ``sha`` in a throwaway detached worktree."""
+    def _run(base_root: Path) -> _bl.SuiteCollection | None:
+        try:
+            result = _run_go_test_json_dir(base_root, timeout)
+        except subprocess.TimeoutExpired:
+            return None
+        ok, present, failing = _parse_go_test_json(result.output, result.returncode)
+        if not ok:
+            return None
+        return _bl.SuiteCollection.of(set(failing), present)
+
+    return _bl.run_in_detached_baseline_worktree(
+        root, sha, _run, tmp_prefix="harness_go_baseline_",
+    )
+
+
+def _baseline(directory: Path, base: str = "main", timeout: int = 180) -> _bl.SuiteCollection | None:
+    """Present+failing baseline at the merge base; None → run strict full-suite."""
+    return _bl.load_baseline(
+        directory, base, timeout,
+        merge_base_fn=_merge_base_sha, compute_fn=_collect_baseline,
+        read_cache=_bl.read_collection_cache, write_cache=_bl.write_collection_cache,
+    )
+
+
+def _removed_error(tid: str) -> GateError:
+    return GateError(
+        message=f"{tid}: previously-passing test removed (present at baseline, absent now)",
+        file=None, line=None, column=None, code="TEST_REMOVED", severity="error",
+    )
+
+
+def _test_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> GateResult:
+    """Directory-mode ``go test`` gate: full suite run + baseline-delta comparison.
+
+    Fails only on failures absent from the cached merge-base baseline (and any
+    previously-green test now deleted); falls back to full-suite strictness when the
+    baseline is unavailable. Reports ``mode`` and ``baseline_excluded``.
+    """
+    start = time.monotonic()
+    root = Path(directory)
+    timeout = config.timeout_for("test", 180) if config else 180
+    try:
+        result = _run_go_test_json_dir(root, timeout)
+    except subprocess.TimeoutExpired:
+        return _timeout_error("test", timeout)
+    ok, present, failing = _parse_go_test_json(result.output, result.returncode)
+    if not ok:
+        return _bl.strict_exit_result(
+            "test", start, result.returncode, result.output,
+            fallback_msg="go test produced no parseable output",
+        )
+    baseline = _baseline(root, timeout=timeout)
+    return _bl.build_delta_result(
+        "test", start, present, failing, baseline, removed_error=_removed_error,
+    )
+
+
 def run_go_suite_on_dir(
     directory: str, fail_fast: bool = True,
     config: GateTimeoutConfig | None = None,
@@ -248,7 +369,7 @@ def run_go_suite_on_dir(
     gate_defs: list[tuple[str, GateSpec]] = [
         ("build", GateSpec(_build_gate, _GO_SCOPE)),
         ("vet", GateSpec(_vet_gate, _GO_SCOPE)),
-        ("test", GateSpec(_test_gate, _GO_SCOPE)),
+        ("test", GateSpec(_test_gate_dir, _GO_SCOPE)),
     ]
     return run_dir_gates_scheduled(
         gate_defs, GO_GATE_GRAPH, directory, log_namespace="go",

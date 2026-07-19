@@ -187,6 +187,29 @@ Three hooks enforce quality at write-time and turn-end:
 | Go         | build → vet → tests                   | build → vet → staticcheck → tests                 |
 | Rust       | check → clippy → tests                | check → clippy → tests → audit                    |
 
+#### Directory-mode test gate: full suite + baseline-delta (all four languages)
+
+In **directory mode** the `test` gate runs the **entire** suite and fails only on
+failures that are **not** already present at the merge base — the *baseline-delta*
+mechanism. It runs the full suite (Python `pytest -rA`, TypeScript `jest --json`,
+Go `go test -json`, Rust `cargo test`), collects stable per-test IDs
+(`path::test`, `pkg.TestName`, `crate::mod::test`), and subtracts the set of tests
+already failing at the merge base. That baseline is computed **once per merge-base
+SHA** in a throwaway detached `git worktree` (never touching the ticket worktree)
+and cached under `.harness/test-baselines/<sha>.json`. What remains gates the
+ticket; pre-existing merge-base failures are reported as `baseline_excluded` lines
+(informational, not failures). A previously-passing test that is **deleted** in the
+worktree (`pass→removed`) is also flagged as a regression. When git is absent or the
+merge base is unknown, the gate falls back to **strict full-suite** (every failure
+fails — fail-closed). The `GateResult` records `mode` (`full` | `baseline-delta`)
+and `baseline_excluded`, surfaced in `gate-findings.md`. Ticket 0041 shipped this
+for TypeScript; the shared engine (`gates/_baseline.py`) now applies it uniformly to
+Python, Go, and Rust as well, so an unrelated already-red test never blocks a
+polyglot ticket in one language while being tolerated in another. When such a
+delta failure is later repaired, the flow records it via
+`memory(action="record", gate="test", outcome="passed", resolution=…)` so the fix
+joins the failure corpus.
+
 In **directory mode**, after the language suite (and the coverage and dep-audit
 phases) a final **`sast`** phase runs: Semgrep across all languages plus Bandit
 for Python, with severity-tiered results (HIGH → BLOCKER fails the gate;

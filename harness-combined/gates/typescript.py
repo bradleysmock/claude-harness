@@ -18,6 +18,7 @@ from gates import (
     find_config_root,
     run_dir_gates_scheduled,
 )
+import gates._baseline as _bl
 from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
 
@@ -440,8 +441,11 @@ def _lint_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> G
 # already present at the merge base. Changed-file scoping (``_changed_test_files``,
 # retained above for its own contract test) no longer gates pass/fail — a change
 # that breaks an untouched test must fail the gate, which scoping silently allowed.
-
-_BASELINE_SUBDIR = Path(".harness") / "test-baselines"
+#
+# As of the baseline-delta follow-up the SHA cache, merge-base resolution, detached
+# worktree runner and delta math live in ``gates/_baseline.py`` (shared with Python /
+# Go / Rust). This module keeps only the jest-specific run/parse seams and thin
+# wrappers so behaviour — and every 0041 test seam — is preserved byte-for-byte.
 
 
 def _run_jest_json_dir(root: Path, timeout: int) -> ProcessResult:
@@ -500,101 +504,48 @@ def _parse_jest_json(stdout: str, root: Path) -> tuple[bool, dict[str, GateError
 
 
 # ── Merge-base baseline: compute, cache, invalidate ────────────────────────────
+#
+# These are thin jest-specific adapters over ``gates/_baseline.py``. They stay as
+# module-level names with unchanged signatures because ticket 0041's tests
+# monkeypatch them as seams (``_merge_base_sha``, ``_compute_baseline_at``,
+# ``_baseline``) and assert on the SHA-keyed cache layout they produce.
 
 def _merge_base_sha(jest_root: Path, base: str) -> str | None:
     """Merge-base SHA between HEAD and ``base``, or None when it cannot be resolved."""
-    try:
-        mb = subprocess.run(
-            ["git", "-C", str(jest_root), "merge-base", "HEAD", base],
-            capture_output=True, text=True, timeout=30,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    sha = mb.stdout.strip()
-    return sha if mb.returncode == 0 and sha else None
-
-
-def _baseline_cache_path(jest_root: Path, sha: str) -> Path:
-    return jest_root / _BASELINE_SUBDIR / f"{sha}.json"
-
-
-def _read_baseline_cache(path: Path) -> set[str] | None:
-    """Load a cached baseline failure set. None on any unreadable/corrupt file."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return set(data["failing"])
-    except (OSError, json.JSONDecodeError, KeyError, TypeError):
-        return None
-
-
-def _write_baseline_cache(path: Path, sha: str, failing: set[str]) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps({"sha": sha, "failing": sorted(failing)}), encoding="utf-8",
-        )
-    except OSError:
-        pass  # a cache we cannot persist just recomputes next run — never fatal
-
-
-def _repo_prefix(jest_root: Path) -> str:
-    """Path of ``jest_root`` relative to its git top-level ('' when at the root)."""
-    try:
-        p = subprocess.run(
-            ["git", "-C", str(jest_root), "rev-parse", "--show-prefix"],
-            capture_output=True, text=True, timeout=30,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return ""
-    return p.stdout.strip() if p.returncode == 0 else ""
+    return _bl.merge_base_sha(jest_root, base)
 
 
 def _compute_baseline_at(jest_root: Path, sha: str, timeout: int) -> set[str] | None:
-    """Run the full suite at ``sha`` in a throwaway detached worktree.
+    """Run the full jest suite at ``sha`` in a throwaway detached worktree.
 
-    Never touches the ticket worktree: a temporary ``git worktree`` is added at the
-    merge-base commit, the suite runs there, and the worktree is always removed.
-    Returns the failing-test-ID set, or None when the baseline run cannot be
-    established (worktree add fails, jest emits no parseable JSON, timeout, …) so the
-    caller falls back to full-suite strictness.
+    Never touches the ticket worktree (see
+    :func:`gates._baseline.run_in_detached_baseline_worktree`). Returns the
+    failing-test-ID set, or None when the baseline run cannot be established
+    (worktree add fails, jest emits no parseable JSON, timeout, …) so the caller
+    falls back to full-suite strictness.
     """
-    prefix = _repo_prefix(jest_root)
-    tmp = Path(tempfile.mkdtemp(prefix="harness_ts_baseline_"))
-    wt = tmp / "wt"
-    try:
-        add = subprocess.run(
-            ["git", "-C", str(jest_root), "worktree", "add", "--detach", str(wt), sha],
-            capture_output=True, text=True, timeout=60,
-        )
-        if add.returncode != 0:
-            return None
-        base_root = (wt / prefix) if prefix else wt
+    def _prepare(src_root: Path, base_root: Path) -> None:
         # A fresh checkout has no ``node_modules`` (git-ignored), so ``npx jest``
         # there cannot resolve the project's jest/ts-jest deps — it errors before
         # emitting a JSON report, which would silently force permanent strict mode
         # and defeat the baseline entirely. Mirror the text-mode env (_make_env) by
         # symlinking the HEAD checkout's already-installed deps into the base run.
-        src_nm = jest_root / "node_modules"
+        src_nm = src_root / "node_modules"
         base_nm = base_root / "node_modules"
         if src_nm.exists() and not base_nm.exists():
             try:
                 base_nm.symlink_to(src_nm.resolve())
             except OSError:
                 pass  # best effort — a missing symlink degrades to strict, never crashes
-        try:
-            result = _run_jest_json_dir(base_root, timeout)
-        except subprocess.TimeoutExpired:
-            return None
+
+    def _run(base_root: Path) -> set[str] | None:
+        result = _run_jest_json_dir(base_root, timeout)
         ok, failures = _parse_jest_json(result.stdout, base_root)
         return set(failures) if ok else None
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    finally:
-        subprocess.run(
-            ["git", "-C", str(jest_root), "worktree", "remove", "--force", str(wt)],
-            capture_output=True, text=True, timeout=60,
-        )
-        shutil.rmtree(tmp, ignore_errors=True)
+
+    return _bl.run_in_detached_baseline_worktree(
+        jest_root, sha, _run, prepare=_prepare, tmp_prefix="harness_ts_baseline_",
+    )
 
 
 def _baseline(jest_root: Path, base: str = "main", timeout: int = 180) -> set[str] | None:
@@ -604,22 +555,17 @@ def _baseline(jest_root: Path, base: str = "main", timeout: int = 180) -> set[st
     expensive baseline run happens at most once per SHA across a repair loop
     (NFR-1). Returns None — the "fall back to full-suite strictness" signal — when
     git is absent, the merge base is unknown, the cache for the SHA is dirty
-    (present but corrupt), or the baseline run itself fails.
+    (present but corrupt), or the baseline run itself fails. ``_merge_base_sha`` and
+    ``_compute_baseline_at`` are resolved as module globals so 0041's monkeypatches
+    on those seams take effect.
     """
-    if shutil.which("git") is None:
-        return None
-    sha = _merge_base_sha(jest_root, base)
-    if not sha:
-        return None
-    cache = _baseline_cache_path(jest_root, sha)
-    if cache.exists():
-        # A present-but-corrupt cache is a dirty cache (FR-3) → strict fallback.
-        return _read_baseline_cache(cache)
-    failing = _compute_baseline_at(jest_root, sha, timeout)
-    if failing is None:
-        return None
-    _write_baseline_cache(cache, sha, failing)
-    return failing
+    return _bl.load_baseline(
+        jest_root, base, timeout,
+        merge_base_fn=_merge_base_sha,
+        compute_fn=_compute_baseline_at,
+        read_cache=_bl.read_failing_cache,
+        write_cache=_bl.write_failing_cache,
+    )
 
 
 def _unparsed_test_result(result: ProcessResult, start: float) -> GateResult:
@@ -671,10 +617,9 @@ def _test_gate_dir(directory: str, config: GateTimeoutConfig | None = None) -> G
         errors = [failures[t] for t in sorted(failing)]
         return _finish(not errors, errors, "full", [])
 
-    excluded = sorted(failing & baseline)
-    gating = sorted(failing - baseline)
-    errors = [failures[t] for t in gating]
-    return _finish(not errors, errors, "baseline-delta", excluded)
+    delta = _bl.compute_delta(failing, baseline)
+    errors = [failures[t] for t in delta.new_failures]
+    return _finish(not errors, errors, "baseline-delta", delta.baseline_excluded)
 
 
 #: Source globs that make the TypeScript/JavaScript suite relevant.
