@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS failure_records (
     outcome     TEXT NOT NULL,
     attempt     INTEGER NOT NULL,
     timestamp   TEXT NOT NULL,
-    resolution  TEXT
+    resolution  TEXT,
+    target_file TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_gate ON failure_records(gate);
 """
@@ -41,6 +42,38 @@ def _tokenise(text: str) -> list[str]:
         r"|\d{2,}",               # numbers: line numbers
         text,
     )
+
+
+# ── Domain-keyed retrieval helpers ────────────────────────────────────────────
+
+def _gates_for_language(language: str) -> frozenset[str]:
+    """Return the gate names a ``language`` runs, reusing the suite's own map.
+
+    Imported lazily so importing ``memory`` never pulls the gate package at load
+    time (and so the reactive path keeps no new hard dependency). An unrecognised
+    language yields the empty set — the caller treats that as "nothing relevant".
+    """
+    try:
+        from gates.config import _VALID_GATES
+    except Exception:  # pragma: no cover - defensive: gate pkg unavailable
+        return frozenset()
+    return _VALID_GATES.get(language, frozenset())
+
+
+def _dir_of(path: str | None) -> str | None:
+    """Directory portion of a repo-relative target file, or ``None`` when absent."""
+    if not path:
+        return None
+    return path.rsplit("/", 1)[0] if "/" in path else ""
+
+
+def _proximity_tier(row_target: str | None, target_file: str, query_dir: str | None) -> int:
+    """Rank records by area proximity: 0 exact file, 1 same directory, 2 elsewhere."""
+    if row_target and target_file and row_target == target_file:
+        return 0
+    if row_target and query_dir is not None and _dir_of(row_target) == query_dir:
+        return 1
+    return 2
 
 
 # ── BM25 Index ────────────────────────────────────────────────────────────────
@@ -107,24 +140,26 @@ class SQLiteFailureMemory:
         attempt: int,
         outcome: str,
         resolution: str | None = None,
+        target_file: str | None = None,
     ) -> None:
         record_id = hashlib.sha256(
             f"{spec_id}:{attempt}:{gate}:{errors_text[:200]}".encode()
         ).hexdigest()[:16]
         tokens = _tokenise(f"gate:{gate} {errors_text}")
-        # Named columns (not positional VALUES) so the nullable resolution column
-        # added in 0052 stays insert-safe.
+        # Named columns (not positional VALUES) so the nullable resolution and
+        # target_file columns (added by 0052 / forward-injection) stay insert-safe.
         with self._connect() as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO failure_records
                    (id, spec_id, gate, errors_text, tokens_json, outcome,
-                    attempt, timestamp, resolution)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                    attempt, timestamp, resolution, target_file)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (
                     record_id, spec_id, gate, errors_text[:4000],
                     json.dumps(tokens), outcome, attempt,
                     datetime.now(UTC).isoformat(),
                     resolution or None,
+                    target_file or None,
                 ),
             )
 
@@ -167,24 +202,107 @@ class SQLiteFailureMemory:
             narratives.append(narrative)
         return narratives
 
+    def retrieve_gotchas(
+        self,
+        target_file: str,
+        description: str,
+        language: str,
+        limit: int = 3,
+    ) -> list[str]:
+        """Proactive counterpart to ``retrieve_similar``: known, *resolved* gotchas
+        in the area a generation is about to touch.
+
+        Keyed on the spec's domain signals (``target_file`` + ``description``)
+        rather than on gate error text — which does not exist yet before the first
+        gate. Returns compact narratives for ``outcome='passed'`` records only (a
+        resolved failure is actionable and, post-0052, carries a ``resolution`` to
+        inject), fenced to the gates that ``language`` runs, ranked by area
+        proximity (exact ``target_file``, then same directory) with a BM25 score
+        over the description as tiebreaker. Empty list when nothing is relevant.
+
+        The reactive ``retrieve_similar`` path is untouched — this is purely
+        additive.
+        """
+        # Language fence: reuse the suite's language→gate-name map. An unknown
+        # language (or one with no gates) surfaces nothing.
+        allowed_gates = sorted(_gates_for_language(language))
+        if not allowed_gates:
+            return []
+
+        placeholders = ",".join("?" for _ in allowed_gates)
+        with self._connect() as conn:
+            # Only `?` placeholders are interpolated into the SQL text; every value
+            # (outcome, gate names) is bound. `LIMIT 500` bounds the working set.
+            rows: list[Any] = conn.execute(
+                "SELECT id, spec_id, gate, errors_text, tokens_json, target_file, "
+                "resolution FROM failure_records "
+                f"WHERE outcome = ? AND gate IN ({placeholders}) "
+                "ORDER BY timestamp DESC LIMIT 500",
+                ("passed", *allowed_gates),
+            ).fetchall()
+        if not rows:
+            return []
+
+        # BM25 over the description is the within-tier tiebreaker. Records with no
+        # lexical overlap still surface (proximity alone qualifies them); they just
+        # score 0 and sort after overlapping ones in the same proximity tier.
+        idx = BM25Index([(row[0], json.loads(row[4])) for row in rows])
+        score_by_id = dict(idx.rank(_tokenise(description), limit=len(rows)))
+
+        query_dir = _dir_of(target_file)
+        ranked = sorted(
+            rows,
+            key=lambda row: (
+                _proximity_tier(row[5], target_file, query_dir),
+                -score_by_id.get(row[0], 0.0),
+            ),
+        )
+
+        narratives: list[str] = []
+        for row in ranked[:limit]:
+            gate, errors_text, row_target, resolution = row[2], row[3], row[5], row[6]
+            area = row_target or "this area"
+            narrative = (
+                f"⚠ {gate} previously failed on {area}: {errors_text[:300]}\n"
+            )
+            if resolution:
+                narrative += f"    → fixed by: {resolution}   (pre-empt it)\n"
+            narratives.append(narrative)
+        return narratives
+
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
-            self._migrate_resolution_column(conn)
+            # CREATE TABLE IF NOT EXISTS names these columns for fresh databases
+            # but never alters an existing table, so an older memory.db is missing
+            # whichever columns post-dated it. Each guarded ALTER runs at most once.
+            self._migrate_column(conn, "resolution")   # added in 0052
+            self._migrate_column(conn, "target_file")  # added by forward-injection
 
-    @staticmethod
-    def _migrate_resolution_column(conn: sqlite3.Connection) -> None:
-        """Add the nullable ``resolution`` column to databases created before 0052.
+    #: Columns the guarded migration is allowed to add. The name is embedded in a
+    #: DDL string (SQLite cannot bind an identifier), so it must never come from
+    #: caller input — only from this allow-list of column names authored here.
+    _MIGRATABLE_COLUMNS: frozenset[str] = frozenset({"resolution", "target_file"})
 
-        CREATE TABLE IF NOT EXISTS names the column for fresh databases but never
-        alters an existing table, so a pre-0052 memory.db lacks it. Guard the
-        ALTER with a PRAGMA check so it runs exactly once and re-initialisation is
-        a no-op.
+    @classmethod
+    def _migrate_column(cls, conn: sqlite3.Connection, name: str) -> None:
+        """Idempotently add a nullable ``TEXT`` column to an older ``failure_records``.
+
+        Generalised from 0052's ``_migrate_resolution_column``: same race-safe
+        pattern (PRAGMA check + duplicate-column swallow), now reused for every
+        additively-introduced column. ``name`` must be one of the authored
+        :data:`_MIGRATABLE_COLUMNS` — it is concatenated into DDL (identifiers
+        cannot be parameter-bound), so caller-supplied names are rejected rather
+        than interpolated.
         """
+        if name not in cls._MIGRATABLE_COLUMNS:
+            raise ValueError(f"refusing to migrate unauthorised column: {name!r}")
         columns = {row[1] for row in conn.execute("PRAGMA table_info(failure_records)")}
-        if "resolution" not in columns:
+        if name not in columns:
             try:
-                conn.execute("ALTER TABLE failure_records ADD COLUMN resolution TEXT")
+                # `name` is allow-listed above (not caller input); values are never
+                # interpolated — this DDL binds no user data.
+                conn.execute(f"ALTER TABLE failure_records ADD COLUMN {name} TEXT")
             except sqlite3.OperationalError as exc:
                 # Concurrent autopilots can both observe the column missing and
                 # race to ALTER; the loser sees "duplicate column name". That is

@@ -276,11 +276,18 @@ Two independent memory layers, no overlap:
 
 | Layer | Audience | Written by | Read by | Purpose |
 |---|---|---|---|---|
-| `.harness/memory.db` | Machine only (opaque) | `memory(action="record", ...)` after each gate cycle | `memory(action="retrieve", ...)` before each repair attempt | BM25-searchable failure trail. |
+| `.harness/memory.db` | Machine only (opaque) | `memory(action="record", ...)` after each gate cycle (threading `target_file`) | `memory(action="retrieve", ...)` before each repair attempt **and** `memory(action="gotchas", ...)` before generation | BM25-searchable failure trail. |
 | `.tickets/_learnings.md` | Lead-curated | `/deliver` and `/harvest-learnings` (append-only, after lead approval) | Loaded at `/problem` and `/build` | Human-curated must-fix patterns. |
 | `.tickets/_standards.md` | Lead only | The lead, by hand | Loaded at `/problem` and `/build` | Project engineering standards. |
 
 `/deliver` and `/harvest-learnings` **append** candidate learnings to `_learnings.md`, but only after the lead accepts them and only via a template-field-only write path (`date | gate | ticket | pattern`) — never raw extracted text, and never overwriting existing content. `/init` creates both files as stubs.
+
+**`memory.db` is consulted in two directions** — reactive and proactive:
+
+- **Reactive** (`action="retrieve"`): keyed on the failing gate's **error text**, fired *inside* the repair loop after a gate fails. Surfaces BM25-similar past failures (and their `resolution`) to guide the fix. Unchanged.
+- **Proactive** (`action="gotchas"`): keyed on the spec's **domain signals** — `target_file` + `description` + `language` — fired *before* generation, so the first attempt pre-empts known area-local failure modes. Returns only `outcome='passed'` (resolved) records, fenced to the language's gates, ranked by area proximity (exact `target_file`, then same directory) with a BM25 tiebreaker over the description, each carrying its stored `resolution` (the known fix). Returns an empty block when nothing is relevant. This is why `record` now threads `target_file`: without it a record is retrievable only by the reactive error-keyed path.
+
+Both directions read the same opaque trail; neither ever writes to the lead-curated `_learnings.md` / `_standards.md`.
 
 ---
 

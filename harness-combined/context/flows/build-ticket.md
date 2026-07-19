@@ -53,7 +53,7 @@ A non-zero exit **halts** the build — show the validator's stderr (the missing
 If `.tickets/_standards.md` exists, load it via `@.tickets/_standards.md`.
 If `.tickets/_learnings.md` exists, load it via `@.tickets/_learnings.md`.
 
-Both are lead-curated. The model treats them as hard constraints, not suggestions. The machine's BM25 failure trail (`.harness/memory.db`) is consulted only by `memory(action="retrieve", ...)` during repair — it never feeds back into these files automatically.
+Both are lead-curated. The model treats them as hard constraints, not suggestions. The machine's BM25 failure trail (`.harness/memory.db`) now feeds generation as well as repair: `memory(action="gotchas", ...)` injects *resolved* area-local failures into the generation context before the first gate (Step 4c), and `memory(action="retrieve", ...)` still surfaces similar failures reactively during repair (Step 4e). Neither ever feeds back into the lead-curated files automatically — the curated `_learnings.md` / `_standards.md` are still never auto-written.
 
 **Spec-coverage warning (non-blocking).** Before executing specs, check whether any
 requirement is left uncovered. If `spec-coverage.md` exists in the ticket directory,
@@ -168,6 +168,14 @@ If upstream specs in this task have already been written to the worktree, includ
 
 **c. Generate implementation and tests** in fenced code blocks (`# implementation` then `# tests`).
 
+Before generating, query failure memory for *resolved* past failures in this spec's area so the first attempt pre-empts them:
+
+```
+memory(action="gotchas", target_file=spec.target_file, description=spec.description, language=language, project_root=project_root)
+```
+
+If the returned block is non-empty, prepend it to the generation context as a hard "avoid these known failure modes (and apply their known fixes)" note. If empty, generate normally. This is additive to — not a replacement for — the reactive `memory(action="retrieve", ...)` call in Step 4e's repair loop.
+
 **d. Write to worktree:**
 - Implementation → `worktree_dir / spec.target_file`
 - Tests → appropriate test location (e.g. `worktree_dir/tests/test_<module>.py`)
@@ -183,8 +191,8 @@ If it fails:
 2. Fix the specific `file:line` locations in the worktree files directly.
 3. **Repair-integrity check.** Before accepting the round, run the repair-integrity check on **this round's own diff** — the changes this repair attempt introduced, not the cumulative branch. Since the fixes here are still uncommitted, pass `git -C .worktrees/XXXX-<slug> diff` (the working-tree changes) through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — under concurrent delivery `main` advances and its new test functions would read as spurious removals. If the check reports any violation (a net removal of test functions, an added skip/xfail marker, or a net-new bare suppression pragma), the round **fails**: do not accept the green gate. Re-enter repair with the corrective instruction to **restore the test and fix the implementation** (or add a reason suffix to a genuinely justified suppression) rather than weakening the safety net.
 4. Re-run `gate_run_on_dir`. Repeat up to `MAX_REPAIR_ATTEMPTS`.
-5. If pass: call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="passed", resolution="<one-line fix summary>", project_root=project_root)`. Pass a concise `resolution` describing **how** the failure was fixed (e.g. `resolution="added missing return-type annotation on parse()"`) — retrieval surfaces this line so a future repair learns the fix, not merely that a similar failure once passed.
-6. If still failing after `MAX_REPAIR_ATTEMPTS`: record the exhausted loop so future repairs are warned away from it — call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="escalated", project_root=project_root)` — then note the failure and continue to the next spec. (This mirrors the existing `outcome="passed"` record on success; retrieval surfaces both, marking escalated entries with `⚠`.)
+5. If pass: call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="passed", resolution="<one-line fix summary>", target_file=spec.target_file, project_root=project_root)`. Pass a concise `resolution` describing **how** the failure was fixed (e.g. `resolution="added missing return-type annotation on parse()"`) — retrieval surfaces this line so a future repair learns the fix, not merely that a similar failure once passed. Pass `target_file` (the spec's target) so this record is retrievable proactively via `action="gotchas"` for future builds in the same area — Step 4c above — not only via the legacy error-keyed `retrieve`.
+6. If still failing after `MAX_REPAIR_ATTEMPTS`: record the exhausted loop so future repairs are warned away from it — call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="escalated", target_file=spec.target_file, project_root=project_root)` — then note the failure and continue to the next spec. (This mirrors the existing `outcome="passed"` record on success; retrieval surfaces both, marking escalated entries with `⚠`. Note `gotchas` surfaces only `passed` records, so an escalated row informs the reactive `retrieve` path but not proactive generation.)
 
 **f. Checkpoint:**
 

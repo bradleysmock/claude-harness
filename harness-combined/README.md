@@ -89,11 +89,11 @@ Two layers, no overlap:
 
 | Layer | Audience | Written by | Read by |
 |---|---|---|---|
-| `.harness/memory.db` | machine only (opaque) | `memory(action="record", ...)` after each gate cycle | `memory(action="retrieve", ...)` before each repair attempt |
+| `.harness/memory.db` | machine only (opaque) | `memory(action="record", ...)` after each gate cycle (threading `target_file`) | `memory(action="retrieve", ...)` before each repair attempt, **and** `memory(action="gotchas", ...)` before generation |
 | `.tickets/_learnings.md` | lead-curated | `/deliver` and `/harvest-learnings` (append-only, after lead approval) | loaded as context at `/problem` and `/build` |
 | `.tickets/_standards.md` | lead only | the lead, by hand | loaded as context at `/problem` and `/build` |
 
-The machine maintains its own BM25-searchable failure trail in `memory.db` and consults it during repair. `_standards.md` is hand-edited by the lead only. `_learnings.md` (must-fix patterns) is appended to by `/deliver` and `/harvest-learnings` — but only entries the lead accepts, via a template-field-only write path that never overwrites existing content or writes raw extracted text. `/harvest-learnings` reads the auto-populated `memory.db` for recurring cross-ticket patterns and is the always-available capture path; `/deliver`'s capture is opportunistic — it fires only when the ticket has a `gate-findings.md` (e.g. from a manual `/gate` run).
+The machine maintains its own BM25-searchable failure trail in `memory.db` and now consults it in **both directions**: reactively during repair (`action="retrieve"`, keyed on gate error text) and proactively before generation (`action="gotchas"`, keyed on the spec's `target_file` + `description`), so a resolved failure in one area pre-empts the first attempt of a later build in the same area — carrying the known fix, not just the symptom. Neither direction ever writes to the lead-curated files. `_standards.md` is hand-edited by the lead only. `_learnings.md` (must-fix patterns) is appended to by `/deliver` and `/harvest-learnings` — but only entries the lead accepts, via a template-field-only write path that never overwrites existing content or writes raw extracted text. `/harvest-learnings` reads the auto-populated `memory.db` for recurring cross-ticket patterns and is the always-available capture path; `/deliver`'s capture is opportunistic — it fires only when the ticket has a `gate-findings.md` (e.g. from a manual `/gate` run).
 
 `/init` creates `_standards.md` and `_learnings.md` as stubs so the harness finds the files it expects from the first session. Edit the standards file before your first `/problem`.
 
@@ -108,7 +108,7 @@ The harness server exposes these tools to Claude:
 | `gate_run` | Spec/build | Run gates on generated code (text mode, temp dir) |
 | `gate_run_on_dir` | Ticket/SDLC | Run gates on a worktree; `fail_fast=True` (default) for repair loop, `fail_fast=False` for gate-findings.md |
 | `repair_run` | Spec/build | Apply a unified diff server-side and re-run gates |
-| `memory` | Both | `action="record"` saves a failure/resolution; `action="retrieve"` BM25-searches past failures |
+| `memory` | Both | `action="record"` saves a failure/resolution (+`target_file`); `action="retrieve"` BM25-searches past failures reactively; `action="gotchas"` returns resolved area-local gotchas before generation |
 | `spec_load` | Spec/build | Load a `.harness/specs/<id>.py` as structured JSON |
 | `context_fetch` | Spec/build | Read reference files + adjacent directory listing |
 | `artifact` | Spec/build | `action="save"` persists a run; `action="load"` reads by run_id; `action="escalate"` marks exhausted |
