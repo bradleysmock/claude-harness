@@ -1,7 +1,8 @@
 # Design: Relocate ticket coordination to a dedicated `.harness-tickets` branch
 
 **Date:** 2026-07-19
-**Status:** Proposed (Checkpoint 1 pending)
+**Status:** Proposed — §5 doc-placement DECIDED (Option 1: in-progress on branch,
+delivered on `main`); remaining Checkpoint-1 decisions open (§ Open decisions 2–5)
 **Author:** Bradley + Claude
 
 ## Problem
@@ -172,23 +173,28 @@ merge" its docs must not land on `main`:
   `.harness-tickets` for a cancelled one), append a `reopened` event, set
   `status: solution` on the branch.
 
-### 5. Where delivered/cancelled ticket **docs** live — the one real decision
+### 5. Where delivered/cancelled ticket **docs** live — DECIDED: Option 1
 
-- **Option 1 (recommended, faithful to "the merge brings everything"):** the
-  delivery squash carries the branch's ticket docs to `main`, archived into
-  `completed/<slug>/` in that same commit — as today, minus the pre-delivery
-  claim/status commits. Cancelled/abandoned docs (never merged) archive onto
-  `.harness-tickets`. `main` = product code + delivered ticket docs; `main` history
-  is clean of coordination churn.
-- **Option 2 (full separation):** the delivery squash carries **only code**; all
-  ticket docs (delivered and cancelled alike) live on `.harness-tickets`. `main`
-  becomes pure product code. Cleaner separation, but delivered commits on `main` no
-  longer carry their own problem/solution rationale inline with the code.
+**Decision (lead, 2026-07-19): Option 1 — in-progress tickets live on their
+feature branch; delivered tickets land on `main`.** This is the governing
+invariant for the whole design:
 
-Recommendation: **Option 1.** "Nothing to `main` until merged" is about *timing*
-(no pre-merge commits), which Option 1 satisfies, while keeping delivered rationale
-co-located with the code that shipped it. Option 2 is a clean variant if `main`
-should be code-only.
+- **In-progress** (claimed through review-ready): the ticket directory
+  (`problem.md` / `requirements.md` / `solution.md` / specs / `status.md` /
+  implementation) exists **only on the feature branch** in its worktree. `main`
+  never sees it before delivery.
+- **Delivered**: the `/deliver` squash carries the branch's ticket docs to `main`,
+  archived into `completed/<slug>/` in that same (and only) `main` commit — so a
+  delivered ticket's problem/solution rationale is co-located with the code that
+  shipped it. `main` = product code + delivered ticket docs, with no coordination
+  churn in its history.
+- **Cancelled / abandoned** (never delivered, so never on `main`): their docs
+  archive onto `.harness-tickets`, from which `/reopen` restores them (§4).
+
+Rejected — **Option 2 (full separation):** delivery carries only code and *all*
+ticket docs live on `.harness-tickets`, making `main` pure product code. Cleaner
+separation, but it strips the problem/solution rationale from the delivered commit
+on `main`. The lead chose co-location over a code-only `main`.
 
 ### 6. Bootstrapping and migration
 
@@ -291,8 +297,9 @@ Engine tests (`tests/`, mirroring `test_ticket_archiving.py`):
 
 ## Open decisions for Checkpoint 1
 
-1. **Doc placement:** Option 1 (delivered docs → `main` `completed/`) vs Option 2
-   (`main` code-only, all ticket docs on `.harness-tickets`). Recommend 1.
+1. ~~**Doc placement:** Option 1 vs Option 2.~~ **DECIDED (2026-07-19): Option 1**
+   — in-progress tickets on their feature branch; delivered tickets on `main`
+   (`completed/<slug>/`). See §5.
 2. **Ledger shape:** append-only `ledger.jsonl` (recommended) vs a rewritten
    registry JSON + `NEXT` counter.
 3. **`.harness-tickets` access:** ephemeral linked worktree (simple) vs git
