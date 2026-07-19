@@ -70,6 +70,21 @@ Per-language rules: `${CLAUDE_PLUGIN_ROOT}/context/rules/<language>.md` — load
 
 ---
 
+## LLM/Python Boundary
+
+Deterministic authority lives in Python; judgment lives in the model.
+
+| Layer | Citations |
+|---|---|
+| **Python** — pass/fail authority (gate verdicts, validator outcomes, score thresholds, structural checks) and exactness operations (counting, line limits, parsing, ID/numbering, dependency-cycle detection, path containment) — implemented in Python invoked by commands/hooks. | `${CLAUDE_PLUGIN_ROOT}/ticket.py`, `${CLAUDE_PLUGIN_ROOT}/ticket_deps.py`, `${CLAUDE_PLUGIN_ROOT}/validators/standards_validator.py`, `${CLAUDE_PLUGIN_ROOT}/ticket_templates.py`, `${CLAUDE_PLUGIN_ROOT}/gates/` |
+| **Model** — judgment only: design, critique, repair strategy, remediation content. The model never re-derives or overrides a Python-computed verdict; it may flag a suspected tool defect to the lead, but the verdict stands until the Python side changes. | — |
+
+**Decision test**: if two runs must agree on the answer, it belongs in Python.
+
+**Fail-closed**: when a required Python helper is missing or errors, the check reports as skipped or failed — the model never substitutes its own judgment for the missing verdict (see `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`, ticket 0043 precedent).
+
+---
+
 ## Reference
 
 - **Operational reference** (status transitions, gate suites, repair loop, memory contract, artifact limits): `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`

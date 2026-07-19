@@ -1,7 +1,7 @@
 # harness-combined/tests/test_ticket_commit_guard.py
+import importlib.util
 import subprocess
 from pathlib import Path
-import importlib.util
 
 SPEC = importlib.util.spec_from_file_location(
     "ticket_commit_guard", Path(__file__).parent.parent / "hooks" / "ticket_commit_guard.py"

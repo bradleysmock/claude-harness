@@ -37,9 +37,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from models import GateError, GateResult
-
 from gates.log_writer import LogWriter
+from models import GateError, GateResult
 
 #: A directory-mode gate function: takes the directory under test, returns a result.
 GateFn = Callable[[str], GateResult]

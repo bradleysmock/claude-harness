@@ -23,13 +23,13 @@ from gates.comment_deduplicator import (
 )
 from gates.critic_finding_parser import parse_critic_findings
 from gates.finding import (
+    PR,
     DeduplicationFailed,
     Finding,
     GhUnavailable,
     NoPRFound,
     NotAuthenticated,
     PostResult,
-    PR,
     validate_finding,
 )
 from gates.finding_parser import parse_gate_findings

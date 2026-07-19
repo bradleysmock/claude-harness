@@ -26,7 +26,6 @@ from gates.log_writer import LogWriter
 from gates.scheduler import GateScheduler
 from models import GateError, GateResult
 
-
 # ── Fixtures / helpers ────────────────────────────────────────────────────────
 
 def _ok(name: str) -> GateResult:

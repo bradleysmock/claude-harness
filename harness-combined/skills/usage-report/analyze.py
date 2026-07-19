@@ -18,8 +18,8 @@ import collections
 import datetime as dt
 import glob
 import json
-import re
 import os
+import re
 import statistics
 
 # Notional list prices, USD per 1M tokens: (input, output, cache_read).

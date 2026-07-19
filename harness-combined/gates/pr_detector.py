@@ -15,7 +15,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from gates.finding import GhUnavailable, NoPRFound, NotAuthenticated, PR
+from gates.finding import PR, GhUnavailable, NoPRFound, NotAuthenticated
 
 logger = logging.getLogger(__name__)
 

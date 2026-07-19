@@ -27,13 +27,13 @@ from pathlib import Path
 
 from gates.comment_deduplicator import fetch_existing_hashes, hash_for, marker_for
 from gates.finding import (
+    PR,
     DeduplicationFailed,
     Finding,
     GhUnavailable,
     NoPRFound,
     NotAuthenticated,
     PostResult,
-    PR,
     validate_finding,
 )
 
@@ -187,7 +187,10 @@ def post_findings(
         _dump_to_terminal(findings)
         return PostResult(posted=0, skipped=0)
 
-    from gates.pr_detector import detect_pr, fetch_diff_lines  # local: keep model import cheap
+    from gates.pr_detector import (  # local: keep model import cheap
+        detect_pr,
+        fetch_diff_lines,
+    )
 
     pr = detect_pr(cwd=cwd)
     match pr:

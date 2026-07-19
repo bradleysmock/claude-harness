@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import gates._baseline as _bl
 from gates import (
     GateTimeoutConfig,
     ProcessResult,
@@ -18,7 +19,6 @@ from gates import (
     find_config_root,
     run_dir_gates_scheduled,
 )
-import gates._baseline as _bl
 from gates._scope import GateSpec, has_scope_match
 from models import GateError, GateResult
 
