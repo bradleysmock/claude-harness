@@ -84,16 +84,45 @@ only — never product code, and **never merged into `main`**. Contents:
   exactly as today — this preserves the current coarse/fine split and keeps the
   ledger contention-free (only lifecycle boundaries write to it).
 
+### 1a. Push invariant — the ledger is never local-only
+
+**Every `.harness-tickets` mutation commits AND pushes to origin before the
+operation returns.** There is no such thing as a locally-appended ledger line that
+hasn't been published: the origin ref *is* the coordination point, so a local-only
+append reserves nothing and races the next writer. This applies to every event
+type — `claim`, `delivered`, `cancelled`, `abandoned`, `reopened` — not just
+claims.
+
+Because origin is the arbiter, a push can be **rejected** (non-fast-forward: a
+concurrent writer advanced `origin/.harness-tickets` first). The rejection handling
+depends on the event:
+
+- **`claim` — renumber and retry.** A rejection means the number this writer chose
+  was taken by whoever pushed first. Re-fetch `origin/.harness-tickets`, recompute
+  `number = max(claim.number) + 1` against the now-newer ledger (this yields a
+  *different, higher* number), re-append, push again. Loop with bounded exponential
+  backoff (the current 5-retry cap). The branch/worktree are created only after the
+  winning push, so a renumbered retry leaves no orphan (create-after-push).
+- **All other events — rebase the append and retry, same number.** `delivered` /
+  `cancelled` / etc. are not allocating a number, so a rejection is just a
+  concurrent append: re-fetch, re-apply this one line on top of the newer ledger,
+  push again. The event's `number` never changes; the append is idempotent by
+  `(event, number)` so a double-retry can't duplicate it.
+
+The helper encapsulates this loop so no command has to open-code fetch/append/push.
+No ledger write is ever left unpushed on turn end — the `ticket_commit_guard` Stop
+hook (§7) blocks the turn on a local-only or unpushed ledger state.
+
 ### 2. Claim becomes a `.harness-tickets` transaction
 
 `ticket.py: claim` changes from "commit stub to `main`, push first-wins" to:
 
 1. `git fetch origin .harness-tickets` (create locally if absent — see §6).
 2. Read `ledger.jsonl`; compute `number = max(claim.number) + 1`.
-3. Append a `claim` event; commit on `.harness-tickets`; **push first-wins**.
-   - On a non-fast-forward rejection, another writer claimed concurrently:
-     re-fetch, recompute `number`, re-append, retry (bounded, exponential backoff —
-     mirrors the current 5-retry renumber loop).
+3. Append a `claim` event; commit on `.harness-tickets`; **push first-wins**. On a
+   rejected push, **renumber and retry** per the §1a push invariant (re-fetch,
+   recompute the next number against the newer ledger, re-append, push; bounded
+   backoff).
 4. **Only after the winning ledger push** (create-after-push, unchanged principle):
    create branch `ticket/XXXX-<slug>` off `main` HEAD and worktree
    `.worktrees/XXXX-<slug>`, and write the `status: claimed` stub **on the branch**
@@ -184,7 +213,10 @@ should be code-only.
   ticket dir staged for a `main` commit.
 - **`ticket_commit_guard` (Stop hook)** extends: a claim is incomplete unless its
   `.harness-tickets` ledger line was pushed *and* the branch stub committed — block
-  the turn on a half-claim. It still scans every worktree for uncommitted
+  the turn on a half-claim. More generally, block the turn on **any local
+  `.harness-tickets` commit that is not on `origin/.harness-tickets`** (an unpushed
+  ledger mutation of any event type — §1a): a locally-appended-but-unpushed ledger
+  reserves nothing and will collide. It still scans every worktree for uncommitted
   branch-only ticket dirs (unchanged).
 
 ## Consequence: cross-cutting queries change their source of truth
@@ -253,7 +285,9 @@ Engine tests (`tests/`, mirroring `test_ticket_archiving.py`):
    the orphan branch; migration seeds the ledger from existing `.tickets/*` and
    `completed/*`; `next_number` continues the sequence without collision.
 6. **Guard:** an attempt to merge `.harness-tickets` into `main`, or to stage an
-   in-flight `.tickets/XXXX/` dir onto `main`, is blocked.
+   in-flight `.tickets/XXXX/` dir onto `main`, is blocked; and a turn ending with a
+   local `.harness-tickets` commit not present on `origin/.harness-tickets` (an
+   unpushed ledger mutation) is blocked.
 
 ## Open decisions for Checkpoint 1
 
