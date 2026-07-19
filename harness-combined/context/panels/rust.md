@@ -1,6 +1,6 @@
 ## Rust Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Niko Matsakis** — Rust language team lead; ownership and borrowing model, lifetimes, async runtime semantics, "fearless concurrency"
 - **Jon Gjengset** — *Rust for Rustaceans*; idiomatic API design, trait and lifetime patterns, when `unsafe` is justified

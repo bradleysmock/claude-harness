@@ -1,6 +1,6 @@
 ## Performance Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Brendan Gregg** — *Systems Performance*; methodology, USE/RED, profiling, "know the cost of every operation"
 - **Martin Thompson** — Aeron / Disruptor author; mechanical sympathy, cache behavior, lock-free design, "measure, don't guess"

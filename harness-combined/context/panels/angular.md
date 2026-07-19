@@ -1,6 +1,6 @@
 ## Angular Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md`. TypeScript-level concerns (type discipline, async correctness, ESM/CJS) defer to the TypeScript/JS panel; this panel covers Angular-specific machinery — change detection, signals, dependency injection, RxJS lifecycle, standalone components, and the migration surface between legacy and modern Angular.*
+*Activation is governed by the trigger table in `context/panels/triggers.md`. TypeScript-level concerns (type discipline, async correctness, ESM/CJS) defer to the TypeScript/JS panel; this panel covers Angular-specific machinery — change detection, signals, dependency injection, RxJS lifecycle, standalone components, and the migration surface between legacy and modern Angular.*
 
 - **Minko Gechev** — Angular framework team lead; signals, standalone components, change detection, the post-NgModule era; canonical voice on what "modern Angular" actually means
 - **Ben Lesh** — RxJS lead maintainer; observable lifecycle, subscription management, hot vs. cold semantics, the operator vocabulary that Angular codebases live and die by

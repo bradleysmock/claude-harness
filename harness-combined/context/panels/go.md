@@ -1,6 +1,6 @@
 ## Go Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Rob Pike** — Go language co-author; simplicity over cleverness, orthogonal primitives, "clear is better than clever"
 - **William Kennedy** — *Ultimate Go*; idiomatic Go semantics, concurrency patterns, the runtime model

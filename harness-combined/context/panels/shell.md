@@ -1,6 +1,6 @@
 ## Shell & Bash Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Greg Wooledge** — maintainer of BashFAQ and the Bash Pitfalls page (mywiki.wooledge.org); the de facto encyclopedia of "things shell scripts get wrong"
 - **Chet Ramey** — bash maintainer (Case Western Reserve); POSIX vs bash semantics, shell internals, what the standard actually says

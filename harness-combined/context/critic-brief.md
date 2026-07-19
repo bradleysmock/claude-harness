@@ -10,11 +10,11 @@ You will be told whether this is a **design review** (pre-implementation, readin
 
 Read `${CLAUDE_PLUGIN_ROOT}/context/panels/core.md` first. It is always active.
 
-Then determine which additional panels apply by consulting the trigger table in `${CLAUDE_PLUGIN_ROOT}/skills/critique/SKILL.md` (Step 1 — Determine Active Panels). That table is the single source of truth for panel activation across the harness — it covers 29 panels including all language, framework, security, data, and operations lenses, with composite triggers (file extensions, dependency manifests, import patterns, inline-content detection).
+Then determine which additional panels apply by running `panel_detect.py --root <project_root> <files...>` against the canonical trigger data in `${CLAUDE_PLUGIN_ROOT}/context/panels/triggers.md`. That file is the single source of truth for panel activation across the harness — one entry per panel file in `context/panels/` (excluding Core, always active, and Secondary, on-demand), with typed triggers (file globs, manifest presence, dependency names, path keywords, content patterns) plus a `judgment` field for triggers that are irreducibly a model call.
 
-For **code review** (post-implementation), apply the trigger table against the files in scope.
+For **code review** (post-implementation), run the script against the files in scope; `active` names the panels to load. For each entry in `candidates`, disposition it (activate or defer) with a one-line reason. If `skipped` is non-empty, surface it.
 
-For **design review** (pre-implementation, reading problem.md / requirements.md / solution.md), infer file scope from solution.md's intended changes — what languages, frameworks, and integration points it proposes touching — and apply the trigger table against that inferred scope.
+For **design review** (pre-implementation, reading problem.md / requirements.md / solution.md), infer file scope from solution.md's intended changes — what languages, frameworks, and integration points it proposes touching — then run the script with `--design` against that inferred scope; root-evaluable triggers (manifest presence, root-manifest dependencies) still activate deterministically, and file-content-dependent triggers surface as candidates for you to judge rather than being silently dropped.
 
 Read only the panel files for active panels. Core is always active. Do not read panel files for inactive panels.
 

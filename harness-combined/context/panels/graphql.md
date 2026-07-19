@@ -1,6 +1,6 @@
 ## GraphQL Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel. Generic HTTP correctness (status codes, caching, versioning) lives in `http-api.md`; this panel covers the GraphQL-specific layer on top.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel. Generic HTTP correctness (status codes, caching, versioning) lives in `http-api.md`; this panel covers the GraphQL-specific layer on top.*
 
 - **Lee Byron** — co-creator of GraphQL; author of DataLoader; schema design and the execution model
 - **Marc-André Giroux** — *Production Ready GraphQL*; schema evolution, per-field authorization, and query-cost defense at scale

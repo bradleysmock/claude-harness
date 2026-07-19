@@ -1,6 +1,6 @@
 ## Infrastructure as Code Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Kief Morris** — *Infrastructure as Code*; pipeline-driven infra, immutable infrastructure, environment parity
 - **Kelsey Hightower** — Kubernetes contributor, *Kubernetes the Hard Way*; pragmatic distributed systems, least configuration

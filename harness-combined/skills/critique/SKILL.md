@@ -11,43 +11,21 @@ Conduct a structured expert critique. Read every file in scope before writing a 
 
 ## Step 1: Determine Active Panels
 
-Based on the files in scope, determine which panels apply. Announce the active panels before reading any code or panel files.
-
 `${CLAUDE_PLUGIN_ROOT}` is the root of the installed plugin and is injected at invocation time. If unset, resolve it as the directory containing this skill file.
 
-| Files in scope | Panel | File |
-|----------------|-------|------|
-| Any file | **Core** | `${CLAUDE_PLUGIN_ROOT}/context/panels/core.md` |
-| `**/*.py`, or `pyproject.toml` / `setup.py` / `setup.cfg` / `requirements.txt` present | **Python** | `${CLAUDE_PLUGIN_ROOT}/context/panels/python.md` |
-| `**/*.ts`, `**/*.tsx`, `**/*.js`, `**/*.mjs`, `**/*.cjs`, `package.json`, `tsconfig.json` | **TypeScript/JS** | `${CLAUDE_PLUGIN_ROOT}/context/panels/typescript.md` |
-| `@angular/core` in `package.json`; `angular.json`; `**/*.component.{ts,html}`, `**/*.service.ts`, `**/*.module.ts`, `**/*.directive.ts`, or `**/*.pipe.ts` in scope | **Angular** | `${CLAUDE_PLUGIN_ROOT}/context/panels/angular.md` |
-| `react` in `package.json`; `**/*.{jsx,tsx}` with React imports or component patterns; `next.config.*`, `remix.config.*`, or `vite.config.*` with `@vitejs/plugin-react` | **React** | `${CLAUDE_PLUGIN_ROOT}/context/panels/react.md` |
-| `vue` in `package.json`; `**/*.vue` files; `nuxt.config.{js,ts}`; or `vite.config.*` with `@vitejs/plugin-vue` | **Vue** | `${CLAUDE_PLUGIN_ROOT}/context/panels/vue.md` |
-| `svelte` or `@sveltejs/kit` in `package.json`; `**/*.svelte` files; `svelte.config.{js,ts}`; or routes under `src/routes/**` matching SvelteKit conventions | **Svelte** | `${CLAUDE_PLUGIN_ROOT}/context/panels/svelte.md` |
-| `solid-js` or `@solidjs/start` in `package.json`; `**/*.{jsx,tsx}` with Solid imports (`createSignal`, `createEffect`, etc.); `vite.config.*` with `vite-plugin-solid`; or `app.config.{js,ts}` (SolidStart) | **SolidJS** | `${CLAUDE_PLUGIN_ROOT}/context/panels/solid.md` |
-| `**/*.go`, `go.mod`, `go.sum` | **Go** | `${CLAUDE_PLUGIN_ROOT}/context/panels/go.md` |
-| `**/*.rs`, `Cargo.toml`, `Cargo.lock` | **Rust** | `${CLAUDE_PLUGIN_ROOT}/context/panels/rust.md` |
-| `**/*.java`, `**/*.kt`, `**/*.kts`, `pom.xml`, `build.gradle*`, `settings.gradle*` | **JVM** | `${CLAUDE_PLUGIN_ROOT}/context/panels/jvm.md` |
-| `**/*.{c,h,cpp,cc,cxx,hpp,hh}`, `CMakeLists.txt`, `*.cmake` | **C/C++** | `${CLAUDE_PLUGIN_ROOT}/context/panels/cpp.md` |
-| `**/*.{sh,bash,zsh}`, files with a shell shebang, `.git/hooks/*`, `.husky/*`, shell snippets inside Makefiles/Dockerfiles/CI YAML | **Shell** | `${CLAUDE_PLUGIN_ROOT}/context/panels/shell.md` |
-| Files whose path contains `route`, `handler`, `controller`, `endpoint`, `view`, `api`, or `resources`; `**/*.go` with HTTP patterns; OpenAPI / AsyncAPI / Swagger specs (`openapi.{yaml,json}`, `swagger.{yaml,json}`); or `app/routes/**` | **HTTP/API** | `${CLAUDE_PLUGIN_ROOT}/context/panels/http-api.md` |
-| `**/*.graphql`, `**/*.gql`, `schema.graphql` / SDL files; `graphql`, `@apollo/*`, `apollo-server`, `graphql-yoga`, `relay`, `type-graphql`, `strawberry-graphql`, `ariadne`, or `gqlgen` in a dependency manifest; resolver maps / schema-first or code-first server definitions | **GraphQL** | `${CLAUDE_PLUGIN_ROOT}/context/panels/graphql.md` |
-| `**/*.proto`; `grpc`, `@grpc/grpc-js`, `grpcio`, `google.golang.org/grpc`, `tonic`, or `grpc-java` in a dependency manifest; generated stubs (`*_pb2.py`, `*.pb.go`, `*_pb.ts`, `*_grpc.rb`); `buf.yaml` / `buf.gen.yaml` | **gRPC/Protobuf** | `${CLAUDE_PLUGIN_ROOT}/context/panels/grpc-protobuf.md` |
-| `**/*.cs`, `**/*.csproj`, `**/*.sln`, `**/*.fs`, `**/*.fsproj`, `**/*.vb`, `**/*.vbproj`; `Directory.Build.props`, `global.json`, `packages.config`, or `*.nuspec` in scope | **.NET** | `${CLAUDE_PLUGIN_ROOT}/context/panels/dotnet.md` |
-| HTMX is present in the project: `htmx` in a dependency manifest (`package.json`, `requirements.txt`, `pyproject.toml`, `Gemfile`), `hx-*` attributes in template files in scope, `hx-*` attributes in *string literals* inside files in scope (e.g., `render_template_string`, inline JSX templates, server-side HTML strings), or `htmx-ext-*` files in scope | **Hypermedia** | `${CLAUDE_PLUGIN_ROOT}/context/panels/hypermedia.md` |
-| OAuth / OIDC code (`oauth`, `openid`, `passport`, `authlib`, `auth.js`, `next-auth`, `@auth0/`, `lucia`, `keycloak`, `hydra`, IdentityServer); JWT libraries (`jsonwebtoken`, `jose`, `pyjwt`, `JJWT`); session management (`express-session`, `iron-session`, `flask-login`, `django.contrib.auth`); password hashing (`bcrypt`, `argon2`, `scrypt`, `passlib`); WebAuthn (`@simplewebauthn`, `py_webauthn`); authorization libraries (`oso`, `casbin`, `cerbos`, `opa`); SAML clients; routes matching `/login`, `/logout`, `/oauth/**`, `/token`, `/authorize`, `/userinfo`, `/.well-known/**` | **Identity** | `${CLAUDE_PLUGIN_ROOT}/context/panels/identity.md` |
-| Files importing cryptographic libraries — Python (`cryptography`, `pycryptodome`, `nacl`, `hmac`, `secrets`), Node (`crypto`, `noble-*`, `tweetnacl`, `libsodium-wrappers`), Go (`crypto/*`, `golang.org/x/crypto`, `filippo.io/age`), Java/Kotlin (`javax.crypto`, `java.security`, `BouncyCastle`, `Tink`), Rust (`ring`, `rustls`, `aes-gcm`, `chacha20poly1305`, `sodiumoxide`), Swift (`CryptoKit`); password-hash libraries (`bcrypt`, `argon2`, `scrypt`); TLS configuration code; signing / verification / encryption-at-rest code | **Cryptography** | `${CLAUDE_PLUGIN_ROOT}/context/panels/cryptography.md` |
-| `**/*.html`, `**/*.css`, `**/*.scss`, `**/*.jsx`, `**/*.tsx`, files under `static/`, `public/`, or `templates/`, or HTML markup inside string literals in any file in scope (e.g., `render_template_string` in Flask, inline templates in server-side handlers, JSX template literals) | **UI** | `${CLAUDE_PLUGIN_ROOT}/context/panels/ui.md` |
-| `@uswds/uswds` in a dependency manifest; `usa-*` classes anywhere in markup or string literals in scope (including inline templates inside server-side files); USWDS Sass entry points (`_uswds-theme*.scss`, `uswds-init.scss`); or files under `uswds*/` | **USWDS** | `${CLAUDE_PLUGIN_ROOT}/context/panels/uswds.md` |
-| Files importing LLM clients (`anthropic`, `openai`, `langchain`, `litellm`, `instructor`, `vercel/ai`, `langgraph`, `llama_index`, Bedrock / Vertex SDK calls); prompt template / system-prompt files; embedding / vector-store reads or writes (`pinecone`, `qdrant`, `weaviate`, `chroma`, `pgvector`); RAG pipelines; agent loops or tool-calling handlers; LLM evaluation harnesses or eval datasets | **AI/LLM** | `${CLAUDE_PLUGIN_ROOT}/context/panels/ai-llm.md` |
-| `.github/workflows/**`, `.gitlab-ci.yml`, `Jenkinsfile`, `Dockerfile*`, `Makefile`, `.pre-commit-config.yaml`, or dependency lockfiles | **CI/CD** | `${CLAUDE_PLUGIN_ROOT}/context/panels/cicd.md` |
-| `**/migrations/**`, `**/*.sql`, `**/schema.{rb,prisma,sql}`, ORM model files, or files constructing raw queries | **Database** | `${CLAUDE_PLUGIN_ROOT}/context/panels/database.md` |
-| Airflow (`dags/**/*.py`, `airflow.cfg`, files with `@dag`/`DAG(...)`); Dagster (`@asset`, `@op`, `Definitions`, `dagster.yaml`); Prefect (`@flow`, `@task`); dbt (`dbt_project.yml`, `models/**/*.sql`, `**/schema.yml`, `snapshots/`, `macros/`); Spark / PySpark / Beam pipelines; warehouse SQL (BigQuery, Snowflake, Redshift, Databricks); ML training/serving code (`scikit-learn`, `xgboost`, `torch`, `tensorflow`, `mlflow`, feature stores like Feast/Tecton) | **Data Engineering** | `${CLAUDE_PLUGIN_ROOT}/context/panels/data-engineering.md` |
-| `**/*.tf`, `**/*.tfvars`, K8s manifests (`apiVersion:`/`kind:`), Helm charts, CDK/Pulumi, Ansible, CloudFormation | **Infrastructure** | `${CLAUDE_PLUGIN_ROOT}/context/panels/infrastructure.md` |
-| `**/tests/**`, `**/__tests__/**`, `**/*_test.*`, `**/*.test.*`, `**/*.spec.*`, `conftest.py`, test runner configs | **Testing** | `${CLAUDE_PLUGIN_ROOT}/context/panels/testing.md` |
-| Service entry points, request handlers, jobs, queue consumers, or files configuring telemetry (otel, logging, Prometheus) | **Observability** | `${CLAUDE_PLUGIN_ROOT}/context/panels/observability.md` |
-| Hot-path code (request handlers, loops over user-scaled collections, batch jobs, render loops), benchmarks, profiler output | **Performance** | `${CLAUDE_PLUGIN_ROOT}/context/panels/performance.md` |
-| Service-to-service code: queue producers/consumers, RPC/HTTP clients to owned services, webhook handlers, retry/idempotency/saga logic | **Distributed** | `${CLAUDE_PLUGIN_ROOT}/context/panels/distributed.md` |
+Panel activation is deterministic, not a model judgment call. Run:
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/panel_detect.py" --root <project_root> <files in scope...>
+```
+
+against the canonical trigger data in `${CLAUDE_PLUGIN_ROOT}/context/panels/triggers.md`, and parse its JSON output before reading any code or panel files:
+
+- **`active`** — the panels to load, Core first. Announce these before reading any files.
+- **`candidates`** — panels whose activation is irreducibly a model call (a `judgment` trigger) or, in `--design` mode, a file-content-dependent trigger that could not be evaluated. For **each** candidate, disposition it — activate or defer — with a one-line reason, before reading code. Never silently drop a candidate.
+- **`skipped`** — files the script could not scan (oversize, unreadable, binary, missing, or outside `--root`). If non-empty, surface it in the report header (see Output Format below).
+
+See "Design-artifact mode" below for how this script invocation and the findings differ when the scope is design artifacts rather than code.
 
 Panels are additive. Examples:
 - A route handler in Python activates Core + Python + HTTP/API (+ Observability if it logs).
@@ -75,9 +53,9 @@ When more than five panels activate on a single review, prioritize findings by s
 
 **Inline-content rule.** Triggers describing markup, attributes, or class patterns ("`hx-*` attributes," "`usa-*` classes," HTML/CSS) apply to *string literals inside files in scope*, not only to files whose extension matches a template type. A Python route handler that calls `render_template_string('<div hx-swap-oob...>')` activates Hypermedia, UI, and (if applicable) USWDS in addition to the language and HTTP/API panels — the inline markup is the contract surface the panel reviews. Do not require markup to live in a `.html` file for the markup-aware panels to apply.
 
-**Considered-and-deferred panels.** When a panel is *almost* activated but the trigger is ambiguous (e.g., an inline-content pattern that appears only in a comment, or a single match in a test fixture), record it as deferred rather than silently dropping it. The report header has a "Panels considered, deferred" line for this — see Output Format below.
+**Considered-and-deferred panels.** `panel_detect.py`'s `candidates` list is the primary source for this, but a panel can also be *almost* activated by something the script can't see (e.g., an inline-content pattern that appears only in a comment, or a single match in a test fixture spotted while reading code). Record either kind as deferred rather than silently dropping it. The report header has a "Panels considered, deferred" line for this — see Output Format below.
 
-**Design-artifact mode.** When the files in scope are design artifacts — `problem.md`, `requirements.md`, `solution.md`, README-style design docs, RFCs, ADRs (architectural decision records) — treat this as a *design review* rather than a code review. Typical invocation: `/critique problem.md requirements.md solution.md`. Infer the intended file scope from the artifacts' content — what languages, frameworks, integration points, identity layers, data systems, or LLM tooling the design proposes touching — and apply the trigger table against that inferred scope. The same panel set fires; the lens is "is this design going to produce code that respects the panel's hazards?" rather than "does this code respect them?". Findings reference the artifact section (e.g., `solution.md § Auth flow`) rather than `file:line`. The Fix section names the design correction (e.g., "rework the auth section to specify Argon2id rather than 'a password hash'") rather than a code edit.
+**Design-artifact mode.** When the files in scope are design artifacts — `problem.md`, `requirements.md`, `solution.md`, README-style design docs, RFCs, ADRs (architectural decision records) — treat this as a *design review* rather than a code review. Typical invocation: `/critique problem.md requirements.md solution.md`. Infer the intended file scope from the artifacts' content — what languages, frameworks, integration points, identity layers, data systems, or LLM tooling the design proposes touching — then run `panel_detect.py --root <project_root> --design` (no file list) against that inferred scope. Root-evaluable triggers (manifest presence, root-manifest dependencies) still activate deterministically; file-content-dependent triggers surface as `candidates` for you to judge rather than being silently dropped. The same panel set fires; the lens is "is this design going to produce code that respects the panel's hazards?" rather than "does this code respect them?". Findings reference the artifact section (e.g., `solution.md § Auth flow`) rather than `file:line`. The Fix section names the design correction (e.g., "rework the auth section to specify Argon2id rather than 'a password hash'") rather than a code edit.
 
 The critic agent (`${CLAUDE_PLUGIN_ROOT}/agents/critic.md`) runs in design-mode automatically during `/problem` Phase 5; use `/critique` against design artifacts when you want a comprehensive on-demand review outside the SDLC pipeline — for example, against an existing project's design docs, against an RFC before it gets ticketed, or against a solution.md you want to re-evaluate after the original critic round.
 
@@ -175,6 +153,7 @@ BLOCKER and MAJOR findings become inline review comments on their `file:line`; M
   Active panels: [Core | + Python | + TypeScript/JS | + Angular | + React | + Vue | + Svelte | + SolidJS | + Go | + Rust | + JVM | + C/C++ | + Shell | + HTTP/API | + Hypermedia | + Identity | + Cryptography | + UI | + USWDS | + AI/LLM | + CI/CD | + Database | + Data Engineering | + Infrastructure | + Testing | + Observability | + Performance | + Distributed]
   Panels considered, deferred: [list of panels whose triggers were ambiguous, with one-line reason each — or "none"]
   Scope: [how scope was resolved — e.g. "since last critique (<base>..HEAD)", "uncommitted", "codebase", or the files/glob/ref given]
+  Skipped files: [panel_detect.py's `skipped` list, path + reason each — omit this line entirely when `skipped` is empty]
   Date: [today's date]
   Base commit: [`git rev-parse HEAD` at review time — the anchor a later "since last critique" run diffs from]
 ═══════════════════════════════════════════════════════

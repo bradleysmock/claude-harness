@@ -1,6 +1,6 @@
 ## Python Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Raymond Hettinger** — CPython core developer; idiomatic Python, stdlib-first design
 - **David Beazley** — *Python Cookbook*, *Python Essential Reference*; Python internals, asyncio architecture, coroutine lifecycle, CPython execution model

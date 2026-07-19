@@ -1,6 +1,6 @@
 ## gRPC & Protobuf Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel. Cross-service delivery concerns (queues, sagas, outbox) live in `distributed.md`; generic HTTP concerns live in `http-api.md`; this panel covers the protobuf wire contract and gRPC call semantics.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel. Cross-service delivery concerns (queues, sagas, outbox) live in `distributed.md`; generic HTTP concerns live in `http-api.md`; this panel covers the protobuf wire contract and gRPC call semantics.*
 
 - **Kenton Varda** — original Protocol Buffers v2 lead at Google; author of Cap'n Proto; wire-format and schema-evolution semantics
 - **Eric Anderson** — gRPC-Java tech lead and long-time gRPC maintainer; deadlines, retries, and channel/streaming lifecycle

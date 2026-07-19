@@ -1,6 +1,6 @@
 ## Database & Data Layer Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Martin Kleppmann** — *Designing Data-Intensive Applications*; storage engines, consistency models, transactions, replication
 - **Markus Winand** — *SQL Performance Explained*, use-the-index-luke.com; indexing strategy, query plans, predicate selectivity

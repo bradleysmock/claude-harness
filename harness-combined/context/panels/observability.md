@@ -1,6 +1,6 @@
 ## Observability Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Charity Majors** — co-founder of Honeycomb; *Observability Engineering*; high-cardinality structured events, debugging in production
 - **Cindy Sridharan** — *Distributed Systems Observability*; the three pillars and their relationships, sampling, instrumentation discipline

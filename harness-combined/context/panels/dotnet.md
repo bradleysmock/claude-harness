@@ -1,6 +1,6 @@
 ## .NET Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel. Generic HTTP correctness defers to `http-api.md` and raw SQL/ORM concerns to `database.md`; this panel covers .NET-specific machinery — async/await discipline, DI lifetimes, EF Core query behavior, and nullable reference types.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel. Generic HTTP correctness defers to `http-api.md` and raw SQL/ORM concerns to `database.md`; this panel covers .NET-specific machinery — async/await discipline, DI lifetimes, EF Core query behavior, and nullable reference types.*
 
 - **Stephen Cleary** — *Concurrency in C#*; the async/await authority — synchronization context, deadlocks, and cancellation
 - **David Fowler** — ASP.NET Core architect at Microsoft; author of the async and DI guidance the framework is built on

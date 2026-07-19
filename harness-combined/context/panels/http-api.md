@@ -1,6 +1,6 @@
 ## HTTP & API Design Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md`. For HTMX-specific hypermedia concerns see `hypermedia.md`; for GraphQL- and gRPC-specific concerns see `graphql.md` and `grpc-protobuf.md` — this panel covers the cross-cutting HTTP issues and defers deep idiom questions to those panels.*
+*Activation is governed by the trigger table in `context/panels/triggers.md`. For HTMX-specific hypermedia concerns see `hypermedia.md`; for GraphQL- and gRPC-specific concerns see `graphql.md` and `grpc-protobuf.md` — this panel covers the cross-cutting HTTP issues and defers deep idiom questions to those panels.*
 
 - **Roy Fielding** — author of the REST dissertation; HTTP/1.1 spec editor; the architectural constraints that make HTTP work
 - **Mark Nottingham** — IETF HTTPbis working group chair; HTTP semantics, caching, problem+json (RFC 7807), structured headers, conditional requests

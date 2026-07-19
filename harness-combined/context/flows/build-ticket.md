@@ -236,7 +236,7 @@ After the diff is shown, spawn the critic subagent (`critic`) with the following
 - **Ticket**: `XXXX-<slug>`
 - **Round**: 1
 
-The critic loads expert panels per the trigger table in `${CLAUDE_PLUGIN_ROOT}/skills/critique/SKILL.md` (driven by the worktree's file set), reads `gate-findings.md` if present, reads the worktree implementation + tests, reads `problem.md` / `requirements.md` / `solution.md` as the ticket baseline (for the requirements-coverage and solution-alignment checks in `critic-brief.md` Step 2.5), and produces structured BLOCKER / MAJOR / MINOR / OBS findings.
+The critic loads expert panels via `panel_detect.py` against the trigger data in `${CLAUDE_PLUGIN_ROOT}/context/panels/triggers.md` (driven by the worktree's file set), reads `gate-findings.md` if present, reads the worktree implementation + tests, reads `problem.md` / `requirements.md` / `solution.md` as the ticket baseline (for the requirements-coverage and solution-alignment checks in `critic-brief.md` Step 2.5), and produces structured BLOCKER / MAJOR / MINOR / OBS findings.
 
 Display the critic's structured report to the user verbatim.
 

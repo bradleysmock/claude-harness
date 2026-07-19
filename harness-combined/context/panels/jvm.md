@@ -1,6 +1,6 @@
 ## JVM (Java & Kotlin) Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Brian Goetz** — Java language architect; *Java Concurrency in Practice*; JMM, virtual threads, the disciplined concurrency model
 - **Joshua Bloch** — *Effective Java*; API design, immutability, the cost of inheritance, the discipline that distinguishes good Java from bad

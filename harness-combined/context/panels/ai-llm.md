@@ -1,6 +1,6 @@
 ## AI/LLM Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Simon Willison** — creator of Datasette; simonwillison.net; coined "prompt injection" in the LLM context (2022); the working authority on LLM-application security, tool-use trust boundaries, and the *lethal trifecta*
 - **Hamel Husain** — independent AI consultant; *Your AI Product Needs Evals*; the canonical voice on evaluation discipline — "look at your data," LLM-as-judge calibration, data flywheels

@@ -226,7 +226,7 @@ The `critique` skill loads domain-specialist panels based on the files in scope.
 | | `distributed` | Newman, Richardson | Queues, RPC, webhooks, sagas |
 | **Fallback** | `secondary` | Ramalho, Soueidan | Loaded on demand when primary panels reach an impasse |
 
-Panel files live in `context/panels/<name>.md`. The full trigger conditions, hazard tables, and synthesis rules are in `skills/critique/SKILL.md`. When more than five panels activate on a single review, findings are prioritized by severity across all panels rather than enumerated per panel.
+Panel files live in `context/panels/<name>.md`. The canonical, machine-parseable trigger conditions are in `context/panels/triggers.md`, evaluated deterministically by `panel_detect.py`; hazard tables and synthesis rules live in each panel file, and the review-behavior rules (deference, considered-and-deferred, design-artifact mode) are in `skills/critique/SKILL.md`. When more than five panels activate on a single review, findings are prioritized by severity across all panels rather than enumerated per panel.
 
 ---
 
@@ -284,7 +284,7 @@ harness-combined/
 ├── context/
 │   ├── critic-brief.md    ← Critic agent shared instructions
 │   ├── flows/             ← Mode-specific procedures loaded by /build, /write-spec, /deliver
-│   ├── panels/            ← 29 expert review panels — see "Expert review panels" section below
+│   ├── panels/            ← expert review panels + triggers.md (canonical activation data) — see "Expert review panels" section below
 │   └── rules/             ← Per-language code generation rules
 ├── agents/
 │   ├── critic.md          ← Critic subagent definition

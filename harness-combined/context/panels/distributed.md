@@ -1,6 +1,6 @@
 ## Distributed Systems Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
+*Activation is governed by the trigger table in `context/panels/triggers.md` — that table is the single source for the file patterns and dependency signals that load this panel.*
 
 - **Sam Newman** — *Building Microservices*, *Monolith to Microservices*; service boundaries, decomposition, the cost of distribution
 - **Chris Richardson** — *Microservices Patterns*; saga pattern, outbox, transactional messaging, idempotency

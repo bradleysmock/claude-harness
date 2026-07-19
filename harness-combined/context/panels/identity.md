@@ -1,6 +1,6 @@
 ## Identity, Authentication & Authorization Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md`. Generic HTTP correctness defers to HTTP/API; broad security concerns defer to Core; this panel covers the identity-specific machinery — OAuth/OIDC protocol correctness, token handling, session lifecycle, credential storage, and the authorization-enforcement-layer questions that are design-level rather than implementation-level.*
+*Activation is governed by the trigger table in `context/panels/triggers.md`. Generic HTTP correctness defers to HTTP/API; broad security concerns defer to Core; this panel covers the identity-specific machinery — OAuth/OIDC protocol correctness, token handling, session lifecycle, credential storage, and the authorization-enforcement-layer questions that are design-level rather than implementation-level.*
 
 - **Aaron Parecki** — author of *OAuth 2.0 Simplified*; lead editor of the OAuth 2.1 spec; co-chair of the IETF OAuth working group; the canonical "what the spec says to do today" voice — Authorization Code + PKCE for everyone, no implicit flow, no resource owner password grant
 - **Justin Richer** — lead author of *OAuth 2 in Action* (Manning); co-chair of IETF GNAP; one of the most experienced production OAuth/OIDC implementers; the canonical "what production OAuth actually looks like" voice — token introspection, scope design, multi-tenant identity, the operational tradeoffs

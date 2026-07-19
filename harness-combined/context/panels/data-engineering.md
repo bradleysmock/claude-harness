@@ -1,6 +1,6 @@
 ## Data Engineering, Analytics Engineering & ML Systems Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md`. Generic OLTP database concerns defer to the Database panel; this panel covers the analytical and ML-specific data layer where the cost profile, correctness model, and failure modes are different.*
+*Activation is governed by the trigger table in `context/panels/triggers.md`. Generic OLTP database concerns defer to the Database panel; this panel covers the analytical and ML-specific data layer where the cost profile, correctness model, and failure modes are different.*
 
 - **Maxime Beauchemin** — creator of Apache Airflow and Apache Superset; founder of Preset; the "functional data engineering" framing — idempotent tasks, immutable inputs, deterministic outputs, backfill as a first-class operation
 - **Tristan Handy** — founder of dbt Labs; the "analytics engineering" movement — analytics-as-software-engineering, model layering (staging → intermediate → marts), tests as first-class, the semantic layer as contract

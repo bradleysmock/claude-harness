@@ -25,7 +25,7 @@ Read `problem.md`, `requirements.md`, and `solution.md`. Derive the worktree pat
 
 ### Step 2 — Determine active panels
 
-Apply the trigger table in `${CLAUDE_PLUGIN_ROOT}/skills/critique/SKILL.md` (Step 1 — Determine Active Panels) against the worktree's files. Announce the active panels and any deferred panels (per the considered-and-deferred rule) before reading code. Core is always active.
+Run `panel_detect.py --root <project_root> <files...>` (files = the worktree's changed/implementation files) against the canonical trigger data in `${CLAUDE_PLUGIN_ROOT}/context/panels/triggers.md`, and parse its JSON output. `active` names the panels to load — Core is always first. For each panel in `candidates`, disposition it (activate or defer) with a one-line reason before reading code. If the response's `skipped` list is non-empty, surface it in the report header. Announce the active panels and any deferred candidates before reading code.
 
 ### Step 3 — Load panel definitions
 

@@ -1,6 +1,6 @@
 ## Applied Cryptography Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md`. Identity-protocol-level concerns (OAuth, OIDC, JWT-as-bearer-token usage) defer to the Identity panel; this panel covers the cryptographic primitives, algorithm choices, and protocol-construction discipline that sit underneath.*
+*Activation is governed by the trigger table in `context/panels/triggers.md`. Identity-protocol-level concerns (OAuth, OIDC, JWT-as-bearer-token usage) defer to the Identity panel; this panel covers the cryptographic primitives, algorithm choices, and protocol-construction discipline that sit underneath.*
 
 - **Filippo Valsorda** — long-time Go cryptography maintainer; creator of `age`, `mkcert`, and the canonical post-quantum Go libraries; the working voice on cryptographic engineering as systems engineering — "crypto should be boring," high-level APIs over primitives, constant-time as a default discipline rather than a special-case concern
 - **Matthew Green** — cryptographer at Johns Hopkins; *A Few Thoughts on Cryptographic Engineering* (blog); the working voice on protocol failure analysis — why real-world cryptographic schemes break, the gap between "the math is sound" and "this specific implementation is exploitable," and the cost of getting any of it wrong

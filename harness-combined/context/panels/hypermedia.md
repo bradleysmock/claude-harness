@@ -1,6 +1,6 @@
 ## Hypermedia & HTMX Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md`. Generic HTTP correctness (REST/OpenAPI, status codes, caching, content negotiation, versioning) lives in `http-api.md`; this panel covers the hypermedia layer on top.*
+*Activation is governed by the trigger table in `context/panels/triggers.md`. Generic HTTP correctness (REST/OpenAPI, status codes, caching, content negotiation, versioning) lives in `http-api.md`; this panel covers the hypermedia layer on top.*
 
 - **Carson Gross** — creator of HTMX; *Hypermedia Systems* (with Adam Stepinski and Deniz Akşimşek); hypermedia-driven architecture
 - **Mark Nottingham** — IETF HTTPbis working group chair; HTTP semantics applied to hypermedia partials (Cache-Control on fragments, redirect vs. swap, Content-Type for partials). His broader HTTP positions live in `http-api.md`; here he is invoked where partial-response semantics differ from whole-resource semantics.

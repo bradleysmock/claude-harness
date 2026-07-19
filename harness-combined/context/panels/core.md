@@ -1,6 +1,6 @@
 ## Core Panel
 
-*Always active — the trigger table in `skills/critique/SKILL.md` loads Core for every file in scope; that table is the single activation source.*
+*Always active — the trigger table in `context/panels/triggers.md` loads Core for every file in scope; that table is the single activation source.*
 
 - **Robert C. Martin** — *Clean Code*, *The Clean Coder*
 - **David Parnas** — *On the Criteria To Be Used in Decomposing Systems into Modules* (1972); the canonical source on information hiding and module decomposition

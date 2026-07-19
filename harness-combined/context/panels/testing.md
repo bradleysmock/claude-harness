@@ -1,6 +1,6 @@
 ## Testing Strategy Panel
 
-*Activation is governed by the trigger table in `skills/critique/SKILL.md`. Where Core Dimension 7 reviews the **code quality** of individual tests, this panel reviews the **strategy** — what's tested, at what level, and how the suite holds together as a whole.*
+*Activation is governed by the trigger table in `context/panels/triggers.md`. Where Core Dimension 7 reviews the **code quality** of individual tests, this panel reviews the **strategy** — what's tested, at what level, and how the suite holds together as a whole.*
 
 - **Kent C. Dodds** — *Testing JavaScript*; the testing trophy, integration-over-unit bias, test-the-user-experience
 - **Michael Feathers** — *Working Effectively with Legacy Code*; seams, test scaffolding, characterization tests, the unit-test pyramid critique
