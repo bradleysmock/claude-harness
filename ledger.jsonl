@@ -122,3 +122,4 @@
 {"event":"claim","number":70,"slug":"status-stale-ledger-source-nested-worktree","title":"Status/stale ledger-sourced ticket discovery + nesting-aware worktree join","owner":"bradleysmock@gmail.com","branch":"ticket/0070-status-stale-ledger-source-nested-worktree","ts":"2026-07-20T02:31:52+00:00"}
 {"event":"delivered","number":58,"sha":"9c0e7fc6a7d11e3f44b18bc0815e45438068e533","ts":"2026-07-20T02:43:14+00:00"}
 {"event":"delivered","number":55,"sha":"2afe5990fd43bb706d21924ffbde1c54233af1bc","ts":"2026-07-20T02:47:00+00:00"}
+{"event":"delivered","number":69,"sha":"b93df1c329c1dfb1b33ae9e9133f713336a48f01","ts":"2026-07-20T02:56:27+00:00"}
