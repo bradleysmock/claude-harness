@@ -119,3 +119,4 @@
 {"event":"delivered","number":57,"sha":"34b253f5b53d68a2d34046df3e55ce8e546cb2d2","ts":"2026-07-19T20:19:56+00:00"}
 {"event":"claim","number":69,"slug":"ticket-cli-deliver-subcommand","title":"Ticket CLI deliver subcommand","owner":"bradleysmock@gmail.com","branch":"ticket/0069-ticket-cli-deliver-subcommand","ts":"2026-07-19T20:45:18+00:00"}
 {"event":"delivered","number":56,"sha":"65e68798f5ebe2e724edf4bd72b52179c1a7dfe8","ts":"2026-07-19T21:29:40+00:00"}
+{"event":"claim","number":70,"slug":"status-stale-ledger-source-nested-worktree","title":"Status/stale ledger-sourced ticket discovery + nesting-aware worktree join","owner":"bradleysmock@gmail.com","branch":"ticket/0070-status-stale-ledger-source-nested-worktree","ts":"2026-07-20T02:31:52+00:00"}
