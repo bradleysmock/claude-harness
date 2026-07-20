@@ -132,3 +132,4 @@
 {"event":"delivered","number":66,"sha":"5f2423cd668471e6a7e66a263e0f97ed224984b6","ts":"2026-07-20T18:29:24+00:00"}
 {"event":"claim","number":72,"slug":"bandit-json-progress-bar-parse-bug","title":"Security gate silently swallows bandit findings when bandit's stdout progress bar breaks JSON parsing","owner":"bradleysmock@gmail.com","branch":"ticket/0072-bandit-json-progress-bar-parse-bug","ts":"2026-07-20T18:39:51+00:00"}
 {"event":"delivered","number":64,"sha":"25b0cf0b23127f75b9d6ef8da4e86277bb9eebe4","ts":"2026-07-20T18:42:38+00:00"}
+{"event":"claim","number":73,"slug":"commit-lint-polish-type-missing","title":"Craft-polish commits use a 'polish:' prefix that commit_lint's default allowed types don't recognize","owner":"bradleysmock@gmail.com","branch":"ticket/0073-commit-lint-polish-type-missing","ts":"2026-07-20T18:56:56+00:00"}
