@@ -403,6 +403,45 @@ def _ledger_subject(events: list[dict]) -> str:
     return f"chore(harness-tickets): {event}"
 
 
+def _project_offset(repo: Path) -> Path:
+    """Relative path from the git top-level down to `repo` — Path('.') when
+    `repo` IS the top-level (the flat-repo case), or the offset (e.g.
+    `harness-combined`) when `repo` is a subdirectory of a larger checkout.
+    A `git worktree add` always checks out the WHOLE repo, so a worktree's
+    real ticket dir sits `<offset>` deeper than `repo`'s own `.tickets/` —
+    see `_worktree_ticket_dir`, the single join point every call site below
+    goes through instead of re-deriving this by hand."""
+    result = git(repo, "rev-parse", "--show-toplevel", check=False)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"_project_offset: git rev-parse --show-toplevel failed for {repo}: "
+            f"{result.stderr.strip()}"
+        )
+    toplevel = Path(result.stdout.strip())
+    try:
+        return repo.resolve().relative_to(toplevel.resolve())
+    except ValueError as exc:
+        raise RuntimeError(
+            f"_project_offset: {repo} is not inside git top-level {toplevel}"
+        ) from exc
+
+
+def _join_ticket_dir(worktree: Path, offset: Path, slug: str) -> Path:
+    """Pure join formula behind `_worktree_ticket_dir` — split out so a caller
+    that already holds a precomputed `offset` (e.g. `list_tickets`'s per-ticket
+    loop, which hoists `_project_offset` once for NFR-2) can reuse the exact
+    same join logic without re-invoking `_project_offset` per ticket."""
+    return worktree / offset / ".tickets" / slug
+
+
+def _worktree_ticket_dir(repo: Path, worktree: Path, slug: str) -> Path:
+    """The corrected, nesting-aware `.tickets/<slug>` dir inside `worktree` —
+    the single join point every call site goes through: either directly (a
+    one-off lookup), or via `_join_ticket_dir` with a hoisted `offset` (a
+    per-ticket loop)."""
+    return _join_ticket_dir(worktree, _project_offset(repo), slug)
+
+
 def _write_stub(ticket_dir: Path, number_str: str, slug: str, title: str, who: str) -> None:
     ticket_dir.mkdir(parents=True, exist_ok=True)
     (ticket_dir / "status.md").write_text(
@@ -427,12 +466,13 @@ def _create_branch_and_worktree(
     worktree = repo / ".worktrees" / full_slug
     if not git(repo, "branch", "--list", branch, check=False).stdout.strip():
         git(repo, "worktree", "add", str(worktree), "-b", branch, check=False)
-    ticket_dir = worktree / ".tickets" / full_slug
+    ticket_dir = _worktree_ticket_dir(repo, worktree, full_slug)
     if (ticket_dir / "status.md").exists():
         return  # stub already present on the branch (resume)
     number_str = full_slug[:4]
     _write_stub(ticket_dir, number_str, slug, title, who)
-    git(worktree, "add", "--", f".tickets/{full_slug}/")
+    pathspec = ticket_dir.relative_to(worktree).as_posix() + "/"
+    git(worktree, "add", "--", pathspec)
     _commit(worktree, f"chore(ticket): {number_str} claim")
     if push and _has_remote(repo):
         _push_current_branch(worktree)
@@ -945,7 +985,7 @@ def _read_ticket_docs(repo: Path, full_slug: str, branch: str) -> dict[str, str]
     """Snapshot a ticket's docs (relpath → text) from its worktree if present,
     else from its branch ref. Empty when neither is available."""
     docs: dict[str, str] = {}
-    worktree_dir = repo / ".worktrees" / full_slug / ".tickets" / full_slug
+    worktree_dir = _worktree_ticket_dir(repo, repo / ".worktrees" / full_slug, full_slug)
     if worktree_dir.is_dir():
         for path in sorted(worktree_dir.rglob("*")):
             if path.is_file():
@@ -1048,7 +1088,7 @@ def reopen(repo: Path, ident: str, *, push: bool = True) -> str:
     if not git(repo, "branch", "--list", branch, check=False).stdout.strip():
         git(repo, "worktree", "add", str(repo / ".worktrees" / full_slug), "-b", branch, check=False)
     worktree = repo / ".worktrees" / full_slug
-    ticket_dir = worktree / ".tickets" / full_slug
+    ticket_dir = _worktree_ticket_dir(repo, worktree, full_slug)
     ticket_dir.mkdir(parents=True, exist_ok=True)
     if not docs:
         _write_stub(ticket_dir, full_slug[:4], record["slug"], title, who)
@@ -1137,6 +1177,9 @@ def list_tickets(repo: Path) -> list[dict]:
         elif ev == "reopened":
             terminal.pop(num, None)  # reopened → back in flight
 
+    # Hoisted once (NFR-2) — never re-derived per ticket in the loop below.
+    offset = _project_offset(repo)
+
     out: list[dict] = []
     for num in sorted(claims):
         claim_rec = claims[num]
@@ -1146,7 +1189,10 @@ def list_tickets(repo: Path) -> list[dict]:
         if term == "delivered":
             continue  # surfaced from completed/ below, with its final docs
         fields: dict[str, str] = {}
-        worktree_status = repo / ".worktrees" / full / ".tickets" / full / "status.md"
+        worktree = repo / ".worktrees" / full
+        corrected_status = _join_ticket_dir(worktree, offset, full) / "status.md"
+        legacy_status = worktree / ".tickets" / full / "status.md"
+        worktree_status = corrected_status if corrected_status.exists() else legacy_status
         if worktree_status.exists():
             fields = parse_status(worktree_status)
         out.append(
@@ -1160,6 +1206,7 @@ def list_tickets(repo: Path) -> list[dict]:
                 "depends_on": fields.get("depends-on", fields.get("depends_on", "")),
                 "branch": claim_rec.get("branch", f"ticket/{full}"),
                 "completed": term in ("cancelled", "abandoned"),
+                "updated": fields.get("updated", ""),
             }
         )
 
@@ -1181,6 +1228,7 @@ def list_tickets(repo: Path) -> list[dict]:
                     "effort": fields.get("effort"),
                     "depends_on": fields.get("depends-on", fields.get("depends_on", "")),
                     "branch": fields.get("branch", f"ticket/{child.name}"),
+                    "updated": fields.get("updated", ""),
                     "completed": True,
                 }
             )

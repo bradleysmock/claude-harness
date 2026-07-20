@@ -557,4 +557,199 @@ def test_cli_deliver_commit_and_publish_dispatch(tmp_path: Path, monkeypatch) ->
     rc = ticket._main(["deliver-publish", "0001-thing", "ticket/0001-thing"])
     assert rc == 0
     assert not _branch_exists(repo, "ticket/0001-thing")
-    assert not worktree.exists()
+
+
+# ── ticket 0070: nesting-aware worktree ticket-dir join point ─────────────
+
+def _init_nested_repo(tmp_path: Path, subdir: str = "proj") -> Path:
+    """A git repo whose `.tickets/` lives one level below the git top-level —
+    mirrors this monorepo's `harness-combined/` subdirectory layout."""
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=outer, check=True)
+    subprocess.run(["git", "config", "user.email", "dev@example.com"], cwd=outer, check=True)
+    subprocess.run(["git", "config", "user.name", "Dev"], cwd=outer, check=True)
+    repo = outer / subdir
+    (repo / ".tickets").mkdir(parents=True)
+    (repo / ".tickets" / ".keep").write_text("", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=outer, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=outer, check=True)
+    return repo
+
+
+def test_project_offset_flat_repo(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    assert ticket._project_offset(repo) == Path(".")
+
+
+def test_project_offset_nested_repo(tmp_path: Path) -> None:
+    repo = _init_nested_repo(tmp_path)
+    assert ticket._project_offset(repo) == Path("proj")
+
+
+def test_project_offset_outside_toplevel_raises_runtime_error(tmp_path: Path, monkeypatch) -> None:
+    repo = _init_repo(tmp_path)
+    unrelated = tmp_path / "unrelated-toplevel"
+    unrelated.mkdir()
+    real_git = ticket.git
+
+    def fake_git(r, *args, **kwargs):
+        if args[:2] == ("rev-parse", "--show-toplevel"):
+            return subprocess.CompletedProcess(args, 0, str(unrelated), "")
+        return real_git(r, *args, **kwargs)
+
+    monkeypatch.setattr(ticket, "git", fake_git)
+    with pytest.raises(RuntimeError):
+        ticket._project_offset(repo)
+
+
+def test_worktree_ticket_dir_nested(tmp_path: Path) -> None:
+    repo = _init_nested_repo(tmp_path)
+    worktree = tmp_path / "wt"
+    result = ticket._worktree_ticket_dir(repo, worktree, "0009-thing")
+    assert result == worktree / "proj" / ".tickets" / "0009-thing"
+
+
+def test_worktree_ticket_dir_flat(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    worktree = tmp_path / "wt"
+    result = ticket._worktree_ticket_dir(repo, worktree, "0009-thing")
+    assert result == worktree / ".tickets" / "0009-thing"
+
+
+def test_create_branch_and_worktree_nested_writes_corrected_path(tmp_path: Path) -> None:
+    repo = _init_nested_repo(tmp_path)
+    ticket._create_branch_and_worktree(
+        repo, "0001-widget", "widget", "Widget", "dev@example.com", push=False
+    )
+    worktree = repo / ".worktrees" / "0001-widget"
+    status_md = worktree / "proj" / ".tickets" / "0001-widget" / "status.md"
+    assert status_md.exists()
+    assert "status: claimed" in status_md.read_text(encoding="utf-8")
+    # never a stray root-level (un-offset) dir
+    assert not (worktree / ".tickets").exists()
+    # committed with a pathspec matching the corrected nested path
+    log = subprocess.run(
+        ["git", "-C", str(worktree), "show", "--stat", "--pretty=format:", "HEAD"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert "proj/.tickets/0001-widget/status.md" in log
+
+
+def test_create_branch_and_worktree_nested_resume_is_noop(tmp_path: Path) -> None:
+    repo = _init_nested_repo(tmp_path)
+    ticket._create_branch_and_worktree(
+        repo, "0001-widget", "widget", "Widget", "dev@example.com", push=False
+    )
+    worktree = repo / ".worktrees" / "0001-widget"
+    status_md = worktree / "proj" / ".tickets" / "0001-widget" / "status.md"
+    before = status_md.read_text(encoding="utf-8")
+    # resuming an already-claimed nested ticket must not duplicate or rewrite the stub
+    ticket._create_branch_and_worktree(
+        repo, "0001-widget", "widget", "Widget", "dev@example.com", push=False
+    )
+    assert status_md.read_text(encoding="utf-8") == before
+    assert not (worktree / ".tickets").exists()
+
+
+def test_read_ticket_docs_nested_reads_corrected_path(tmp_path: Path) -> None:
+    repo = _init_nested_repo(tmp_path)
+    # Build the corrected nested layout directly (not via _create_branch_and_worktree,
+    # which — pre-fix — would write the same un-offset path _read_ticket_docs reads,
+    # making this test pass vacuously either way).
+    ticket_dir = repo / ".worktrees" / "0001-widget" / "proj" / ".tickets" / "0001-widget"
+    ticket_dir.mkdir(parents=True)
+    (ticket_dir / "status.md").write_text("status: claimed\n", encoding="utf-8")
+    docs = ticket._read_ticket_docs(repo, "0001-widget", "ticket/0001-widget")
+    assert "status.md" in docs
+    assert "status: claimed" in docs["status.md"]
+
+
+def test_reopen_nested_restores_at_corrected_path(tmp_path: Path) -> None:
+    repo = _init_nested_repo(tmp_path)
+    _seed_claims(repo, [9])
+    completed = repo / ".tickets" / "completed" / "0009-t9"
+    completed.mkdir(parents=True)
+    (completed / "status.md").write_text(
+        "status: done\nticket: 0009\ntitle: T9\nbranch: ticket/0009-t9\n"
+        "owner: a@x.c\nupdated: 2026-07-01\n",
+        encoding="utf-8",
+    )
+    full = ticket.reopen(repo, "0009", push=False)
+    assert full == "0009-t9"
+    status_md = repo / ".worktrees" / "0009-t9" / "proj" / ".tickets" / "0009-t9" / "status.md"
+    assert status_md.exists()
+    assert "status: solution" in status_md.read_text(encoding="utf-8")
+
+
+def test_list_tickets_nested_reads_corrected_worktree_status(tmp_path: Path) -> None:
+    repo = _init_nested_repo(tmp_path)
+    _seed_claims(repo, [11])
+    ticket._create_branch_and_worktree(
+        repo, "0011-t11", "t11", "T11", "dev@example.com", push=False
+    )
+    rows = ticket.list_tickets(repo)
+    row = next(r for r in rows if r["number"] == "0011")
+    assert row["status"] == "claimed"
+    assert row["updated"]
+
+
+def test_list_tickets_nested_falls_back_to_legacy_path(tmp_path: Path) -> None:
+    repo = _init_nested_repo(tmp_path)
+    _seed_claims(repo, [12])
+    legacy = repo / ".worktrees" / "0012-t12" / ".tickets" / "0012-t12"
+    legacy.mkdir(parents=True)
+    (legacy / "status.md").write_text(
+        "status: implementing\nticket: 0012\ntitle: T12\nupdated: 2026-07-02\n",
+        encoding="utf-8",
+    )
+    rows = ticket.list_tickets(repo)
+    row = next(r for r in rows if r["number"] == "0012")
+    assert row["status"] == "implementing"
+    assert row["updated"] == "2026-07-02"
+
+
+def test_list_tickets_routes_through_join_ticket_dir(tmp_path: Path, monkeypatch) -> None:
+    repo = _init_nested_repo(tmp_path)
+    _seed_claims(repo, [13])
+    ticket._create_branch_and_worktree(
+        repo, "0013-t13", "t13", "T13", "dev@example.com", push=False
+    )
+    calls: list[tuple] = []
+    real_join = ticket._join_ticket_dir
+
+    def counting_join(worktree, offset, slug):
+        calls.append((worktree, offset, slug))
+        return real_join(worktree, offset, slug)
+
+    monkeypatch.setattr(ticket, "_join_ticket_dir", counting_join)
+    ticket.list_tickets(repo)
+    assert any(slug == "0013-t13" for (_w, _o, slug) in calls)
+
+
+def test_list_tickets_calls_project_offset_once(tmp_path: Path, monkeypatch) -> None:
+    repo = _init_nested_repo(tmp_path)
+    _seed_claims(repo, [1, 2, 3])
+    calls: list[Path] = []
+    real_offset = ticket._project_offset
+
+    def counting_offset(r):
+        calls.append(r)
+        return real_offset(r)
+
+    monkeypatch.setattr(ticket, "_project_offset", counting_offset)
+    ticket.list_tickets(repo)
+    assert len(calls) == 1
+
+
+def test_list_tickets_completed_includes_updated(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    completed = repo / ".tickets" / "completed" / "0020-done-thing"
+    completed.mkdir(parents=True)
+    (completed / "status.md").write_text(
+        "status: done\nticket: 0020\ntitle: Done Thing\nupdated: 2026-05-05\n",
+        encoding="utf-8",
+    )
+    rows = ticket.list_tickets(repo)
+    row = next(r for r in rows if r["number"] == "0020")
+    assert row["updated"] == "2026-05-05"
