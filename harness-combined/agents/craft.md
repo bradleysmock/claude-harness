@@ -20,7 +20,7 @@ You are **not** given any implementer reasoning, confidence framing, or self-ass
 
 ## The bounded taxonomy
 
-Every improvement you propose falls into **exactly one** of these seven categories — no others:
+Every improvement you propose falls into **exactly one** of these nine categories — no others:
 
 - `rename` — a name that misdescribes or under-describes what it holds/does (critic Dimension 3, naming precision).
 - `extract` — a block that should become its own named function/method (a distinct responsibility buried inline).
@@ -29,6 +29,8 @@ Every improvement you propose falls into **exactly one** of these seven categori
 - `delete` — noise to remove: a comment that narrates the *what*, a redundant restatement. Restrict deletion to comments and provably-dead-as-written noise; do not delete code whose removal could change behaviour.
 - `simplify` — a convoluted expression/branch that has an equivalent, plainer form (same result, fewer moving parts).
 - `error_handling` — a broad/silent catch that should be narrowed, or a missing-but-obvious guard — **only** where the change is behaviour-neutral on the tested paths.
+- `consistency` — an idiom that diverges from how the rest of the file/module does the same thing (a lone comprehension among for-loops, a lone camelCase name among snake_case), rewritten to match its neighbours.
+- `restraint` — a redundant or over-elaborate construct with a shorter logically-equivalent form (a condition that re-states a superstring it's already implied by, an unused parameter kept "just in case").
 
 If a change does not fit one category cleanly, do not propose it.
 
@@ -48,7 +50,7 @@ Your response is the entire deliverable. The parent agent does not see your reas
   "reasoning": "<brief craft read of the code: what is clean, what warrants polish>",
   "improvements": [
     {
-      "category": "rename | extract | inline | comment | delete | simplify | error_handling",
+      "category": "rename | extract | inline | comment | delete | simplify | error_handling | consistency | restraint",
       "location_hint": "<file + identifier/line the change touches>",
       "rationale": "<why, citing the specific identifier or line — behaviour must not change>"
     }

@@ -16,7 +16,10 @@ HARNESS_REF = ROOT / "context" / "harness-reference.md"
 README = ROOT / "README.md"
 GITIGNORE = ROOT / ".gitignore"
 
-TAXONOMY = ("rename", "extract", "inline", "comment", "delete", "simplify", "error_handling")
+TAXONOMY = (
+    "rename", "extract", "inline", "comment", "delete", "simplify", "error_handling",
+    "consistency", "restraint",
+)
 TERMINAL_STATUSES = ("converged", "max_iterations_reached", "disabled")
 
 
@@ -53,7 +56,7 @@ def test_target_docs_exist():
 
 # --- agents/craft.md — taxonomy, exact phrase, JSON order, asymmetric exposure ---
 
-def test_craft_agent_lists_seven_taxonomy_categories():
+def test_craft_agent_lists_nine_taxonomy_categories():
     content = CRAFT_AGENT.read_text()
     for cat in TAXONOMY:
         assert cat in content, f"craft.md must name the '{cat}' taxonomy category"

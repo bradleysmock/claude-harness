@@ -196,23 +196,7 @@ Commands in this plugin reference `${CLAUDE_PLUGIN_ROOT}`, which must resolve to
 
 ## Hooks
 
-This plugin ships a stop hook that runs automatically at the end of each Claude Code turn.
-
-### `hooks/stop_full_gate.py`
-
-**Trigger:** Claude Code's `stop` event (after every AI turn).
-
-**What it does:** Runs the full gate suite (lint, type-check, SAST, tests) on any worktree that is `review-ready`.
-
-**Session scoping via `.tickets/.active`:**
-- When `/implement` starts, it writes the current ticket slug to `.tickets/.active`.
-- The hook reads this file and gates **only that ticket's worktree**, preventing cross-session collisions when multiple tickets are in-flight simultaneously.
-- When `.tickets/.active` is absent (no session is running), the hook gates **all** `review-ready` worktrees.
-- `/merge` deletes `.tickets/.active` as part of cleanup (step 10).
-
-**Failure behavior:** If any gate fails, the hook exits with code 2 and prints failures to stderr. Claude Code surfaces this as a block — the session cannot complete until gates pass. The error message ends with: *"Fix the failures before presenting Checkpoint 2."*
-
-**Installation:** Register in your project's `.claude/settings.json`:
+This plugin ships a stop hook (`hooks/stop_full_gate.py`) that gates `review-ready` worktrees at the end of each turn — see that file for trigger, session-scoping, and failure behavior. Register it in your project's `.claude/settings.json`:
 ```json
 {
   "hooks": {
@@ -225,14 +209,4 @@ This plugin ships a stop hook that runs automatically at the end of each Claude 
 
 ## Slash Commands
 
-| Command        | Purpose                                                                  |
-|----------------|--------------------------------------------------------------------------|
-| `/problem`     | Entry point: clarity check → autonomous pre-impl pipeline → checkpoint 1 |
-| `/implement`   | Autonomous TDD + critic/review loop → checkpoint 2                       |
-| `/merge`       | Merge approved branch, remove worktree                                   |
-| `/requirements`| Manual requirements phase (escape hatch if `/problem` was not used)      |
-| `/solution`    | Manually re-run solution phase (e.g. after a major requirement change)   |
-| `/refine`      | Manual refinement pass on an existing solution                           |
-| `/review`      | Manual review (bypasses critic loop, reports findings directly)          |
-| `/critique`    | Expert panel code review — loads panels by file scope, structured report |
-| `/cancel`      | Abandon a ticket: removes worktree, deletes branch, sets status to cancelled |
+See `commands/` for the full catalog and each command's purpose.
