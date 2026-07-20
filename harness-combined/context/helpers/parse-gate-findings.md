@@ -1,11 +1,18 @@
 # Helper: parse-gate-findings
 
+**This is the reference contract for `learnings.py::parse_findings()`** — the
+procedure below is implemented and unit-tested there, not executed as prose.
+`/deliver` invokes it via the `learnings.py candidates <gate|critic> <ticket> <today>
+<findings_path>` CLI (see `context/flows/deliver-ticket.md` Step 5); read this
+document as the spec for that function's contract, not a runbook to re-derive by
+hand.
+
 Parse a ticket's findings file — `gate-findings.md` (`source_kind="gate"`) or
 `critic-findings.md` (`source_kind="critic"`) — into a **normalized, sanitized
-candidate-learnings list**. This helper is called by `/deliver` (ticket mode) and
-produces *structured records* — never a ready-to-write string. Sanitization happens
-**here, at the source**, for **both** kinds, so the downstream
-`candidate-learnings-flow.md` never sees unsanitized content.
+candidate-learnings list**. This produces *structured records* — never a
+ready-to-write string. Sanitization happens **here, at the source**, for **both**
+kinds (via `learnings.py::sanitize_pattern()`, shared with `parse-memory-findings.md`),
+so the downstream `candidate-learnings-flow.md` never sees unsanitized content.
 
 **Inputs**
 - `findings_path` — the caller-resolved path to the findings file. The caller passes

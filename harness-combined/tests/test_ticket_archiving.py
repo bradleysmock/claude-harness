@@ -21,10 +21,13 @@ def test_deliver_ticket_step3_shows_archive_in_confirm() -> None:
 
 
 def test_deliver_ticket_step6_uses_os_mv() -> None:
+    """Ticket 0068 moved the raw git rm/add pair behind `ticket.py deliver-commit`
+    (`deliver_commit()`); the doc now documents the call, mirroring the archive
+    pattern in prose rather than inlining every git command."""
     content = read("context/flows/deliver-ticket.md")
     assert "mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/" in content
-    assert "git rm -r --cached .tickets/XXXX-<slug>/" in content
-    assert "git add -- .tickets/completed/XXXX-<slug>/" in content
+    assert "deliver-commit" in content
+    assert "git rm -r --cached" in content
 
 
 def test_deliver_ticket_step6_idempotency_guard() -> None:

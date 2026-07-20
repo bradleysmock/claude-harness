@@ -52,9 +52,14 @@ def test_step3_confirmation_displays_smoke_details():
 # --- Step 4: SHA capture (FR-7a, FR-11) ---
 
 def test_step4_captures_both_shas():
+    """Ticket 0068: Step 4 now calls `ticket.py deliver-commit`, which prints
+    both SHAs as JSON — the doc extracts them via `jq -r` instead of a second
+    `git rev-parse HEAD`."""
     step4 = _section(_content(), "## Step 4 —", "## Step 4b —")
-    assert "pre_merge_sha=$(git rev-parse HEAD)" in step4, "pre-merge SHA must be captured before merge"
-    assert "merge_commit_sha=$(git rev-parse HEAD)" in step4, "merge-commit SHA must be captured after commit"
+    assert "deliver-commit" in step4
+    assert "pre_merge_sha" in step4, "pre-merge SHA must be captured"
+    assert "merge_commit_sha" in step4, "merge-commit SHA must be captured"
+    assert "jq -r" in step4, "SHAs must be extracted from deliver-commit's JSON output"
 
 
 # --- Step 4b: the smoke-test phase ---
@@ -144,9 +149,10 @@ def test_step4b_warn_only_path():
 # --- Step 4c: deferred publish/cleanup ---
 
 def test_step4c_deferred_publish_cleanup():
+    """Ticket 0068: Step 4c now calls `ticket.py deliver-publish`, which
+    internally pushes then removes the worktree/branch on success."""
     c = _section(_content(), "## Step 4c — Publish and clean up", "## Step 5 —")
     assert "not** run on an `auto-revert` failure" in c, \
         "Step 4c must be skipped on auto-revert failure"
-    assert "git push" in c
-    assert "git worktree remove" in c
-    assert "git branch -D" in c
+    assert "deliver-publish" in c
+    assert "deliver_publish()" in c

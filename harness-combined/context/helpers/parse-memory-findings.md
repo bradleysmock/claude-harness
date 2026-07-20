@@ -69,18 +69,24 @@ once — they are one-off noise. If **no** group reaches 2 across all queried ga
 ## Step 3 — Sanitize the pattern field
 
 For each recurring group, derive `pattern` from the shared `Errors:` text and sanitize
-it with the **exact same procedure** as `parse-gate-findings.md` Step 3:
+it by calling `learnings.py sanitize` — the **exact same** `sanitize_pattern()`
+function `parse-gate-findings.md`'s Step 3 documents and `parse_findings()` calls
+internally, so both call sites share one tested implementation instead of two prose
+copies:
 
-1. strip lines beginning with `##`,
-2. strip `<...>` XML-like tags,
-3. strip imperative directives addressed to Claude,
-4. collapse newlines to a single space,
-5. keep printable alphanumerics + punctuation only,
-6. remove the field delimiter — replace every `|` with `/` (or a space); the pattern
-   must contain no `|` when it leaves this helper,
-7. truncate to 120 characters.
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" sanitize "<errors text>"
+```
 
-If `pattern` is empty after sanitization, **reject** the candidate (do not emit it).
+Its procedure, in order: 1. strip lines beginning with `##`, 2. strip `<...>`
+XML-like tags, 3. strip any sentence containing a directive token (`claude`,
+`assistant`, `ignore`, `disregard`, `system`, `now`) or the phrase `you must`, 4.
+collapse newlines to a single space, 5. keep printable characters only, 6. remove the
+field delimiter — replace every `|` with `/`; the pattern must contain no `|` when it
+leaves this helper, 7. truncate to 120 characters.
+
+The call prints `null` when nothing survives sanitization — **reject** the candidate
+(do not emit it) in that case.
 
 ## Step 4 — Assemble records
 

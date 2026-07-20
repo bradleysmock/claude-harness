@@ -416,3 +416,145 @@ def test_deliver_squash_preserves_branch_and_worktree_on_rejected_push(tmp_path:
     assert worktree.is_dir()
     assert run("rev-parse", "HEAD") != head_before  # the local squash commit was made
     assert main_branch  # sanity: we resolved the main branch name
+
+
+def test_deliver_commit_alone_leaves_worktree_and_branch_unpushed(tmp_path: Path) -> None:
+    """FR-1/2 gate invariant: `deliver_commit()` alone (no `deliver_publish()`)
+    must leave the worktree and branch present and nothing pushed."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    run("config", "user.email", "d@x.c")
+    run("config", "user.name", "d")
+    tdir = repo / ".tickets" / "0001-thing"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: claimed\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: d@x.c\nupdated: 2026-06-23\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "chore(ticket): 0001 claim")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+
+    worktree = repo / ".worktrees" / "0001-thing"
+    run("worktree", "add", "-q", str(worktree), "-b", "ticket/0001-thing")
+    (worktree / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (worktree / ".tickets" / "0001-thing" / "status.md").write_text(
+        "status: review-ready\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: d@x.c\nupdated: 2026-06-24\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(worktree), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(worktree), "commit", "-qm", "feat: thing"], check=True)
+    run("checkout", "-q", main_branch)
+
+    result = ticket.deliver_commit(repo, "ticket/0001-thing", "0001-thing", "Thing")
+    assert "pre_merge_sha" in result and "merge_commit_sha" in result and "(squash)" in result["subject"]
+
+    # gate invariant: worktree and branch both still present, HEAD unpushed
+    assert _branch_exists(repo, "ticket/0001-thing")
+    assert worktree.is_dir()
+    tree = run("ls-tree", "-r", "--name-only", "HEAD")
+    assert "feature.py" in tree
+    assert ".tickets/completed/0001-thing/status.md" in tree
+
+
+def test_deliver_publish_raises_and_preserves_on_rejected_push(tmp_path: Path) -> None:
+    """`deliver_publish()` alone must raise and leave the worktree+branch intact
+    on a rejected push — the other half of the FR-2 gate invariant."""
+    bare, dev = _init_remote_clone(tmp_path, "dev")
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(dev), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    tdir = dev / ".tickets" / "0001-x"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: claimed\nticket: 0001\ntitle: X\nbranch: ticket/0001-x\nowner: dev@x.c\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "chore(ticket): 0001 claim")
+    run("push", "-q", "origin", "HEAD")
+
+    worktree = dev / ".worktrees" / "0001-x"
+    run("worktree", "add", "-q", str(worktree), "-b", "ticket/0001-x")
+    (worktree / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(worktree), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(worktree), "commit", "-qm", "feat: x"], check=True)
+
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(bare), str(other)], check=True)
+    subprocess.run(["git", "config", "user.email", "o@x.c"], cwd=other, check=True)
+    subprocess.run(["git", "config", "user.name", "o"], cwd=other, check=True)
+    (other / "unrelated.txt").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(other), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(other), "commit", "-qm", "other work"], check=True)
+    subprocess.run(["git", "-C", str(other), "push", "-q", "origin", "HEAD"], check=True)
+
+    ticket.deliver_commit(dev, "ticket/0001-x", "0001-x", "X")
+    head_before = run("rev-parse", "HEAD")
+    with pytest.raises(RuntimeError):
+        ticket.deliver_publish(dev, "0001-x", "ticket/0001-x")
+
+    assert _branch_exists(dev, "ticket/0001-x")
+    assert worktree.is_dir()
+    assert run("rev-parse", "HEAD") == head_before
+
+
+def test_cli_deliver_commit_and_publish_dispatch(tmp_path: Path, monkeypatch) -> None:
+    """CLI subcommands `deliver-commit`/`deliver-publish` compose to the same
+    end state as `deliver_squash()`."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    run("config", "user.email", "d@x.c")
+    run("config", "user.name", "d")
+    tdir = repo / ".tickets" / "0001-thing"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: claimed\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: d@x.c\nupdated: 2026-06-23\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "chore(ticket): 0001 claim")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+
+    worktree = repo / ".worktrees" / "0001-thing"
+    run("worktree", "add", "-q", str(worktree), "-b", "ticket/0001-thing")
+    (worktree / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (worktree / ".tickets" / "0001-thing" / "status.md").write_text(
+        "status: review-ready\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: d@x.c\nupdated: 2026-06-24\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(worktree), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(worktree), "commit", "-qm", "feat: thing"], check=True)
+    run("checkout", "-q", main_branch)
+
+    monkeypatch.chdir(repo)
+    rc = ticket._main(["deliver-commit", "ticket/0001-thing", "0001-thing", "Thing"])
+    assert rc == 0
+    # deliver-commit alone: branch/worktree still present (no remote, so publish is a no-op push)
+    assert _branch_exists(repo, "ticket/0001-thing")
+
+    rc = ticket._main(["deliver-publish", "0001-thing", "ticket/0001-thing"])
+    assert rc == 0
+    assert not _branch_exists(repo, "ticket/0001-thing")
+    assert not worktree.exists()

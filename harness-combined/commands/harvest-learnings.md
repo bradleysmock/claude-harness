@@ -15,8 +15,9 @@ the `gate_filter`. If empty, no filter — all gate types are queried.
 Call `${CLAUDE_PLUGIN_ROOT}/context/helpers/parse-memory-findings.md` with the
 `gate_filter` (if any) and today's date. It runs per-gate-type
 `memory(action="retrieve", ...)` queries with representative terms, aggregates by
-recurrence (threshold ≥ 2), sanitizes each pattern, and returns normalized candidate
-records with `ticket = "multi"`.
+recurrence (threshold ≥ 2), sanitizes each pattern via the `learnings.py sanitize` CLI
+(the same `sanitize_pattern()` `/deliver` uses — one tested implementation, not a
+second prose copy), and returns normalized candidate records with `ticket = "multi"`.
 
 **If it returns no candidates** (no pattern recurred ≥ 2 times for any queried gate),
 report exactly:
@@ -30,11 +31,12 @@ and stop. Make no changes.
 ## Step 3 — Present and append
 
 Call `${CLAUDE_PLUGIN_ROOT}/context/helpers/candidate-learnings-flow.md` with the
-candidate list and `.tickets/_learnings.md`. It deduplicates against existing content,
+candidate list and `.tickets/_learnings.md`. It deduplicates via `learnings.py dedupe`,
 presents the survivors as ready-to-paste lines under a "Candidate learnings" section,
-runs a single accept/reject exchange, and appends only the entries you accept — each
-built from the validated template fields (`date | gate | ticket | pattern`), never from
-raw text. If `_learnings.md` does not exist, it is created as a stub before appending.
+runs a single accept/reject exchange, and appends only the entries you accept via
+`learnings.py append` — each built from the validated template fields (`date | gate |
+ticket | pattern`), never from raw text. If `_learnings.md` does not exist, `append`
+creates it from the shared stub header first (the same one `/init` writes).
 
 ## Step 4 — Report
 

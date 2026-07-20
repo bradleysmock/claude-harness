@@ -25,12 +25,14 @@ def test_deliver_uses_squash_merge() -> None:
 # ── FR-2: done + archive folded into one commit, mirroring the archive pattern ─
 def test_deliver_folds_done_and_archive_into_one_commit() -> None:
     c = read("context/flows/deliver-ticket.md")
-    assert "deliver_squash" in c
+    # ticket 0068 moved the raw git sequence behind ticket.py's deliver-commit CLI;
+    # the doc now documents the call, not the inlined git rm/add pair.
+    assert "deliver-commit" in c
+    assert "deliver_commit()" in c
     assert 'feat: XXXX <title> (squash)' in c
     assert "folded" in c.lower()
     # mirrors the archive pattern — OS mv + git rm --cached + git add (never git mv)
-    assert "git rm -r --cached .tickets/XXXX-<slug>/" in c
-    assert "git add -- .tickets/completed/XXXX-<slug>/" in c
+    assert "git rm -r --cached" in c
     assert "never** `git mv`" in c  # the doc explicitly warns against git mv
 
 

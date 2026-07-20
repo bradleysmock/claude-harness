@@ -133,27 +133,13 @@ Uncomment to have `/deliver` run a smoke test against `main` after the squash-me
 
 #### `.tickets/_learnings.md`
 
-```markdown
-# Learnings
-
-Must-fix patterns surfaced through gate failures and post-build reviews. The harness loads this file as context at the start of every `/problem` and `/build` so the model avoids repeating the same mistakes. **Lead-curated** — `/deliver` and `/harvest-learnings` append to it, but only after the lead accepts each candidate, and only via a template-field-only write path (they never overwrite existing entries or write raw extracted text). The machine's raw failure trail lives in `.harness/memory.db` (read by `memory(action="retrieve", ...)` before each repair attempt) and is intentionally separate from this file.
-
-Format: one entry per pattern, dated, terse. The `ticket` field is the originating ticket number, or `multi` for a recurring cross-ticket pattern from `/harvest-learnings`.
+Create this by calling `learnings.py` rather than hand-authoring the header text, so this stub and the one `append_learnings()` writes when `_learnings.md` is unexpectedly absent at delivery time can never diverge — both source the same `STUB_HEADER` constant:
 
 ```
-<date> | <gate> | <ticket> | <pattern>
+python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" stub .tickets/_learnings.md
 ```
 
-Examples (delete these once real entries accumulate):
-
-```
-2026-04-12 | type_check | 0031  | Public APIs annotate Optional[X], not X or None — older mypy in CI rejects PEP 604.
-2026-04-18 | security   | 0042  | subprocess.run with any user-derived value: argv list + shell=False, no exceptions.
-2026-05-02 | test       | multi | Async tests need asyncio_mode = auto in pyproject; without it they silently pass.
-```
-
-Add a new line when you encounter a repeated mistake or a pattern worth enforcing. Keep entries terse — the model uses them as guardrails, not documentation. Prune freely; older entries that no longer apply should be removed by hand.
-```
+This is idempotent and skip-safe: it writes the stub only if the file does not already exist, matching "skip whichever file already exists. Do not overwrite." above. The written header documents the lead-curated, append-only contract (`/deliver` and `/harvest-learnings` append only after the lead accepts each candidate, via a template-field-only write path — never raw extracted text) and the `<date> | <gate> | <ticket> | <pattern>` format, with worked examples the lead deletes once real entries accumulate.
 
 ### 6 — Confirm and orient the user
 

@@ -33,22 +33,21 @@ changes. Return silently. (For `/deliver` this is the FR-8 skip; for
 
 ## Step 2 — Deduplicate against existing `_learnings.md`
 
-Read `learnings_path` if it exists. Build the set of patterns already recorded:
-
-- For each existing entry line, take the **pattern** portion — the text after the
-  **last** `|`. Extracting after the last delimiter (not a fixed third one) makes dedup
-  correct for **both** the new 4-field format (`date | gate | ticket | pattern`) **and**
-  legacy 3-field lead-authored entries (`date | gate | pattern`), and it is safe because
-  the producers guarantee `pattern` itself contains no `|` (see the sanitizers).
-- **Normalize** each existing pattern: lowercase it and collapse all runs of
-  whitespace to a single space, then trim.
-
-Normalize each candidate's `pattern` the same way. **Drop** any candidate whose
-normalized pattern is already present (FR-7). If `_learnings.md` does not exist yet,
+Call `learnings.py dedupe` with `learnings_path` and the candidate list. This wraps
+`dedupe_candidates(candidates, existing_text)`: for each existing entry line it takes
+the **pattern** portion — the text after the **last** `|` (correct for both the 4-field
+format `date | gate | ticket | pattern` and legacy 3-field lead-authored entries `date |
+gate | pattern`, since the producers guarantee `pattern` itself contains no `|`),
+normalizes it (lowercase, collapse whitespace), and drops any candidate whose
+normalized `pattern` is already present (FR-7). If `_learnings.md` does not exist yet,
 nothing is dropped.
 
-If every candidate was a duplicate, treat as the empty case (Step 1) — no section, no
-changes.
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" dedupe "$learnings_path" <candidates.json>
+```
+
+If every candidate was a duplicate (the call returns `[]`), treat as the empty case
+(Step 1) — no section, no changes.
 
 ## Step 3 — Present ready-to-paste lines (one exchange)
 
@@ -73,28 +72,25 @@ interactive exchange the flow is allowed to add (NFR-1). Do not loop or re-promp
 
 If the lead accepts nothing (`none` / empty), make no changes and return.
 
-Otherwise, for the accepted candidates:
+Otherwise, call `learnings.py append` with `learnings_path` and the accepted
+candidates, in the order the lead listed them (or presentation order):
 
-1. **Ensure the file exists.** If `learnings_path` is absent, create it as a stub
-   first (FR-9). Match the header `/init` writes so the two never diverge:
-   ```
-   # Learnings
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" append "$learnings_path" <accepted.json>
+```
 
-   Format: <date> | <gate> | <ticket> | <pattern>
-   ```
-2. **Append, never overwrite.** Open in append mode (or read-all-then-write-back with
-   the new lines added at the end). Existing content must be **byte-for-byte preserved**
+This wraps `append_learnings(learnings_path, accepted)`:
+
+1. **Ensures the file exists.** If `learnings_path` is absent, it creates the stub
+   first (FR-9) from the single `STUB_HEADER` constant — the same constant `/init`
+   calls `learnings.py stub` to write, so the two paths can never diverge.
+2. **Appends, never overwrites.** Existing content is **byte-for-byte preserved**
    (FR-10) — only new lines are added after it.
-3. **Build each line from template fields.** For every accepted candidate, construct
-   the line as:
-   ```
-   {date} | {gate} | {ticket} | {pattern}
-   ```
-   Substitute the four validated fields directly. Do **not** re-derive the line from
-   the rendered display text, and do **not** interpret `pattern` as anything other than
-   an opaque string value being placed into the template.
-
-Append accepted lines in the order the lead listed them (or presentation order).
+3. **Builds each line from template fields.** For every accepted candidate, the line
+   is constructed as `{date} | {gate} | {ticket} | {pattern}`, substituting the four
+   validated fields directly — never re-derived from the rendered display text, and
+   `pattern` is never interpreted as anything other than an opaque string value being
+   placed into the template.
 
 ## Step 5 — Confirm
 

@@ -729,19 +729,24 @@ def _append_lifecycle(
     ledger_append(repo, build, push=push, max_retries=5)
 
 
-def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
-    """Deliver a ticket branch as a single squashed commit on the current branch.
+def deliver_commit(repo: Path, branch: str, slug: str, title: str) -> dict[str, str]:
+    """Squash-merge `branch`, fold the `→ done` transition + `completed/` archive
+    into that one commit. Leaves the branch and worktree untouched — this is the
+    gate half of delivery: `deliver_publish()` must run next to push, record the
+    ledger event, and clean up.
 
-    Under the `.harness-tickets` model this is the *first and only* time `main`
-    sees the ticket. Mirrors the archive pattern (OS mv + `git rm --cached` +
-    `git add`) — never `git mv`, which is unsound against the index `merge
-    --squash` leaves. Folds the `→ done` transition and the `completed/` archive
-    into the one squash commit, then appends a `delivered` ledger event."""
+    Under the `.harness-tickets` model this is the *first* time `main` sees the
+    ticket. Mirrors the archive pattern (OS mv + `git rm --cached` + `git add`) —
+    never `git mv`, which is unsound against the index `merge --squash` leaves."""
     if branch == TICKETS_BRANCH:
         raise RuntimeError(
-            "deliver_squash: refusing to merge .harness-tickets into main "
+            "deliver_commit: refusing to merge .harness-tickets into main "
             "(the coordination branch is never merged)."
         )
+    # 0. Record the pre-merge SHA (used by a post-merge smoke-test revert report;
+    #    distinct from the merge-commit SHA captured below).
+    pre_merge_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
+
     # 1. Stage the whole branch diff (code + branch's .tickets/<slug>/) — no commit,
     #    and no merge commit, so commits-since-claim stays at one.
     git(repo, "merge", "--squash", branch)
@@ -752,28 +757,55 @@ def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
     # 5. One commit: full code diff + completed/<slug>/ at done, no .tickets/<slug>/.
     subject = f"feat: {slug} {title} (squash)"
     _commit(repo, subject)
+    merge_commit_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
 
-    # 6. Publish `main` FIRST (the durable product record). Only on a successful
-    #    publish do we destroy the worktree and branch — otherwise the squashed
-    #    commit would survive only locally while its source history is deleted. On
-    #    a rejected push, stop with everything intact so the lead can rebase and
-    #    retry. `git branch -D` (not -d) because a squash leaves the branch without
-    #    merge ancestry, so git never considers it "fully merged".
+    return {
+        "pre_merge_sha": pre_merge_sha,
+        "merge_commit_sha": merge_commit_sha,
+        "subject": subject,
+    }
+
+
+def _remove_worktree_and_branch(repo: Path, worktree_path: Path, branch: str) -> None:
+    """Shared cleanup tail for `deliver_publish()` and `deliver_squash_batch()`:
+    force-remove the worktree, then force-delete the branch. `-D` (not `-d`)
+    because a squash leaves the branch without merge ancestry, so git never
+    considers it "fully merged"."""
+    git(repo, "worktree", "remove", "--force", str(worktree_path), check=False)
+    git(repo, "branch", "-D", branch, check=False)
+
+
+def deliver_publish(repo: Path, slug: str, branch: str) -> None:
+    """Push HEAD's branch; only on a successful push record the ledger `delivered`
+    event and remove the ticket's worktree and branch. On a rejected push (e.g.
+    another developer advanced main between the squash and the push), raise and
+    leave both intact so the lead can rebase and retry — the squashed commit made
+    by `deliver_commit()` is never the only copy of the branch's source history
+    while it is discarded."""
     if not _push_current_branch(repo):
         raise RuntimeError(
-            f"deliver_squash: pushing the squashed commit to origin was rejected — "
+            f"deliver_publish: pushing the squashed commit to origin was rejected — "
             f"leaving the worktree and branch {branch!r} intact. Rebase onto the "
             f"updated main and retry the delivery."
         )
-    # 7. Record delivery in the ledger (idempotent; main is already correct, so a
-    #    ledger race never blocks delivery — the append simply retries).
+    # Record delivery in the ledger (idempotent; main is already correct, so a
+    # ledger race never blocks delivery — the append simply retries).
     number = _slug_number(slug)
     if number is not None:
         sha = git(repo, "rev-parse", "HEAD").stdout.strip()
         _append_lifecycle(repo, "delivered", number, {"sha": sha})
-    git(repo, "worktree", "remove", "--force", str(repo / ".worktrees" / slug), check=False)
-    git(repo, "branch", "-D", branch, check=False)
-    return subject
+    _remove_worktree_and_branch(repo, repo / ".worktrees" / slug, branch)
+
+
+def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
+    """Deliver a ticket branch as a single squashed commit on the current branch.
+
+    Composes `deliver_commit()` (squash + fold archive + commit) and
+    `deliver_publish()` (push + ledger record + cleanup) — kept as one call for
+    callers that don't need to gate between the two (e.g. a smoke test)."""
+    result = deliver_commit(repo, branch, slug, title)
+    deliver_publish(repo, slug, branch)
+    return result["subject"]
 
 
 def _batch_worktree(batch_branch: str) -> str:
@@ -864,15 +896,12 @@ def deliver_squash_batch(
         if number is not None:
             _append_lifecycle(repo, "delivered", number, {"sha": head_sha})
 
-    git(
-        repo, "worktree", "remove", "--force",
-        str(repo / ".worktrees" / _batch_worktree(batch_branch)), check=False,
+    _remove_worktree_and_branch(
+        repo, repo / ".worktrees" / _batch_worktree(batch_branch), batch_branch
     )
-    git(repo, "branch", "-D", batch_branch, check=False)
     for member in members:
         slug = member["slug"]
-        git(repo, "worktree", "remove", "--force", str(repo / ".worktrees" / slug), check=False)
-        git(repo, "branch", "-D", f"ticket/{slug}", check=False)
+        _remove_worktree_and_branch(repo, repo / ".worktrees" / slug, f"ticket/{slug}")
     return subjects
 
 
@@ -1192,8 +1221,12 @@ def _scan_for_migration(tickets_root: Path, default_owner: str) -> list[dict]:
 
 def _main(argv: list[str]) -> int:
     if not argv:
-        print("usage: ticket <claim|set-status|owner|cancel|abandon|reopen|"
-              "deliver|deliver-batch|ensure-branch|migrate|next-number> ...", file=sys.stderr)
+        print(
+            "usage: ticket <claim|set-status|owner|cancel|abandon|reopen|deliver|"
+            "deliver-commit|deliver-publish|deliver-batch|ensure-branch|migrate|"
+            "next-number|list-json> ...",
+            file=sys.stderr,
+        )
         return 2
     repo = find_tickets_root(Path.cwd()).parent
     cmd = argv[0]
@@ -1239,6 +1272,25 @@ def _main(argv: list[str]) -> int:
         except (FileNotFoundError, RuntimeError) as exc:
             print(f"deliver: {exc}", file=sys.stderr)
             return 1
+    if cmd == "deliver-commit":
+        positional = [a for a in argv[1:] if not a.startswith("--")]
+        if len(positional) < 3:
+            print(
+                "usage: ticket deliver-commit <branch> <slug> <title>", file=sys.stderr
+            )
+            return 2
+        branch, slug, title = positional[0], positional[1], positional[2]
+        print(json.dumps(deliver_commit(repo, branch, slug, title)))
+        return 0
+    if cmd == "deliver-publish":
+        positional = [a for a in argv[1:] if not a.startswith("--")]
+        if len(positional) < 2:
+            print("usage: ticket deliver-publish <slug> <branch>", file=sys.stderr)
+            return 2
+        slug, branch = positional[0], positional[1]
+        deliver_publish(repo, slug, branch)
+        print(json.dumps({"slug": slug, "branch": branch, "published": True}))
+        return 0
     if cmd == "deliver-batch":
         positional = [a for a in argv[1:] if not a.startswith("--")]
         if len(positional) < 2:

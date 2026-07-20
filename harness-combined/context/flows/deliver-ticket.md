@@ -294,44 +294,36 @@ Runs **only when `--pr` was passed**, after the Step 3 confirmation and **before
 
 ## Step 4 — Squash-merge: fold `→ done` + archive into one commit
 
-A delivered ticket adds **exactly one** commit to `main`. Run the sequence below — encapsulated and unit-tested as `ticket.py deliver_squash()` (it asserts the one-commit invariant). It mirrors the archive pattern (OS `mv` + `git rm -r --cached` + `git add`, **never** `git mv`, which is unsound against the index `merge --squash` leaves):
+A delivered ticket adds **exactly one** commit to `main`. Run the mechanics via
+the `deliver-commit` CLI subcommand — encapsulated and unit-tested as
+`ticket.py::deliver_commit()` (it asserts the one-commit invariant and, alone,
+leaves the branch and worktree present and unpushed — the gate invariant Step
+4b relies on). It mirrors the archive pattern internally (OS `mv` + `git rm -r --cached` + `git add`, **never** `git mv`, which is unsound against the index
+`merge --squash` leaves) — the same sequence as before (`git merge --squash
+<branch>`, archive `.tickets/XXXX-<slug>/` into `completed/`, commit), just
+invoked as one call instead of five inline git commands:
 
 ```
-# 0. Record the pre-merge SHA (used by Step 4b's smoke-test revert report; distinct from the merge-commit SHA)
-pre_merge_sha=$(git rev-parse HEAD)
-
-# 1. Stage the whole branch diff (code + the branch's .tickets/XXXX-<slug>/) — no commit, no merge commit
-git merge --squash <branch>
-
-# 2. Archive: OS-move the squash-staged ticket dir into completed/
-mkdir -p .tickets/completed
-mv .tickets/XXXX-<slug>/ .tickets/completed/XXXX-<slug>/
-
-# 3. Rewrite .tickets/completed/XXXX-<slug>/status.md → status: done (+ updated: <today>) at the NEW path
-
-# 4. Clear the squash-staged old path; stage the archived path (code changes stay squash-staged)
-git rm -r --cached .tickets/XXXX-<slug>/
-git add -- .tickets/completed/XXXX-<slug>/
-
-# 5. ONE commit: full code diff + completed/XXXX-<slug>/ at done, and no .tickets/XXXX-<slug>/ entry
-git commit -m "feat: XXXX <title> (squash)"
-
-# 6. Record the merge-commit SHA (the revert target for a smoke-test failure in Step 4b)
-merge_commit_sha=$(git rev-parse HEAD)
+result=$(python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" deliver-commit <branch> XXXX-<slug> "<title>")
+pre_merge_sha=$(echo "$result" | jq -r '.pre_merge_sha')
+merge_commit_sha=$(echo "$result" | jq -r '.merge_commit_sha')
 ```
 
-Publish and cleanup (the old sub-step: `git push`, `git worktree remove`, `git branch -D`) are deferred to **Step 4c** so they run only after Step 4b's smoke test passes — leaving the branch and worktree intact if it fails.
+`deliver-commit` prints one JSON object — `{"pre_merge_sha", "merge_commit_sha", "subject"}` — with the commit subject `feat: XXXX <title> (squash)`. Extract `pre_merge_sha` (used by Step 4b's smoke-test revert report) and `merge_commit_sha` (the revert target) via `jq -r` using those exact field names — do not re-derive them with a separate `git rev-parse`.
 
-If the `git merge --squash` reports a conflict, report the error and stop without committing or cleaning up.
+Publish and cleanup (the old sub-step: `git push`, `git worktree remove`, `git branch -D`) are deferred to **Step 4c** (`deliver-publish`) so they run only after Step 4b's smoke test passes — leaving the branch and worktree intact if it fails.
+
+If `deliver-commit` reports a `git merge --squash` conflict, report the error and stop without cleaning up — nothing was committed.
 
 > **Squash status resolution:** because `main` carried only the `claimed` stub for this ticket and never re-touched `.tickets/XXXX-<slug>/` after the claim, the squash merge's merge base for that path is the claim stub and only the branch changed it — so it resolves cleanly with no conflict. The branch's `review-ready` `status.md` is squash-staged, then overwritten in place to `done` before the single commit. There is **no `--no-ff` merge commit and no separate `→ done` / archive commit** — `→ done` and the archive are folded into the one squash commit. A reopened ticket repeats this, adding a further squashed commit.
 
 **Marker cleanup:** if the ticket carried a `refine-touched.md` marker (Step 1.7),
-`_fold_archive` deletes it from the archived ticket directory as part of the fold
-in step 2 above — the squash commit lands with no `refine-touched.md` under
-`completed/<slug>/`, so the marker never survives into the archive.
+`_fold_archive` (called inside `deliver-commit`) deletes it from the archived
+ticket directory as part of the fold above — the squash commit lands with no
+`refine-touched.md` under `completed/<slug>/`, so the marker never survives into
+the archive.
 
-**Idempotency:** If `.tickets/completed/XXXX-<slug>/` already exists and `.tickets/XXXX-<slug>/` is absent, the ticket is already archived — skip the mv and continue with the commit.
+**Idempotency:** If `.tickets/completed/XXXX-<slug>/` already exists and `.tickets/XXXX-<slug>/` is absent, the ticket is already archived — `deliver-commit` skips the mv and continues with the commit.
 
 **Partial-move guard:** If both `.tickets/XXXX-<slug>/` and `.tickets/completed/XXXX-<slug>/` exist simultaneously, warn the lead — treat the root copy as authoritative and proceed with the mv from root.
 
@@ -354,45 +346,64 @@ Runs after the Step 4 commit (both SHAs captured) and **before Step 4c publish/c
 
 ## Step 4c — Publish and clean up
 
-Reached when Step 4b passed, was skipped (no smoke test configured), or ran in `warn-only` mode. It is **not** run on an `auto-revert` failure (branch + worktree stay intact for rework). Publish first; only on a successful push remove the worktree and delete the branch (`-D`, not `-d`: a squash leaves the branch without merge ancestry). On a rejected push, stop with both intact and retry.
+Reached when Step 4b passed, was skipped (no smoke test configured), or ran in `warn-only` mode. It is **not** run on an `auto-revert` failure (branch + worktree stay intact for rework). Run the `deliver-publish` CLI subcommand — encapsulated and unit-tested as `ticket.py::deliver_publish()`: it publishes first, and only on a successful push removes the worktree and deletes the branch (`-D`, not `-d`: a squash leaves the branch without merge ancestry). On a rejected push it raises and leaves both intact — stop and tell the lead to retry after rebasing.
 
 ```
-git push
-git worktree remove .worktrees/XXXX-<slug>
-git branch -D <branch>
+python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" deliver-publish XXXX-<slug> <branch>
 ```
 
 ## Step 5 — Candidate learnings (present, then append accepted)
 
 `.tickets/_learnings.md` is lead-curated. The harness appends to it **only after the
 lead approves**, and only via the template-field-only write path below — it never writes
-raw extracted text.
+raw extracted text. The parsing/sanitization/dedup/append mechanics all live in
+`learnings.py`, invoked here via its CLI rather than executed as prose — this keeps the
+injection-relevant trust boundary in one tested place, shared with `/harvest-learnings`.
 
-1. Call `${CLAUDE_PLUGIN_ROOT}/context/helpers/parse-gate-findings.md` with the ticket's
-   `gate-findings.md`, the ticket number, and today's date. It returns a normalized,
-   sanitized candidate list (≤ 5, BLOCKER/MAJOR prioritized).
+**Path note:** by this step the ticket directory has already been archived (Step 4)
+and the worktree removed, so `gate-findings.md` and `critic-findings.md` now live at
+`.tickets/completed/XXXX-<slug>/` — pass **those** paths, not the pre-archive
+`.tickets/XXXX-<slug>/` ones, which no longer exist.
+
+1. Call `learnings.py candidates` against the ticket's `gate-findings.md` with
+   `source_kind="gate"` (the default parser: walks `## <gate-name>` sections whose
+   `**Status**` is `FAIL`). This wraps `parse_findings(text, source_kind, ticket_number,
+   today)` and returns a normalized, sanitized candidate list (≤ 5, BLOCKER/MAJOR
+   prioritized) as JSON:
+   ```
+   python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" candidates gate XXXX <today> .tickets/completed/XXXX-<slug>/gate-findings.md
+   ```
 
    **Also scan `critic-findings.md`** — the persisted per-round critic reports and
    escalation diagnoses (see "Critic findings file" in
-   `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Call the same helper a second
-   time **with `source_kind="critic"`** so it uses the critic-report parser (Step 2c)
+   `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`). Call the same CLI a second
+   time with `source_kind="critic"` so `parse_findings` uses its critic-report parser
    rather than the gate parser — the gate parser would return nothing, because
    `critic-findings.md` has no `**Status**: FAIL` sections. Its records come back tagged
-   `gate="critic"`. Merge them with the gate candidates, then **dedup** on
-   `(gate, pattern)` and re-apply the ≤ 5 cap with BLOCKER/MAJOR prioritized, so
-   recurring critic-level patterns (not just gate findings) can reach `_learnings.md`.
-
-   **Path note:** by this step the ticket directory has already been archived (Step 4)
-   and the worktree removed, so `gate-findings.md` and `critic-findings.md` now live at
-   `.tickets/completed/XXXX-<slug>/` — pass **those** paths, not the pre-archive
-   `.tickets/XXXX-<slug>/` ones, which no longer exist. If a file is absent, the helper
-   returns no candidates for it, and this step is skipped when **both** are absent
-   (below).
-2. Call `${CLAUDE_PLUGIN_ROOT}/context/helpers/candidate-learnings-flow.md` with that
-   candidate list and `.tickets/_learnings.md`. It deduplicates against existing
-   content, presents ready-to-paste lines under a "Candidate learnings" section, runs a
-   single accept/reject exchange, and appends only accepted entries — each built from
-   the validated template fields (`date | gate | ticket | pattern`), never from raw text.
+   `gate="critic"`:
+   ```
+   python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" candidates critic XXXX <today> .tickets/completed/XXXX-<slug>/critic-findings.md
+   ```
+   Each call already returns its own list severity-first (BLOCKER/MAJOR before
+   MINOR/OBS) and capped at 5, but carries no cross-call recency field — so the merge
+   step below is a **stable** severity sort over the concatenation, not a fresh
+   severity+recency sort (there is no data to back a cross-source recency ordering).
+   Concatenate the gate list then the critic list, **dedup** on `(gate, pattern)`
+   (keep the first occurrence), stable-sort by severity only (Python's `sort` is
+   stable, so within a tier the gate-then-critic order from the concatenation is
+   preserved), and re-apply the ≤ 5 cap — a few lines of plain data wrangling over
+   already-sanitized records, not a new trust boundary — so recurring critic-level
+   patterns (not just gate findings) can reach `_learnings.md`. If a findings file is
+   absent, its `candidates` call returns `[]`, and this step is skipped when **both**
+   merged lists are empty (below).
+2. Call `learnings.py dedupe` with the merged candidate list and
+   `.tickets/_learnings.md`, then hand the survivors to
+   `${CLAUDE_PLUGIN_ROOT}/context/helpers/candidate-learnings-flow.md` — the only prose
+   this flow keeps, since it is the lead's accept/reject exchange. On accept, call
+   `learnings.py append` with `.tickets/_learnings.md` and the accepted subset; it
+   creates the file from the shared stub header first if absent, then appends only
+   those entries — each built from the validated template fields (`date | gate | ticket
+   | pattern`), never from raw text.
 
 If **both** `gate-findings.md` and `critic-findings.md` are absent or empty (or the
 helper returns no candidates from either), this step is **silently skipped** — no
