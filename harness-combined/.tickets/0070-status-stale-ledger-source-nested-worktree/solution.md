@@ -43,7 +43,7 @@ version, test-verified rather than review-verified.
 
 | Requirement | Test Type | Scenario(s) |
 |-------------|-----------|--------------|
-| FR-1, FR-2 | Unit | Offset: flat → `Path(".")`; nested fixture → correct; outside `toplevel` → `RuntimeError`. |
+| FR-1, FR-2, FR-6 | Unit | Offset: flat → `Path(".")`; nested fixture → correct; outside `toplevel` → `RuntimeError`. |
 | FR-3, FR-5 | Unit | Shared helper drives `claim`/`reopen`/`_read_ticket_docs`/`list_tickets` identically on a nested fixture — one assertion per site, same helper. |
 | FR-4 | Unit | `list_tickets()`: corrected-path read, pre-fix fallback, single `git()` call across N tickets. |
 | FR-7 | Unit | `list_tickets()` output includes `updated` matching the fixture's `status.md`. |
