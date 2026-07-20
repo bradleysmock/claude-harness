@@ -5,26 +5,24 @@
 
 ## Functional Requirements
 
-1. `build-ticket.md` Step 7 (post-build critic) keeps its existing full
-   append to the branch-committed `critic-findings.md` unchanged — it stays
-   the durable, `/deliver`-parseable record — but stops displaying the full
-   report to the session; it prints only header + verdict + finding table.
-2. `build-dry-run-ticket.md` Steps 4-5 (design critic), which today persists
-   no critic detail (a dry run writes only `gate-findings.md`), writes its
-   full report to `.harness/critiques/<YYYY-MM-DD>-<NN>-<slug>.md` using
-   0049's naming logic (`skills/critique/SKILL.md`). `render_dry_run_report`
-   receives the file path and renders only header+verdict+table plus a
-   pointer to it, in place of full critic detail; `assemble_dry_run_report`'s
-   `critic_findings` parameter is unchanged (still the full structured data).
-3. `autopilot-batch.md` Step 3 (batch critic), which today persists nothing,
-   writes its full combined report to `.harness/critiques/` using a
-   resolved batch slug `batch-<lead-slug>-<YYYY-MM-DD>`, appends a
-   `## Critique pointers` line to **every** member's `critic-findings.md`
-   (not just the lead's), and prints only header+verdict+table.
-4. The trimmed terminal output at all three sites includes: verdict,
-   BLOCKER/MAJOR/MINOR/OBS counts, and (for 2-3) the path to the written
-   file — matching 0049's terminal summary shape.
-5. `skills/review/SKILL.md` Step 6 is unchanged — file-less, interactive.
+1. `build-ticket.md` Step 7 must keep its existing full append to the
+   branch-committed `critic-findings.md` unchanged (the durable,
+   `/deliver`-parseable record) and must print only header + verdict +
+   finding table to the session — never the full report.
+2. `build-dry-run-ticket.md` Steps 4-5 must write the design critic's full
+   report to `.harness/critiques/<YYYY-MM-DD>-<NN>-<slug>.md` using 0049's
+   naming logic (`skills/critique/SKILL.md`); `render_dry_run_report` must
+   render only header+verdict+table plus a pointer to that file, and
+   `assemble_dry_run_report`'s signature must stay unchanged.
+3. `autopilot-batch.md` Step 3 must write its full combined critic report
+   to `.harness/critiques/` using slug `batch-<lead-slug>-<YYYY-MM-DD>`,
+   must append a `## Critique pointers` line to **every** member's
+   `critic-findings.md`, and must print only header+verdict+table.
+4. The trimmed terminal output at all three sites must include verdict,
+   BLOCKER/MAJOR/MINOR/OBS counts, and (for sites 2-3) the path to the
+   written file.
+5. `skills/review/SKILL.md` Step 6 must remain unchanged — file-less and
+   interactive.
 
 ## Non-Functional Requirements
 
