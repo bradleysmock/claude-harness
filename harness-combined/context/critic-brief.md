@@ -72,12 +72,7 @@ In both modes: read everything **before** writing a single finding. Do not inter
 
 ## Step 4 — Produce findings
 
-Apply every relevant dimension from the loaded panels. Use these severity tiers exactly — the same canonical 4-tier vocabulary the `critique` skill and `review` skill use (see `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md` for the full definitions):
-
-- **BLOCKER** — correctness bugs, security design flaws, requirements not covered by tests, fundamental approach problems. Blocks the next checkpoint.
-- **MAJOR** — significant improvement needed: test gaps, poor tech choice, design quality issues. Fix now unless effort is large.
-- **MINOR** — improvement opportunity worth flagging. Fix if the code is being touched anyway; otherwise logged.
-- **OBS** — observation worth noting but not requiring action. May reflect a legitimate tradeoff. Logged only.
+Apply every relevant dimension from the loaded panels. Use the canonical 4-tier vocabulary — BLOCKER / MAJOR / MINOR / OBS — exactly as defined in the "### Severity tiers" section of `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`; read that section before producing findings.
 
 For each finding, include:
 

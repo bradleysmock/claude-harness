@@ -176,11 +176,7 @@ Sort by severity (BLOCKER → MAJOR → MINOR → OBS), then by impact within se
 |----|----------|-------|-----------|----------|---------|
 | C-01 | BLOCKER | [panel] | [dimension] | `file:line` | [one-line description] |
 
-Severity guide:
-- **BLOCKER**: Serious design problem likely to cause bugs, maintenance failure, or security issues. Must be resolved before shipping.
-- **MAJOR**: Clear violation of a principle with meaningful consequences. Fix before merge.
-- **MINOR**: Improvement opportunity. Fix if the code is being touched anyway.
-- **OBS**: Observation worth noting. May reflect a legitimate tradeoff.
+Severity guide: use the canonical 4-tier vocabulary — BLOCKER / MAJOR / MINOR / OBS — exactly as defined in the "### Severity tiers" section of `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`; read that section before producing findings.
 
 ## BLOCKER & MAJOR Detail
 

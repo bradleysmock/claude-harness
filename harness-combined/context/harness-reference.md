@@ -385,12 +385,14 @@ Optional manual review paths after the post-build critic:
 - `/review XXXX` — same panel-aware machinery as the critic's `Phase: code` mode, but **interactive** (findings stream in the conversation, lead can ask follow-up questions). Use to re-review after fixing BLOCKERs, drive the review conversationally, or review a ticket whose `/build` happened in a previous session.
 - `/critique <files>` — comprehensive on-demand panel critique against arbitrary files, code or design artifacts. Free-form scope; not tied to a ticket.
 
-Severity tiers (canonical — used by `critique`, `review`, and the critic subagent):
+### Severity tiers
 
-- **BLOCKER** — serious design problem likely to cause bugs, maintenance failure, or security issues. Blocks merge. Resolved before `/deliver`.
+Canonical 4-tier vocabulary, worded to be usable verbatim by design review, code review, and standalone diff critique — the same tiers `critique`, `review`, and the critic subagent all apply:
+
+- **BLOCKER** — serious design problem likely to cause bugs, maintenance failure, or security issues. Blocks the next checkpoint (design approval or merge).
 - **MAJOR** — clear violation of a principle with meaningful consequences. Fix now, or open a new ticket if the effort is large.
 - **MINOR** — improvement opportunity. Fix if the code is being touched anyway; otherwise logged.
-- **OBS** — observation worth noting. May reflect a legitimate tradeoff. Logged in the deliver summary only.
+- **OBS** — observation worth noting. May reflect a legitimate tradeoff. Logged only.
 
 Must-fix vs. optional differs by review path:
 
