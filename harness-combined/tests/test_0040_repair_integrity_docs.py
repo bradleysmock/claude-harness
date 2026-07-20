@@ -1,7 +1,9 @@
 """Content-verification for ticket 0040's flow/critic-brief wiring (FR-2, FR-5).
 
-Asserts build-ticket.md Steps 4e and 7a document the repair-integrity check, and
-critic-brief.md Step 2.5 marks weakened/deleted tests as BLOCKER findings.
+Asserts build-ticket.md Steps 4f (integration gate; relettered from 4e by
+ticket 0065's test-first sub-step split) and 7a document the repair-integrity
+check, and critic-brief.md Step 2.5 marks weakened/deleted tests as BLOCKER
+findings.
 """
 
 from __future__ import annotations
@@ -25,9 +27,9 @@ def test_build_ticket_references_repair_integrity_module() -> None:
 
 
 def test_step_4e_documents_integrity_check() -> None:
-    step_4e = _section(_BUILD, "**e. Integration gate (directory mode):**", "**f. Checkpoint:**")
-    assert "repair-integrity" in step_4e.lower()
-    assert "restore the test" in step_4e.lower()
+    step_4f = _section(_BUILD, "**f. Integration gate (directory mode):**", "**g. Checkpoint:**")
+    assert "repair-integrity" in step_4f.lower()
+    assert "restore the test" in step_4f.lower()
 
 
 def test_step_7a_documents_integrity_check() -> None:

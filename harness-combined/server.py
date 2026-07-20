@@ -28,6 +28,7 @@ from gates.commit_lint import CommitLintConfig
 from gates.commit_lint import run as run_commit_lint
 from gates.config import ConfigError, load_gate_overrides, load_parallel_gate_limit
 from gates.doctor import DoctorError, format_report, run_doctor
+from gates.red_gate import RedGateError, check_red, next_action
 from memory import SQLiteFailureMemory
 from models import (
     GateError,
@@ -570,6 +571,62 @@ def gate_run_on_dir(
         return json.dumps({"error": str(e)})
     except (OSError, ImportError, RuntimeError) as e:
         return json.dumps({"error": f"Gate execution failed: {e}"})
+
+
+@mcp.tool()
+def gate_run_red_check(
+    directory: str,
+    language: str,
+    test_file: str,
+    node_ids: list[str],
+    attempt: int,
+    max_attempts: int,
+    timeout: int = 60,
+) -> str:
+    """
+    Run only a spec's newly-written test(s) (never the full suite) and classify
+    the pre-implementation result, then decide the next action.
+
+    directory: the worktree root. test_file: the test file (relative to
+    directory, or absolute) — must resolve inside directory. node_ids is
+    per-language: Python — full pytest node id(s) ("path::test"); Go — bare
+    test function name(s); Rust — fully-qualified test name(s) ("mod::test");
+    TypeScript — the full jest fullName (describe-path-qualified; a bare title
+    only equals the fullName when the test has no enclosing describe() block).
+    attempt/max_attempts drive the retry/escalate decision (see next_action's
+    docstring).
+
+    Returns JSON: {"classification": "red"|"blocking"|"tool_error",
+    "node_ids": [...], "detail": "...", "action": "proceed"|"retry"|"escalate_skip"}.
+    Any exception from check_red or next_action — including caller-misuse
+    errors (unsupported language, empty node_ids, a test_file outside
+    directory) — is caught here and reported as classification="tool_error",
+    action="escalate_skip" rather than propagating or defaulting to "proceed".
+    """
+    try:
+        result = check_red(directory, language, test_file, node_ids, timeout=timeout)
+        action = next_action(result.classification, attempt, max_attempts)
+        return json.dumps({
+            "classification": result.classification,
+            "node_ids": list(result.node_ids),
+            "detail": result.detail,
+            "action": action,
+        })
+    except (
+        RedGateError, ValueError, TypeError, AttributeError,
+        KeyError, IndexError, OSError, RuntimeError,
+    ) as e:
+        # This tool's entire contract is that a broken check never masquerades
+        # as (or crashes into) an unhandled state — RedGateError (caller misuse)
+        # and any bug surfacing from check_red/next_action as one of these
+        # concrete exception types are both contained here and reported as
+        # tool_error/escalate_skip rather than propagating.
+        return json.dumps({
+            "classification": "tool_error",
+            "node_ids": node_ids,
+            "detail": str(e),
+            "action": "escalate_skip",
+        })
 
 
 @mcp.tool()

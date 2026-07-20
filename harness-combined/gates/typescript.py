@@ -503,6 +503,45 @@ def _parse_jest_json(stdout: str, root: Path) -> tuple[bool, dict[str, GateError
     return True, failures
 
 
+def _parse_jest_json_present(stdout: str, root: Path) -> tuple[bool, set[str], dict[str, GateError]]:
+    """Parse ``jest --json`` stdout into ``(parsed_ok, present_ids, {failing: err})``.
+
+    Sibling of ``_parse_jest_json`` (ticket 0041) that additionally tracks every
+    assertion that ran to a pass/fail conclusion. The red-gate check (ticket 0065)
+    needs to confirm a *specific* targeted test actually ran, not only which tests
+    failed — ``_parse_jest_json`` alone cannot distinguish "target test passed" from
+    "target test never ran". Used only by ``gates/red_gate.py``; the baseline-delta
+    test gate (``_test_gate_dir``) keeps using ``_parse_jest_json`` unchanged.
+    """
+    try:
+        data = json.loads(stdout)
+    except (json.JSONDecodeError, TypeError):
+        return False, set(), {}
+    if not isinstance(data, dict) or "testResults" not in data:
+        return False, set(), {}
+    present: set[str] = set()
+    failing: dict[str, GateError] = {}
+    for file_result in data.get("testResults") or []:
+        name = file_result.get("name") or ""
+        rel = _rel(name, root) if name else "?"
+        for a in file_result.get("assertionResults") or []:
+            status = a.get("status")
+            if status not in ("passed", "failed"):
+                continue
+            tid = _test_id(rel, a)
+            present.add(tid)
+            if status != "failed":
+                continue
+            msgs = a.get("failureMessages") or []
+            detail = _first_line(msgs[0]) if msgs else (a.get("fullName") or a.get("title") or "")
+            failing[tid] = GateError(
+                message=f"{tid}: {detail}"[:600],
+                file=rel, line=None, column=None,
+                code="TEST_FAILURE", severity="error",
+            )
+    return True, present, failing
+
+
 # ── Merge-base baseline: compute, cache, invalidate ────────────────────────────
 #
 # These are thin jest-specific adapters over ``gates/_baseline.py``. They stay as

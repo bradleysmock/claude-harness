@@ -38,7 +38,7 @@ Find the spec or task for this ticket:
 2. **score-spec is a hard stop.** That flow's Step 1 runs the score-spec gate; if its verdict is **BLOCK**, stop here — **before any implementation is written** (the claim-time worktree already exists; leave it holding only its design artifacts) — show the failing checks, and tell the lead to fix the design artifacts (or run `/refine XXXX`) and re-run `/build XXXX`. This hard stop is the **fail-closed default**; it is overridden *only* when this flow runs as a sub-flow under `/autopilot`, whose Spec-BLOCK interception diverts to `autopilot-ticket.md` Step S instead (see `${CLAUDE_PLUGIN_ROOT}/context/spec-remediation.md`). Absent that interception — interactive `/build`, `/write-spec`, any other caller — the hard stop holds.
 3. **Status precondition** is enforced by that flow's Step 1: if `status` is not `solution`, it stops and directs the lead to run `/problem XXXX` first. Honor that stop.
 4. After the files are written, announce in one line: "No specs found — generated N spec(s)/task from `solution.md` (score-spec: PASS|WARN). Continuing to build."
-5. **Surface skipped gate tools (ticket 0043).** From the **first** gate run of this build (the first `gate_run_on_dir` in Step 4e), if the response carries any `TOOL_SKIPPED` entries or a `## Skipped Tools` section in `gate-findings.md`, report the skipped-tool list to the lead in one line — e.g. "Gate tools skipped (not installed): staticcheck, cargo-audit — provision via the ticket 0022 doctor." A skipped optional tool never blocks the build; the one-line note makes a vacuous pass visible instead of silent. Emit it once, from the first gate run only.
+5. **Surface skipped gate tools (ticket 0043).** From the **first** gate run of this build (the first `gate_run_on_dir` in Step 4f), if the response carries any `TOOL_SKIPPED` entries or a `## Skipped Tools` section in `gate-findings.md`, report the skipped-tool list to the lead in one line — e.g. "Gate tools skipped (not installed): staticcheck, cargo-audit — provision via the ticket 0022 doctor." A skipped optional tool never blocks the build; the one-line note makes a vacuous pass visible instead of silent. Emit it once, from the first gate run only.
 
 Then load lead-curated context (both the specs-exist and just-generated paths):
 
@@ -53,7 +53,7 @@ A non-zero exit **halts** the build — show the validator's stderr (the missing
 If `.tickets/_standards.md` exists, load it via `@.tickets/_standards.md`.
 If `.tickets/_learnings.md` exists, load it via `@.tickets/_learnings.md`.
 
-Both are lead-curated. The model treats them as hard constraints, not suggestions. The machine's BM25 failure trail (`.harness/memory.db`) now feeds generation as well as repair: `memory(action="gotchas", ...)` injects *resolved* area-local failures into the generation context before the first gate (Step 4c), and `memory(action="retrieve", ...)` still surfaces similar failures reactively during repair (Step 4e). Neither ever feeds back into the lead-curated files automatically — the curated `_learnings.md` / `_standards.md` are still never auto-written.
+Both are lead-curated. The model treats them as hard constraints, not suggestions. The machine's BM25 failure trail (`.harness/memory.db`) now feeds generation as well as repair: `memory(action="gotchas", ...)` injects *resolved* area-local failures into the generation context before the first gate (Step 4c), and `memory(action="retrieve", ...)` still surfaces similar failures reactively during repair (Step 4f). Neither ever feeds back into the lead-curated files automatically — the curated `_learnings.md` / `_standards.md` are still never auto-written.
 
 **Spec-coverage warning (non-blocking).** Before executing specs, check whether any
 requirement is left uncovered. If `spec-coverage.md` exists in the ticket directory,
@@ -166,23 +166,31 @@ context_fetch(reference_files, target_file, project_root)
 ```
 If upstream specs in this task have already been written to the worktree, include their implementations as additional context so downstream specs can reference the actual interfaces.
 
-**c. Generate implementation and tests** in fenced code blocks (`# implementation` then `# tests`).
+**c. Write the test file directly — red gate before implementation.**
 
-Before generating, query failure memory for *resolved* past failures in this spec's area so the first attempt pre-empts them:
+Before writing anything, query failure memory for *resolved* past failures in this spec's area so the first attempt pre-empts them:
 
 ```
 memory(action="gotchas", target_file=spec.target_file, description=spec.description, language=language, project_root=project_root)
 ```
 
-If the returned block is non-empty, prepend it to the generation context as a hard "avoid these known failure modes (and apply their known fixes)" note. If empty, generate normally. This is additive to — not a replacement for — the reactive `memory(action="retrieve", ...)` call in Step 4e's repair loop.
+If the returned block is non-empty, prepend it to the generation context as a hard "avoid these known failure modes (and apply their known fixes)" note. If empty, generate normally. This is additive to — not a replacement for — the reactive `memory(action="retrieve", ...)` call in Step 4f's repair loop.
 
-**d. Write to worktree:**
-- Implementation → `worktree_dir / spec.target_file`
-- Tests → appropriate test location (e.g. `worktree_dir/tests/test_<module>.py`)
+Write the spec's test source **directly** to its target test location (e.g. `worktree_dir/tests/test_<module>.py`) — no fenced `# implementation` / `# tests` blocks. This sub-step writes the test only; no implementation exists yet.
 
-If the target file already exists, integrate intelligently — don't overwrite unrelated content.
+**d. Red-gate check (pre-implementation, exact node id, never the full suite).**
 
-**e. Integration gate (directory mode):**
+For attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`): call `gate_run_red_check(directory=".worktrees/XXXX-<slug>", language=spec.language, test_file=<the test file just written>, node_ids=<the new test's node id(s)>, attempt=N, max_attempts=MAX_REPAIR_ATTEMPTS)`. Branch on the returned `action`:
+
+- **`proceed`** (classification `red` — the target test fails pre-implementation, including a collection/import error naming the not-yet-created target) — genuine TDD signal confirmed. Continue to sub-step e.
+- **`retry`** (classification `blocking` — every target test already passes with no implementation; it does not discriminate) — revise the test file directly so it actually exercises the not-yet-built behavior, then re-run this sub-step as attempt `N+1`.
+- **`escalate_skip`** (classification `blocking` at budget exhaustion, or `tool_error` — the check itself could not run to a conclusion, which escalates immediately on first occurrence and never consumes a retry) — skip implementation for this spec and continue Step 4's loop with the next spec, mirroring Step 4f's exhaustion precedent (sub-step f.6). Note the skip; it surfaces in the Step 6/7 summary, never halting the build.
+
+**e. Write the implementation directly (only after a `proceed`).**
+
+Write the spec's implementation source **directly** to `worktree_dir / spec.target_file` — no fenced blocks. If the target file already exists, integrate intelligently — don't overwrite unrelated content.
+
+**f. Integration gate (directory mode):**
 
 Call `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`.
 
@@ -194,7 +202,7 @@ If it fails:
 5. If pass: call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="passed", resolution="<one-line fix summary>", target_file=spec.target_file, project_root=project_root)`. Pass a concise `resolution` describing **how** the failure was fixed (e.g. `resolution="added missing return-type annotation on parse()"`) — retrieval surfaces this line so a future repair learns the fix, not merely that a similar failure once passed. Pass `target_file` (the spec's target) so this record is retrievable proactively via `action="gotchas"` for future builds in the same area — Step 4c above — not only via the legacy error-keyed `retrieve`.
 6. If still failing after `MAX_REPAIR_ATTEMPTS`: record the exhausted loop so future repairs are warned away from it — call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="escalated", target_file=spec.target_file, project_root=project_root)` — then note the failure and continue to the next spec. (This mirrors the existing `outcome="passed"` record on success; retrieval surfaces both, marking escalated entries with `⚠`. Note `gotchas` surfaces only `passed` records, so an escalated row informs the reactive `retrieve` path but not proactive generation.)
 
-**f. Checkpoint:**
+**g. Checkpoint:**
 
 Call `checkpoint(action="write", task_id="XXXX-<slug>", completed=updated_completed_list, project_root=project_root)`.
 
@@ -261,7 +269,7 @@ For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
 
 1. Announce: "Auto-repair attempt N/`MAX_REPAIR_ATTEMPTS` — addressing M BLOCKER / K MAJOR finding(s)."
 2. For each BLOCKER and MAJOR finding, fix the specific `file:line` location in the worktree files directly. Call `memory(action="retrieve", ...)` first when a finding overlaps a known failure pattern. Do **not** touch MINOR / OBS findings.
-3. Re-run the integration gate so fixes don't regress: `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`. If it fails, repair the gate failures (same inner loop as Step 4e) before proceeding — a green gate is a precondition for re-review.
+3. Re-run the integration gate so fixes don't regress: `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`. If it fails, repair the gate failures (same inner loop as Step 4f) before proceeding — a green gate is a precondition for re-review.
 3a. **Repair-integrity check.** Run the repair-integrity check on **this round's own diff** — the changes this repair round introduced. Capture the round's diff before its commit (`git -C .worktrees/XXXX-<slug> diff` on the still-uncommitted fixes, or `git -C .worktrees/XXXX-<slug> diff HEAD` if you staged them) and pass it through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — that is the cumulative branch diff against a moving tip and would re-flag earlier accepted changes and drift from concurrent deliveries. If it reports any violation (removed test functions, added skip/xfail markers, or net-new bare suppression pragmas), the round **fails**: re-enter repair with the instruction to **restore the test and fix the implementation instead** of silencing the gate. A green gate obtained by weakening the safety net does not count as repaired.
 4. Commit the repair round: `git -C .worktrees/XXXX-<slug> commit -am "fix: address post-build critic round N findings"`.
 4b. **Prep the incremental brief (ticket 0067).** Before re-spawning, read `critic-findings.md`'s current on-disk content and take `gates.critic_reconciler.latest_section(text)` — the round just completed (round N)'s own section, since its findings are exactly what round N+1 must re-verify. Parse it with `gates.critic_finding_parser.parse_critic_findings(section_text, worktree_root)` (reusing 0062's parser — no second implementation) and filter to BLOCKER/MAJOR as `prior_findings`. Capture this round's own diff via `git -C .worktrees/XXXX-<slug> diff HEAD~1 HEAD` (the just-committed repair commit from item 4) as `diff_text` — never a diff against `main` (same rationale as item 3a's repair-integrity check).
