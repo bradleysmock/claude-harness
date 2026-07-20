@@ -4,6 +4,8 @@ Create a worktree, run the spec engine against it, write passing implementations
 
 Read `.harness/config.py` if it exists to get `LANGUAGE`, `PROJECT_ROOT`, `MAX_REPAIR_ATTEMPTS`, and `CRAFT_MAX_ITERATIONS` (defaults: auto-detect, `.`, 3, 3). The optional `CRAFT_REQUIRE_TEST_SURVIVAL` (default true) gates the Step 7b.5 pinned-test-survival check.
 
+**`MODE`** (default `""`) — the caller may set `MODE=autopilot` before delegating to this flow (`autopilot-ticket.md` does, mirroring `build-dry-run-ticket.md`'s `DRY_RUN=true`); an unset `MODE` normalizes to `""`, never `None`. The three lead-facing decision points below — Step 1's score-spec BLOCK, Step 7d's repair exhaustion, and Steps 7b/7c's clean build — each evaluate `is_autopilot_mode(MODE)` from `mode_branch.py` directly, an explicit branch rather than a caller narrating an interception.
+
 <!-- progress-checklist -->
 **Progress checklist** — as the first action, create the `TodoWrite` checklist (see "Progress checklist" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`):
 
@@ -35,7 +37,9 @@ Find the spec or task for this ticket:
 **If neither exists** — generate them inline before building (this replaces the old "run `/write-spec` first" hand-off):
 
 1. Perform **Steps 1–5** of `${CLAUDE_PLUGIN_ROOT}/context/flows/write-spec-ticket.md` (resolve + score-spec gate → read only the named files → choose single-spec vs DAG → write the spec/task files). **Skip that flow's Step 6 report** — you are continuing into the build, not handing off.
-2. **score-spec is a hard stop.** That flow's Step 1 runs the score-spec gate; if its verdict is **BLOCK**, stop here — **before any implementation is written** (the claim-time worktree already exists; leave it holding only its design artifacts) — show the failing checks, and tell the lead to fix the design artifacts (or run `/refine XXXX`) and re-run `/build XXXX`. This hard stop is the **fail-closed default**; it is overridden *only* when this flow runs as a sub-flow under `/autopilot`, whose Spec-BLOCK interception diverts to `autopilot-ticket.md` Step S instead (see `${CLAUDE_PLUGIN_ROOT}/context/spec-remediation.md`). Absent that interception — interactive `/build`, `/write-spec`, any other caller — the hard stop holds.
+2. **score-spec is a hard stop, branched explicitly on `MODE`.** That flow's Step 1 runs the score-spec gate; if its verdict is **BLOCK**, evaluate `is_autopilot_mode(MODE)` (`mode_branch.py`):
+   - **`True`** — continue at `autopilot-ticket.md` Step S instead (see `${CLAUDE_PLUGIN_ROOT}/context/spec-remediation.md`); do not stop.
+   - **`False`** (any other value, including unset `MODE`) — stop here — **before any implementation is written** (the claim-time worktree already exists; leave it holding only its design artifacts) — show the failing checks, and tell the lead to fix the design artifacts (or run `/refine XXXX`) and re-run `/build XXXX`. This is the **fail-closed default** for interactive `/build`, `/write-spec`, and any other caller that never sets `MODE`.
 3. **Status precondition** is enforced by that flow's Step 1: if `status` is not `solution`, it stops and directs the lead to run `/problem XXXX` first. Honor that stop.
 4. After the files are written, announce in one line: "No specs found — generated N spec(s)/task from `solution.md` (score-spec: PASS|WARN). Continuing to build."
 5. **Surface skipped gate tools (ticket 0043).** From the **first** gate run of this build (the first `gate_run_on_dir` in Step 4f), if the response carries any `TOOL_SKIPPED` entries or a `## Skipped Tools` section in `gate-findings.md`, report the skipped-tool list to the lead in one line — e.g. "Gate tools skipped (not installed): staticcheck, cargo-audit — provision via the ticket 0022 doctor." A skipped optional tool never blocks the build; the one-line note makes a vacuous pass visible instead of silent. Emit it once, from the first gate run only.
@@ -283,11 +287,14 @@ For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
 ### Step 7b — Auto-repair succeeded
 
 - Keep `status.md` at `status: review-ready`.
-- **Run Step 7b.5 (craft polish) before the delivery handoff**, then tell the user:
-  > The post-build critic's BLOCKER/MAJOR findings were auto-repaired in N round(s) and re-verified clean. Options:
-  > - Proceed to delivery with `/deliver XXXX`.
-  > - For an interactive panel-aware re-review (e.g., to dig into remaining MINOR / OBS findings conversationally), run `/review XXXX`.
-  > - For a comprehensive panel review of selected files, run `/critique <files>`.
+- **Run Step 7b.5 (craft polish) before the delivery handoff.**
+- Evaluate `is_autopilot_mode(MODE)` (`mode_branch.py`):
+  - **`True`** — continue at `autopilot-ticket.md` Step B instead of the message below.
+  - **`False`** (any other value, including unset `MODE`) — tell the user:
+    > The post-build critic's BLOCKER/MAJOR findings were auto-repaired in N round(s) and re-verified clean. Options:
+    > - Proceed to delivery with `/deliver XXXX`.
+    > - For an interactive panel-aware re-review (e.g., to dig into remaining MINOR / OBS findings conversationally), run `/review XXXX`.
+    > - For a comprehensive panel review of selected files, run `/critique <files>`.
 
 ### Step 7b.5 — Craft polish pass (gate-locked, behaviour-preserving)
 
@@ -327,24 +334,28 @@ For each iteration `N` (1 … `CRAFT_MAX_ITERATIONS`):
 ### Step 7c — No must-fix findings (or only MINOR / OBS remain)
 
 - Keep `status.md` at `status: review-ready`.
-- Tell the user:
-  > The post-build critic found no BLOCKER/MAJOR findings. Options:
-  > - Proceed to delivery with `/deliver XXXX`.
-  > - For an interactive panel-aware re-review (e.g., to dig into MINOR / OBS findings conversationally), run `/review XXXX`.
-  > - For a comprehensive panel review of selected files, run `/critique <files>`.
+- Evaluate `is_autopilot_mode(MODE)` (`mode_branch.py`):
+  - **`True`** — continue at `autopilot-ticket.md` Step B instead of the message below.
+  - **`False`** (any other value, including unset `MODE`) — tell the user:
+    > The post-build critic found no BLOCKER/MAJOR findings. Options:
+    > - Proceed to delivery with `/deliver XXXX`.
+    > - For an interactive panel-aware re-review (e.g., to dig into MINOR / OBS findings conversationally), run `/review XXXX`.
+    > - For a comprehensive panel review of selected files, run `/critique <files>`.
 
-### Step 7d — Auto-repair exhausted (ask the lead)
+### Step 7d — Auto-repair exhausted
 
-If BLOCKER / MAJOR findings still remain after `MAX_REPAIR_ATTEMPTS`:
+If BLOCKER / MAJOR findings still remain after `MAX_REPAIR_ATTEMPTS`, evaluate `is_autopilot_mode(MODE)` (`mode_branch.py`):
 
-- Update `status.md` to `status: changes-requested` and commit it in the worktree:
-  ```
-  git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/status.md
-  git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX → changes-requested"
-  ```
-- Show the lead the residual BLOCKER / MAJOR findings and what each repair round attempted.
-- Tell the user:
-  > Auto-repair could not clear N BLOCKER / K MAJOR finding(s) after `MAX_REPAIR_ATTEMPTS` attempts — your input is needed. Options:
-  > - Advise on the approach, then run `/build XXXX` to resume repair with the existing worktree.
-  > - Run `/review XXXX` for an interactive panel-aware deep-dive on the residual findings (same panels, conversational delivery, follow-up questions).
-  > - For a comprehensive panel review against arbitrary files in the worktree, run `/critique <files>`.
+- **`True`** — continue at `autopilot-ticket.md` Step A instead of the steps below; Step A owns the `changes-requested` decision after full escalation, so do not perform it here.
+- **`False`** (any other value, including unset `MODE`) — ask the lead:
+  - Update `status.md` to `status: changes-requested` and commit it in the worktree:
+    ```
+    git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/status.md
+    git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX → changes-requested"
+    ```
+  - Show the lead the residual BLOCKER / MAJOR findings and what each repair round attempted.
+  - Tell the user:
+    > Auto-repair could not clear N BLOCKER / K MAJOR finding(s) after `MAX_REPAIR_ATTEMPTS` attempts — your input is needed. Options:
+    > - Advise on the approach, then run `/build XXXX` to resume repair with the existing worktree.
+    > - Run `/review XXXX` for an interactive panel-aware deep-dive on the residual findings (same panels, conversational delivery, follow-up questions).
+    > - For a comprehensive panel review against arbitrary files in the worktree, run `/critique <files>`.

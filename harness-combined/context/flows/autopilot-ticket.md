@@ -11,18 +11,12 @@ Autonomous build-to-deliver pipeline. The ticket is confirmed at `status: soluti
 
 ## Steps 1–7c — Build
 
-Read `${CLAUDE_PLUGIN_ROOT}/context/flows/build-ticket.md` and follow it exactly through Steps 1–7c: worktree creation, spec generation (if specs are absent), spec execution, gate repair loop, worktree commit, diff display, critic spawn, and BLOCKER/MAJOR auto-repair.
-
-**Spec-BLOCK interception**: When the score-spec gate in `build-ticket.md` Step 1 returns **BLOCK** (the condition that would normally hard-stop *before any implementation is written* and hand back to the lead), stop following `build-ticket.md` and continue in this flow at **Step S** below. Step S is the *only* override of that hard stop — any context that reaches the BLOCK without this interception keeps the fail-closed hard stop.
-
-**Divergence condition**: When BLOCKER/MAJOR findings still remain after `MAX_REPAIR_ATTEMPTS` repair rounds (the condition that would normally trigger `build-ticket.md` Step 7d), stop following `build-ticket.md` and continue in this flow at Step A below.
-
-**Clean-build interception**: When the critic returns no BLOCKER/MAJOR findings (the condition that would normally trigger `build-ticket.md` Step 7b or 7c — 7b = repair loop cleared findings; 7c = no must-fix findings from the start), stop following `build-ticket.md` and continue in this flow at Step B below.
+Set `MODE=autopilot` for this run (mirroring `build-dry-run-ticket.md`'s `DRY_RUN=true`) before delegating. Read `${CLAUDE_PLUGIN_ROOT}/context/flows/build-ticket.md` and follow it exactly through Steps 1–7c: worktree creation, spec generation (if specs are absent), spec execution, gate repair loop, worktree commit, diff display, critic spawn, and BLOCKER/MAJOR auto-repair. With `MODE=autopilot` set, `build-ticket.md`'s own `is_autopilot_mode(MODE)` branches — Step 1's score-spec BLOCK, Step 7d's repair exhaustion, and Steps 7b/7c's clean build — continue directly into this flow's Steps S, A, and B below; no separate interception logic is needed here.
 
 ## Step S — Spec auto-remediation (autopilot only)
 
-Reached only via the Spec-BLOCK interception above — a score-spec **BLOCK** at
-`build-ticket.md` Step 1. The claim-time worktree already exists (`/problem`
+Reached only via `build-ticket.md` Step 1's `is_autopilot_mode(MODE)` branch on
+a score-spec **BLOCK**. The claim-time worktree already exists (`/problem`
 Phase 1 created it); you are remediating the design artifacts it holds *before*
 any implementation is written. Do **not** hand back to the lead yet.
 
