@@ -14,26 +14,27 @@
    where the current two lines sit — cleanup, including the new remote delete,
    only runs after `main`'s push succeeds. Never before.
 3. `ticket.py::deliver_squash_batch`'s three inline cleanup sites (batch
-   branch, and each member's branch/worktree) must use the same helper.
+   branch, and each member's branch/worktree) must use the same helper. The
+   batch-branch call must pass `_batch_worktree(batch_branch)` — not
+   `batch_branch` itself — as the helper's worktree-dir argument (`full_slug`),
+   since the worktree lives at `.worktrees/<batch-slug-with-dashes>`, not at a
+   path derived from the branch name's literal `/`. Each member's call passes
+   its own slug directly (no transform needed there).
 4. The remote delete is skipped cleanly when no remote exists, via
    `_remove_branch_and_worktree`'s existing `_has_remote(repo)` guard.
 5. A failed/rejected remote-branch delete must not abort delivery or touch the
-   already-published `main`/ledger state — `_remove_branch_and_worktree`'s
-   `check=False` on the remote-delete call already provides this; no new
-   error-swallowing is introduced beyond what the helper already does.
-6. `context/flows/deliver-ticket.md` Step 4c's prose is updated to describe the
-   corrected sequence — documentation of the Python change, not a substitute
-   for it.
+   already-published `main`/ledger state — already true of the helper's
+   existing `check=False` remote-delete call; no new error-swallowing needed.
+6. `context/flows/deliver-ticket.md` Step 4c's prose documents the corrected
+   sequence — it is documentation of the Python change, not a substitute for it.
 7. `commands/ticket-status.md`/`skills/stale/SKILL.md`/`skills/status/SKILL.md`
    must not regress — none treat branch existence as a signal.
 
 ## Non-Functional Requirements
 
-1. No new dependencies; reuses the existing `git()` helper and argument-list
-   invocation style.
+1. No new dependencies; reuses the existing `git()` helper and argument-list style.
 2. `tests/test_ticket_module.py::test_deliver_squash_preserves_branch_and_worktree_on_rejected_push`
-   keeps passing unmodified — the fail-closed gate around cleanup is not
-   weakened by this change.
+   keeps passing unmodified — the fail-closed gate isn't weakened.
 
 ## Test Strategy
 

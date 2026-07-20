@@ -21,7 +21,7 @@ for byte. Update `deliver-ticket.md` Step 4c's prose to document the result.
 | Component | Responsibility |
 |-----------|----------------|
 | `ticket.py::deliver_squash` (lines 774-775) | Replace `git(repo, "worktree", "remove", ...)` + `git(repo, "branch", "-D", branch, ...)` with `_remove_branch_and_worktree(repo, slug, branch, push=True)` — same two lines, same position, still inside the `if not _push_current_branch(repo): raise RuntimeError(...)` gate above them. Nothing else in the function changes. |
-| `ticket.py::deliver_squash_batch` (batch-branch site + per-member loop) | Same substitution at both the batch-branch cleanup and each member's `worktree remove`/`branch -D` pair inside the loop. |
+| `ticket.py::deliver_squash_batch` (batch-branch site + per-member loop) | Batch-branch site: `_remove_branch_and_worktree(repo, _batch_worktree(batch_branch), batch_branch, push=True)` — the worktree lives at `.worktrees/<_batch_worktree(...)>` (slash→dash), not at a path derived from `batch_branch` literally (round-2 finding: passing `batch_branch` as the worktree-dir arg would silently orphan the real worktree). Per-member loop: each site passes its own `slug` directly for both args — no transform needed, since a member's worktree dir already equals its slug. |
 | `ticket.py::_remove_branch_and_worktree` | No change — already correct, already used by `cancel`/`abandon`. |
 | `context/flows/deliver-ticket.md` Step 4c | Prose updated to name the helper call, documenting the Python change — not itself the fix. |
 
@@ -37,7 +37,7 @@ for byte. Update `deliver-ticket.md` Step 4c's prose to document the result.
 
 | Requirement | Test Type | Scenario(s) |
 |-------------|-----------|--------------|
-| FR-1, FR-3 | Unit (red first) | `deliver_squash`/`deliver_squash_batch` on a fixture with a remote: branch, worktree, and remote branch all gone. |
+| FR-1, FR-3 | Unit (red first) | `deliver_squash`/`deliver_squash_batch` on a fixture with a remote: branch, worktree, and remote branch all gone — the batch case asserts against `.worktrees/<_batch_worktree(batch_branch)>` specifically, not a literal-`batch_branch`-derived path, so a wrong-argument implementation false-fails rather than false-passes. |
 | FR-2 | Regression | `test_deliver_squash_preserves_branch_and_worktree_on_rejected_push` (line 365) passes unmodified — cleanup, including the new remote delete, never runs on a rejected `main` push. |
 | FR-4 | Unit | No-remote fixture: cleanup completes, no remote-delete attempted. |
 | FR-5 | Unit | Forced remote-delete failure: delivery still reports success. |
