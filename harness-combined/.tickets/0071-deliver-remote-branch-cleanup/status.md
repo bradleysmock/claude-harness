@@ -1,4 +1,4 @@
-status: implementing
+status: review-ready
 ticket: 0071
 title: Deliver squash-merge must delete the remote ticket branch, not just the local one
 type: generic
