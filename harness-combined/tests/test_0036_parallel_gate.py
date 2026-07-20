@@ -11,6 +11,7 @@ import contextvars
 import itertools
 import threading
 from pathlib import Path
+from typing import Callable
 
 import pytest
 
@@ -30,6 +31,13 @@ from models import GateError, GateResult
 
 def _ok(name: str) -> GateResult:
     return GateResult(gate=name, passed=True, errors=[], duration_ms=1)
+
+
+def _ok_fn(name: str) -> Callable[[str], GateResult]:
+    """A `gate_fns` entry that ignores its directory arg and always passes as `name`."""
+    def fn(directory: str) -> GateResult:
+        return _ok(name)
+    return fn
 
 
 def _fail(name: str) -> GateResult:
@@ -288,7 +296,7 @@ def test_log_write_failure_does_not_abort_run(tmp_path: Path):
 
 def test_results_ordered_by_declaration_not_completion(tmp_path: Path):
     # Solution invariant: results follow the gates list, not completion order.
-    fns = {g: (lambda d, g=g: _ok(g)) for g in ("lint", "type_check", "test", "security")}
+    fns = {g: _ok_fn(g) for g in ("lint", "type_check", "test", "security")}
     sched = GateScheduler(
         ["lint", "type_check", "test", "security"], {"test": ["type_check"]}, fns,
         max_workers=None,
@@ -301,7 +309,7 @@ def test_parallel_and_serial_agree_on_all_pass(tmp_path: Path):
     # FR-4 (structural equivalence): same gates, same directory, unlimited vs
     # serial produce identical result ordering and pass/fail.
     def build(max_workers):
-        fns = {g: (lambda d, g=g: _ok(g)) for g in ("lint", "type_check", "test", "security")}
+        fns = {g: _ok_fn(g) for g in ("lint", "type_check", "test", "security")}
         return GateScheduler(
             ["lint", "type_check", "test", "security"], {"test": ["type_check"]}, fns,
             max_workers=max_workers,

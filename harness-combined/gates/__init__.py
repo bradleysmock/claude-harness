@@ -12,7 +12,7 @@ from models import GateError, GateResult
 try:  # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - exercised only on Python < 3.11
-    import tomli as tomllib  # type: ignore[no-redef]
+    import tomli as tomllib  # type: ignore[no-redef, import-not-found]  # 3.10-only backport, not installed under 3.11+
 
 
 GateType = Literal["lint", "typecheck", "test", "security"]

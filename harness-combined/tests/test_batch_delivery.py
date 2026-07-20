@@ -210,6 +210,65 @@ def test_batch_rejected_push_leaves_everything_intact(tmp_path: Path) -> None:
     assert _branch_exists(repo, "batch/0001-alpha")
 
 
+def test_batch_deletes_remote_branches_after_delivery(tmp_path: Path) -> None:
+    """FR-3 acceptance (ticket 0071): delivering a batch removes the batch
+    branch and every member's ticket branch from origin, not just locally."""
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+
+    repo = tmp_path / "repo"
+    _init_main_with_claims(repo, [("0001", "alpha", "Alpha"), ("0002", "beta", "Beta")])
+    main = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "push", "-q", "-u", "origin", main)
+
+    _git(repo, "branch", "ticket/0001-alpha", main)
+    _git(repo, "branch", "ticket/0002-beta", main)
+    _git(repo, "push", "-q", "origin", "ticket/0001-alpha", "ticket/0002-beta")
+
+    _git(repo, "checkout", "-qb", "batch/0001-alpha")
+    b1 = _build_member_range(repo, "0001", "alpha", "Alpha")
+    b2 = _build_member_range(repo, "0002", "beta", "Beta")
+    _git(repo, "push", "-q", "-u", "origin", "batch/0001-alpha")
+    _git(repo, "checkout", "-q", main)
+
+    members = [
+        {"slug": "0001-alpha", "title": "Alpha", "head": b1},
+        {"slug": "0002-beta", "title": "Beta", "head": b2},
+    ]
+    ticket.deliver_squash_batch(repo, "batch/0001-alpha", members)
+
+    remote_heads = _git(repo, "ls-remote", "--heads", "origin")
+    assert "refs/heads/batch/0001-alpha" not in remote_heads
+    assert "refs/heads/ticket/0001-alpha" not in remote_heads
+    assert "refs/heads/ticket/0002-beta" not in remote_heads
+
+
+def test_batch_removes_correct_worktree_dir_for_batch_branch(tmp_path: Path) -> None:
+    """FR-3 acceptance: the batch-branch cleanup site must resolve the worktree
+    dir via `_batch_worktree(batch_branch)` (slash -> dash), not a path derived
+    from the branch name's literal `/` — a wrong-argument implementation would
+    silently orphan the real worktree at `.worktrees/batch-<slug>` instead of
+    removing it, so this asserts the *real* registered worktree is gone rather
+    than merely that delivery didn't raise."""
+    repo = tmp_path / "repo"
+    _init_main_with_claims(repo, [("0001", "alpha", "Alpha")])
+    main = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+
+    _git(repo, "checkout", "-qb", "batch/0001-alpha")
+    b1 = _build_member_range(repo, "0001", "alpha", "Alpha")
+    _git(repo, "checkout", "-q", main)
+
+    worktree_dir = repo / ".worktrees" / ticket._batch_worktree("batch/0001-alpha")
+    _git(repo, "worktree", "add", "--detach", str(worktree_dir))
+    assert worktree_dir.is_dir()
+
+    members = [{"slug": "0001-alpha", "title": "Alpha", "head": b1}]
+    ticket.deliver_squash_batch(repo, "batch/0001-alpha", members)
+
+    assert not worktree_dir.exists()
+
+
 def test_deliver_batch_cli_reads_members_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

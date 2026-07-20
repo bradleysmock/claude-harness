@@ -265,10 +265,11 @@ Ready to deliver ticket XXXX:
   append {"event":"delivered","number":XXXX,"sha":<squash sha>} to the harness-tickets ledger (pushed; idempotent)
   git worktree remove .worktrees/XXXX-<slug>
   git branch -D <branch>      (-D, not -d: a squash leaves the branch without merge ancestry)
+  git push origin --delete <branch>      (via _remove_branch_and_worktree; skipped when no remote, non-fatal on failure)
 Proceed? (yes/no)
 ```
 
-> **This is the ticket's only `main` commit.** Under the harness-tickets model nothing about the ticket touched `main` before now — the number claim and coarse lifecycle lived on the `harness-tickets` ledger, and the ticket dir lived on its feature branch. `deliver_squash()` pushes `main` first, then appends the `delivered` ledger event (idempotent by `(event, number)`, so a ledger race never blocks delivery), then removes the worktree + branch.
+> **This is the ticket's only `main` commit.** Under the harness-tickets model nothing about the ticket touched `main` before now — the number claim and coarse lifecycle lived on the `harness-tickets` ledger, and the ticket dir lived on its feature branch. `deliver_squash()` pushes `main` first, then appends the `delivered` ledger event (idempotent by `(event, number)`, so a ledger race never blocks delivery), then calls `_remove_branch_and_worktree()` to remove the worktree and delete the branch — locally, and on `origin` too when a remote exists, so a delivered ticket's branch never lingers on the remote.
 
 Stop if the user says no.
 
@@ -354,12 +355,14 @@ Runs after the Step 4 commit (both SHAs captured) and **before Step 4c publish/c
 
 ## Step 4c — Publish and clean up
 
-Reached when Step 4b passed, was skipped (no smoke test configured), or ran in `warn-only` mode. It is **not** run on an `auto-revert` failure (branch + worktree stay intact for rework). Publish first; only on a successful push remove the worktree and delete the branch (`-D`, not `-d`: a squash leaves the branch without merge ancestry). On a rejected push, stop with both intact and retry.
+Reached when Step 4b passed, was skipped (no smoke test configured), or ran in `warn-only` mode. It is **not** run on an `auto-revert` failure (branch + worktree stay intact for rework). Publish first; only on a successful push does cleanup run, via `_remove_branch_and_worktree(repo, slug, branch, push=True)`: remove the worktree, delete the local branch (`-D`, not `-d`: a squash leaves the branch without merge ancestry), and — when a remote exists — delete the branch on `origin` too, so a delivered ticket's branch never lingers there. A rejected/failed remote-branch delete is reported but is **not fatal**: `main` is already durably published by this point, so it never aborts delivery. On a rejected `main` push, stop with everything (including the remote branch) intact and retry.
 
 ```
 git push
-git worktree remove .worktrees/XXXX-<slug>
-git branch -D <branch>
+_remove_branch_and_worktree(repo, slug, branch, push=True)
+  # git worktree remove .worktrees/XXXX-<slug>
+  # git branch -D <branch>
+  # git push origin --delete <branch>      (only if a remote exists; check=False, non-fatal)
 ```
 
 ## Step 5 — Candidate learnings (present, then append accepted)

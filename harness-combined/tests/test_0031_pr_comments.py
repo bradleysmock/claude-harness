@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import types
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -309,7 +310,9 @@ def test_gate_dedup_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
     f = Finding("a.py", 1, "MAJOR", "", "msg")
     pulls = [{"path": "a.py", "line": 1, "body": pr_commenter._inline_body(f, "gate")}]
     monkeypatch.setattr(comment_deduplicator.subprocess, "run", _fetch_fake(pulls=pulls))
-    assert hash_for(f, "gate") in fetch_existing_hashes(1, "{owner}/{repo}", "gate")
+    existing = fetch_existing_hashes(1, "{owner}/{repo}", "gate")
+    assert not isinstance(existing, DeduplicationFailed)
+    assert hash_for(f, "gate") in existing
 
 
 def test_critic_toplevel_dedup_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -317,7 +320,9 @@ def test_critic_toplevel_dedup_roundtrip(monkeypatch: pytest.MonkeyPatch) -> Non
     f = Finding("", None, "MINOR", "", "a top-level nit")
     issues = [{"body": pr_commenter._render_toplevel_body([f], "critic")}]
     monkeypatch.setattr(comment_deduplicator.subprocess, "run", _fetch_fake(issues=issues))
-    assert hash_for(f, "critic") in fetch_existing_hashes(1, "{owner}/{repo}", "critic")
+    existing = fetch_existing_hashes(1, "{owner}/{repo}", "critic")
+    assert not isinstance(existing, DeduplicationFailed)
+    assert hash_for(f, "critic") in existing
 
 
 def test_fetch_existing_non_zero_is_dedup_failed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -363,6 +368,10 @@ class _Capture:
             self.issue_body = body
             return True
         return fn
+
+    def comments(self) -> list[dict]:
+        """``self.review["comments"]``, typed — the payload is this test's own fixture."""
+        return cast("list[dict]", self.review["comments"])
 
 
 def _no_gh(monkeypatch: pytest.MonkeyPatch) -> list[object]:
@@ -456,7 +465,7 @@ def test_suggestion_prefix_for_minor(tmp_path: Path, monkeypatch: pytest.MonkeyP
     _patch_diff(monkeypatch, {"a.py": {1}})  # in-diff, so it posts inline
     cap = _Capture(monkeypatch)
     post_findings([Finding("a.py", 1, "MINOR", "", "nit")], tmp_path, should_post=True, kind="critic")
-    bodies = [c["body"] for c in cap.review["comments"]]  # type: ignore[union-attr]
+    bodies = [c["body"] for c in cap.comments()]
     assert bodies[0].startswith("[suggestion] ")
 
 
@@ -466,7 +475,7 @@ def test_inline_finding_routes_inline(tmp_path: Path, monkeypatch: pytest.Monkey
     _patch_diff(monkeypatch, {"a.py": {3}})
     cap = _Capture(monkeypatch)
     post_findings([Finding("a.py", 3, "MAJOR", "", "inline one")], tmp_path, should_post=True)
-    assert len(cap.review["comments"]) == 1
+    assert len(cap.comments()) == 1
     assert cap.issue_body is None  # nothing routed top-level
 
 
@@ -523,7 +532,7 @@ def test_body_size_under_limit_takes_inline_path(tmp_path: Path, monkeypatch: py
     cap = _Capture(monkeypatch)
     findings = [Finding("a.py", i, "MAJOR", "", "short") for i in range(1, 51)]
     post_findings(findings, tmp_path, should_post=True)
-    assert len(cap.review["comments"]) == 50  # inline batch path
+    assert len(cap.comments()) == 50  # inline batch path
 
 
 def test_dry_run_computes_result_without_submit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -5,6 +5,17 @@ version = "0.0.0"
 # 0031) dispatches typed result types with a `match` statement.
 requires-python = ">=3.10"
 
+[tool.mypy]
+# skills/sprint and skills/velocity (and their tests/ counterparts) both ship a
+# same-named compute.py/test_command.py/test_compute.py; explicit_package_bases
+# makes mypy qualify each by its full directory path (skills.sprint.compute vs
+# skills.velocity.compute) instead of colliding on the bare filename.
+explicit_package_bases = true
+# hooks/*.py do `sys.path.insert(0, <this dir>)` then `from _common import ...`
+# so the sibling import resolves both as a script and via importlib at runtime;
+# adding hooks/ here lets mypy resolve that same bare "_common" import statically.
+mypy_path = "hooks"
+
 [tool.bandit]
 # B102 (exec_used): server.py uses exec() to load harness-authored spec/task files
 # from .harness/specs/ and .harness/tasks/ — never external user input.

@@ -416,3 +416,156 @@ def test_deliver_squash_preserves_branch_and_worktree_on_rejected_push(tmp_path:
     assert worktree.is_dir()
     assert run("rev-parse", "HEAD") != head_before  # the local squash commit was made
     assert main_branch  # sanity: we resolved the main branch name
+
+
+def test_deliver_squash_deletes_remote_branch(tmp_path: Path) -> None:
+    """FR-1/AC (ticket 0071): delivering over a remote must delete the now
+    fully-merged branch on origin too, not just locally — otherwise every
+    squash-delivered ticket leaves a stale branch on origin forever."""
+    bare, dev = _init_remote_clone(tmp_path, "dev")
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(dev), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    tdir = dev / ".tickets" / "0001-thing"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: claimed\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: dev@x.c\nupdated: 2026-07-20\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "chore(ticket): 0001 claim")
+    run("push", "-q", "origin", "HEAD")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+
+    run("checkout", "-qb", "ticket/0001-thing")
+    (dev / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tdir / "status.md").write_text(
+        "status: review-ready\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: dev@x.c\nupdated: 2026-07-20\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "feat: thing")
+    run("push", "-q", "-u", "origin", "ticket/0001-thing")
+    run("checkout", "-q", main_branch)
+
+    assert "refs/heads/ticket/0001-thing" in run("ls-remote", "--heads", "origin")
+
+    ticket.deliver_squash(dev, "ticket/0001-thing", "0001-thing", "Thing")
+
+    assert "refs/heads/ticket/0001-thing" not in run("ls-remote", "--heads", "origin")
+    assert not _branch_exists(dev, "ticket/0001-thing")
+
+
+def test_deliver_squash_no_remote_skips_remote_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-4 acceptance: with no remote configured, delivery completes normally
+    and `_has_remote`'s guard means no `git push` of any kind (including a
+    remote-branch delete) is ever attempted."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    run("config", "user.email", "d@x.c")
+    run("config", "user.name", "d")
+    tdir = repo / ".tickets" / "0001-thing"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: claimed\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: d@x.c\nupdated: 2026-07-20\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "chore(ticket): 0001 claim")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+
+    run("checkout", "-qb", "ticket/0001-thing")
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tdir / "status.md").write_text(
+        "status: review-ready\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: d@x.c\nupdated: 2026-07-20\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "feat: thing")
+    run("checkout", "-q", main_branch)
+
+    calls: list[tuple] = []
+    original_git = ticket.git
+
+    def spy(repo_arg, *args, **kwargs):
+        calls.append(args)
+        return original_git(repo_arg, *args, **kwargs)
+
+    monkeypatch.setattr(ticket, "git", spy)
+
+    subject = ticket.deliver_squash(repo, "ticket/0001-thing", "0001-thing", "Thing")
+
+    assert "(squash)" in subject
+    assert not any(a and a[0] == "push" for a in calls)
+    assert not _branch_exists(repo, "ticket/0001-thing")
+
+
+def test_deliver_squash_remote_delete_failure_is_nonfatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FR-5 acceptance: a forced remote-branch-delete failure must not raise or
+    abort delivery — `main` is already durably published by the time cleanup
+    runs. Forces the actual `push --delete` call to target a nonexistent ref so
+    it genuinely fails, proving the failure path is exercised (not just absent)."""
+    bare, dev = _init_remote_clone(tmp_path, "dev")
+
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(dev), *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    tdir = dev / ".tickets" / "0001-thing"
+    tdir.mkdir(parents=True)
+    (tdir / "status.md").write_text(
+        "status: claimed\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: dev@x.c\nupdated: 2026-07-20\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "chore(ticket): 0001 claim")
+    run("push", "-q", "origin", "HEAD")
+    main_branch = run("rev-parse", "--abbrev-ref", "HEAD")
+
+    run("checkout", "-qb", "ticket/0001-thing")
+    (dev / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tdir / "status.md").write_text(
+        "status: review-ready\nticket: 0001\ntitle: Thing\n"
+        "branch: ticket/0001-thing\nowner: dev@x.c\nupdated: 2026-07-20\n",
+        encoding="utf-8",
+    )
+    run("add", "-A")
+    run("commit", "-qm", "feat: thing")
+    run("push", "-q", "-u", "origin", "ticket/0001-thing")
+    run("checkout", "-q", main_branch)
+
+    original_git = ticket.git
+    called = {"count": 0}
+
+    def flaky(repo_arg, *args, **kwargs):
+        if args[:3] == ("push", "origin", "--delete"):
+            called["count"] += 1
+            return original_git(repo_arg, "push", "origin", "--delete", "no-such-branch", check=False)
+        return original_git(repo_arg, *args, **kwargs)
+
+    monkeypatch.setattr(ticket, "git", flaky)
+
+    subject = ticket.deliver_squash(dev, "ticket/0001-thing", "0001-thing", "Thing")
+
+    assert called["count"] == 1  # the remote-delete path was actually exercised
+    assert "(squash)" in subject  # did not raise despite the forced remote-delete failure

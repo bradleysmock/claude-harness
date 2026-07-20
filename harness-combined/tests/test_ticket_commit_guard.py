@@ -6,8 +6,8 @@ from pathlib import Path
 SPEC = importlib.util.spec_from_file_location(
     "ticket_commit_guard", Path(__file__).parent.parent / "hooks" / "ticket_commit_guard.py"
 )
-guard = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
+guard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(guard)
 
 

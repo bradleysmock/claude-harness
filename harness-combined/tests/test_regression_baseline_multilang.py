@@ -209,12 +209,15 @@ def test_load_baseline_cache_miss_computes_then_reads(monkeypatch, tmp_path: Pat
         calls["n"] += 1
         return {"x.py::a", "y.py::b"}
 
-    kw = dict(
-        merge_base_fn=lambda r, b: "deadbeef", compute_fn=compute,
-        read_cache=bl.read_failing_cache, write_cache=bl.write_failing_cache,
-    )
-    first = bl.load_baseline(tmp_path, "main", 180, **kw)
-    second = bl.load_baseline(tmp_path, "main", 180, **kw)
+    def call() -> set[str] | None:
+        return bl.load_baseline(
+            tmp_path, "main", 180,
+            merge_base_fn=lambda r, b: "deadbeef", compute_fn=compute,
+            read_cache=bl.read_failing_cache, write_cache=bl.write_failing_cache,
+        )
+
+    first = call()
+    second = call()
     assert first == {"x.py::a", "y.py::b"}
     assert second == first
     assert calls["n"] == 1  # second call hit the cache

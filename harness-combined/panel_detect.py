@@ -27,7 +27,7 @@ from pathlib import Path, PurePosixPath
 try:  # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - depends on interpreter version
-    import tomli as tomllib  # type: ignore[no-redef]
+    import tomli as tomllib  # type: ignore[no-redef, import-not-found]  # 3.10-only backport, not installed under 3.11+
 
 # Cap the amount of a file's content scanned for `content` trigger patterns,
 # so a single huge or adversarial file can't blow up per-file scan cost.

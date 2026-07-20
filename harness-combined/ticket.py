@@ -771,8 +771,7 @@ def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
     if number is not None:
         sha = git(repo, "rev-parse", "HEAD").stdout.strip()
         _append_lifecycle(repo, "delivered", number, {"sha": sha})
-    git(repo, "worktree", "remove", "--force", str(repo / ".worktrees" / slug), check=False)
-    git(repo, "branch", "-D", branch, check=False)
+    _remove_branch_and_worktree(repo, slug, branch, push=True)
     return subject
 
 
@@ -864,15 +863,10 @@ def deliver_squash_batch(
         if number is not None:
             _append_lifecycle(repo, "delivered", number, {"sha": head_sha})
 
-    git(
-        repo, "worktree", "remove", "--force",
-        str(repo / ".worktrees" / _batch_worktree(batch_branch)), check=False,
-    )
-    git(repo, "branch", "-D", batch_branch, check=False)
+    _remove_branch_and_worktree(repo, _batch_worktree(batch_branch), batch_branch, push=True)
     for member in members:
         slug = member["slug"]
-        git(repo, "worktree", "remove", "--force", str(repo / ".worktrees" / slug), check=False)
-        git(repo, "branch", "-D", f"ticket/{slug}", check=False)
+        _remove_branch_and_worktree(repo, slug, f"ticket/{slug}", push=True)
     return subjects
 
 
