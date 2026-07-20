@@ -26,7 +26,7 @@ Spawn a `claude` subagent (fresh context, read-only — it must not write or edi
 
 **Persist the diagnosis before applying any edits.** The diagnostic subagent's output is the highest-value failure artifact in the pipeline — capture it durably first:
 
-1. Append it to the ticket's `critic-findings.md` (the durable sibling of `gate-findings.md` — see "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`) as its own append-only section headed by the date, preserving the three parts verbatim — **Root cause**, **Fix strategy**, and **Target locations**. Use a level-3 (`### `) heading, not level-2 (`## `) — `gates/critic_reconciler.latest_section()` scopes to the file's last `## ` section to find the immediately preceding *critic round*, and a level-2 diagnosis heading would shadow it (the diagnosis carries no findings/markers, so it would make the next reconcile call see an empty `prev`):
+1. Append it to `critic-findings.md` using the canonical persistence pattern ("Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`), with `<section-heading>` = `### Escalation diagnosis — <today's date>` (level-3, not level-2 — `gates/critic_reconciler.latest_section()` scopes to the file's last `## ` section to find the immediately preceding *critic round*, and a level-2 diagnosis heading would shadow it, making the next reconcile call see an empty `prev`) and `<commit-message>` = `chore(ticket): XXXX escalation diagnosis`. The section body preserves the three parts verbatim:
 
    ```
    ### Escalation diagnosis — <today's date>
@@ -34,13 +34,6 @@ Spawn a `claude` subagent (fresh context, read-only — it must not write or edi
    **Root cause**: …
    **Fix strategy**: …
    **Target locations**: …
-   ```
-
-   Commit it on the branch (branch-local — it must **not** touch `main`):
-
-   ```
-   git -C .worktrees/XXXX-slug add .tickets/XXXX-slug/critic-findings.md
-   git -C .worktrees/XXXX-slug commit -m "chore(ticket): XXXX escalation diagnosis"
    ```
 
 2. Record it to the BM25 failure memory under gate `"critic"` so a future repair is warned away from the failed strategy — pass the root cause + failed strategy as the error text:
@@ -63,7 +56,7 @@ gate_run_on_dir(".worktrees/XXXX-slug", "auto", project_root)
 
 (`project_root` is inherited from the build phase context, loaded in `build-ticket.md` Step 1 from `.harness/config.py`.)
 
-Re-spawn the critic subagent (same Phase and Ticket as the caller, next Round number). Display its report verbatim. Parse it into `Finding` objects via `gates.critic_finding_parser.parse_critic_findings(report_text, worktree_root)` (all severities). **Reconcile and announce — before persisting**: harvest `prev` via `gates.critic_reconciler.harvest_keys(gates.critic_reconciler.latest_section(<critic-findings.md's current on-disk content>))`, reconstruct each as `Finding(file=k[0], line=k[1], severity=k[2], code=k[3], message="")`, call `reconcile(prev, curr)`, and announce "Round N: F fixed, P persisted, N new BLOCKER/MAJOR." **Persist this round**: append the report to `critic-findings.md` as a new `## Round N — <today's date>` section, with each finding's `gates.critic_reconciler.marker_for_key(gates.finding.finding_key(f))` marker trailing its header line, and commit it on the branch (`git -C .worktrees/XXXX-slug commit -am "chore(ticket): XXXX critic findings round N"`) — the same reconcile+append+commit the caller's `build-ticket.md` Step 7a performs, so *every* critic round (escalation rounds included) lands in the durable file with its key markers intact. Allow up to `MAX_REPAIR_ATTEMPTS` additional repair rounds.
+Re-spawn the critic subagent (same Phase and Ticket as the caller, next Round number). Display its report verbatim. Parse it into `Finding` objects via `gates.critic_finding_parser.parse_critic_findings(report_text, worktree_root)` (all severities). **Reconcile and announce — before persisting**: harvest `prev` via `gates.critic_reconciler.harvest_keys(gates.critic_reconciler.latest_section(<critic-findings.md's current on-disk content>))`, reconstruct each as `Finding(file=k[0], line=k[1], severity=k[2], code=k[3], message="")`, call `reconcile(prev, curr)`, and announce "Round N: F fixed, P persisted, N new BLOCKER/MAJOR." **Persist this round** to `critic-findings.md`, with each finding's `gates.critic_reconciler.marker_for_key(gates.finding.finding_key(f))` marker trailing its header line, using the canonical persistence pattern ("Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`) for the append/commit mechanics: `<section-heading>` = `## Round N — <today's date>`, `<commit-message>` = `chore(ticket): XXXX critic findings round N` — the same pattern the caller's `build-ticket.md` Step 7a uses, so *every* critic round (escalation rounds included) lands in the durable file with its key markers intact. Allow up to `MAX_REPAIR_ATTEMPTS` additional repair rounds.
 
 - If the critic returns no BLOCKER/MAJOR findings → **return succeeded** to caller.
 - If BLOCKER/MAJOR findings remain after `MAX_REPAIR_ATTEMPTS` → proceed to Phase 2.
@@ -86,7 +79,7 @@ After the rewrite, commit the new implementation:
 git -C .worktrees/XXXX-slug commit -am "fix: address post-build critic repair-escalation Phase 2 rewrite"
 ```
 
-Run `gate_run_on_dir` and re-spawn the critic. Display the critic's report verbatim. Parse it into `Finding` objects via `gates.critic_finding_parser.parse_critic_findings(report_text, worktree_root)` (all severities). **Reconcile and announce — before persisting**: harvest `prev` via `gates.critic_reconciler.harvest_keys(gates.critic_reconciler.latest_section(<critic-findings.md's current on-disk content>))`, reconstruct each as `Finding(file=k[0], line=k[1], severity=k[2], code=k[3], message="")`, call `reconcile(prev, curr)`, and announce "Round N: F fixed, P persisted, N new BLOCKER/MAJOR." **Persist this round**: append the report to `critic-findings.md` as a new `## Round N — <today's date>` section, with each finding's `gates.critic_reconciler.marker_for_key(gates.finding.finding_key(f))` marker trailing its header line, and commit it on the branch (`git -C .worktrees/XXXX-slug commit -am "chore(ticket): XXXX critic findings round N"`), exactly as Phase 1 does — no critic round is dropped from the durable file, and every round's markers stay intact. Allow up to `MAX_REPAIR_ATTEMPTS` rounds.
+Run `gate_run_on_dir` and re-spawn the critic. Display the critic's report verbatim. Parse it into `Finding` objects via `gates.critic_finding_parser.parse_critic_findings(report_text, worktree_root)` (all severities). **Reconcile and announce — before persisting**: harvest `prev` via `gates.critic_reconciler.harvest_keys(gates.critic_reconciler.latest_section(<critic-findings.md's current on-disk content>))`, reconstruct each as `Finding(file=k[0], line=k[1], severity=k[2], code=k[3], message="")`, call `reconcile(prev, curr)`, and announce "Round N: F fixed, P persisted, N new BLOCKER/MAJOR." **Persist this round** to `critic-findings.md`, with each finding's `gates.critic_reconciler.marker_for_key(gates.finding.finding_key(f))` marker trailing its header line, exactly as Phase 1 does (same canonical pattern, same `<section-heading>`/`<commit-message>` shape) — no critic round is dropped from the durable file, and every round's markers stay intact. Allow up to `MAX_REPAIR_ATTEMPTS` rounds.
 
 - If the critic returns no BLOCKER/MAJOR findings → **return succeeded** to caller.
 - If BLOCKER/MAJOR findings remain → **return exhausted** to caller.

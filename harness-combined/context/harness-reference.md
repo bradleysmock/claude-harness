@@ -430,6 +430,24 @@ per-ticket `critic-findings.md`, the durable sibling of `gate-findings.md`, at
   under gate `"critic"` (diagnosis) or outcome `"escalated"` (exhausted loop), so
   BM25 retrieval can warn a future repair away from an approach that already failed.
 
+**Canonical persistence pattern.** Every call site that writes to this file — a
+critic round (`## Round N — <date>`) or an escalation diagnosis
+(`### Escalation diagnosis — <date>`, level-3 — see `repair-escalation.md` Phase 1
+for why) — follows the same two-step mechanics:
+append the content as a new section headed by `<section-heading>`, then commit
+it on the branch with a scoped add, never touching `main`:
+
+```
+git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/critic-findings.md
+git -C .worktrees/XXXX-<slug> commit -m "<commit-message>"
+```
+
+A call site states only what varies — its `<section-heading>` and
+`<commit-message>` — and points back here for the append/commit mechanics
+rather than restating them. Body-content shape (the diagnosis's three-field
+Root cause / Fix strategy / Target locations vs. a critic round's verbatim
+structured report) is covered by the prose above, not by this template.
+
 ---
 
 ## Craft Polish Pass

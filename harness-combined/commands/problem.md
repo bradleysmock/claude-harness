@@ -55,50 +55,33 @@ additive**: when neither a matching template nor a `## Custom Sections` block is
 present, the artifacts are written from the generic scaffold exactly as before —
 output is byte-identical to the pre-feature baseline (no regression). All logic
 lives in the pure helper module `ticket_templates.py`; this phase only
-orchestrates it.
+orchestrates it, calling, in order:
 
-**1. Resolve the category.**
-- If the invocation passed `--type <category>`, validate it with
-  `ticket_templates.validate_type(raw)`. Only `bug`, `feature`, and `refactor`
-  are accepted (case-insensitive); `chore` and `docs` are reserved extension
-  points, not active here. An invalid or out-of-allow-list value (including any
-  path-traversal attempt such as `../../escape`) is **rejected** — fall back to
-  the generic scaffold with a warning and load no template. No filesystem path is
-  ever constructed from an unvalidated `--type` value.
-- If `--type` is absent, infer the category from the request description with
-  `ticket_templates.infer_category(description)`. A low-confidence or ambiguous
-  result applies **no** template (generic scaffold).
+1. **Resolve the category** — `--type <category>` validated with
+   `ticket_templates.validate_type(raw)` (allow-list: `bug`, `feature`,
+   `refactor`), else `ticket_templates.infer_category(description)`; a
+   low-confidence or ambiguous result falls back to no category (generic
+   scaffold, no template loaded).
+2. **Load the per-category template** — `ticket_templates.load_template(category,
+   ".tickets/_templates")` reads `.tickets/_templates/<category>.md` → that
+   category's `## <Section>` stubs, injected into `problem.md` only. Missing/empty
+   falls back to the generic scaffold without crashing.
+3. **Load custom sections** — `ticket_templates.load_custom_sections(".tickets/_standards.md")`
+   → the accepted `### <Stub>` sections from `_standards.md`'s first `## Custom
+   Sections` block, injected into **all three** artifacts (`problem.md`,
+   `requirements.md`, `solution.md`).
+4. **Inject additively and enforce limits** — `ticket_templates.merge_sections(scaffold,
+   sections)` appends after the last standard scaffold section (never
+   reordering/overwriting reserved headings), then
+   `ticket_templates.enforce_line_limit(document, limit)` truncates to fit
+   `problem.md` = 40, `requirements.md` = 60, `solution.md` = 80 lines. Surface
+   any truncated section names to the lead.
+5. **Record the category** — `ticket_templates.format_type_field(category,
+   inferred)` produces the `type:` field written to `status.md` in Phase 2 below.
 
-**2. Load the per-category template.** When a category resolved, call
-`ticket_templates.load_template(category, ".tickets/_templates")`. It reads
-`.tickets/_templates/<category>.md`, re-validates the category internally
-(defense in depth), and returns its `## <Section>` stubs — or an empty list when
-the file is missing, empty, or unparseable (a warning is logged and the ticket is
-still created with the generic scaffold, never crashing). Template sections are
-injected into `problem.md` only.
-
-**3. Load custom sections.** Call
-`ticket_templates.load_custom_sections(".tickets/_standards.md")`. It parses the
-**first** `## Custom Sections` block (later occurrences ignored) and returns the
-accepted `### <Stub>` sections. A stub is dropped (with a warning) when its
-heading collides with a reserved scaffold heading, when its body exceeds 10
-lines, or when more than 5 stubs are supplied. Accepted custom sections are
-injected into **all three** artifacts — `problem.md`, `requirements.md`, and
-`solution.md`.
-
-**4. Inject additively and enforce limits.** For each artifact, append the
-resolved sections after the last standard scaffold section with
-`ticket_templates.merge_sections(scaffold, sections)` — injection is **additive**
-and never reorders or overwrites the reserved scaffold headings. Then enforce the
-per-artifact line limit with `ticket_templates.enforce_line_limit(document,
-limit)` using `problem.md` = 40, `requirements.md` = 60, `solution.md` = 80. When
-a section is truncated, surface the returned truncated-section names to the lead.
-
-**5. Record the category.** The `type:` field in `status.md` (see the Phase 2
-block below) is produced by `ticket_templates.format_type_field(category,
-inferred)`: `type: <category>` when supplied via `--type`,
-`type: <category> (inferred)` when inferred from the description, and
-`type: generic` when no category applies.
+See each function's docstring in `ticket_templates.py` for the exact validation,
+precedence, and failure-handling rules (allow-listed categories, path
+containment, collision/limit handling, confidence thresholds).
 
 ---
 
@@ -292,10 +275,9 @@ proposed = TicketInfo(
 assert_acyclic_with_proposed(Path(".tickets"), proposed)
 ```
 
-`assert_acyclic_with_proposed` overlays `proposed` onto the loaded graph, then calls
-`build_graph` (FR-9: a non-existent `depends-on:` reference raises `ValueError`) and
-`assert_acyclic`/`check_cycle` (FR-7: a cycle raises `TicketCyclicDependencyError`, a
-`ValueError` subclass, naming the full cycle path). Either error **rejects the write** —
+See `assert_acyclic_with_proposed`'s docstring in `ticket_deps.py` for its exact
+validation behavior: an unknown `depends-on:` reference raises `ValueError`, a
+cycle raises `TicketCyclicDependencyError`. Either error **rejects the write** —
 resolve the cycle or bad reference before proceeding.
 
 Update `status.md` to `status: solution`.
