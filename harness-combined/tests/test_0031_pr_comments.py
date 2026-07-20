@@ -51,7 +51,7 @@ def test_finding_is_frozen_hashable() -> None:
     f = Finding(file="a.py", line=1, severity="BLOCKER", code="X", message="m")
     assert hash(f) is not None
     with pytest.raises(Exception):
-        f.line = 2  # type: ignore[misc]
+        f.line = 2  # type: ignore[misc]  # asserting immutability
 
 
 def test_validate_finding_inside_worktree(tmp_path: Path) -> None:

@@ -754,11 +754,11 @@ def deliver_squash(repo: Path, branch: str, slug: str, title: str) -> str:
     _commit(repo, subject)
 
     # 6. Publish `main` FIRST (the durable product record). Only on a successful
-    #    publish do we destroy the worktree and branch — otherwise the squashed
-    #    commit would survive only locally while its source history is deleted. On
-    #    a rejected push, stop with everything intact so the lead can rebase and
-    #    retry. `git branch -D` (not -d) because a squash leaves the branch without
-    #    merge ancestry, so git never considers it "fully merged".
+    #    publish do we destroy the worktree and branch (and, via
+    #    _remove_branch_and_worktree, the remote branch too) — otherwise the
+    #    squashed commit would survive only locally while its source history is
+    #    deleted. On a rejected push, stop with everything intact so the lead can
+    #    rebase and retry.
     if not _push_current_branch(repo):
         raise RuntimeError(
             f"deliver_squash: pushing the squashed commit to origin was rejected — "
@@ -931,6 +931,12 @@ def _read_ticket_docs(repo: Path, full_slug: str, branch: str) -> dict[str, str]
 
 
 def _remove_branch_and_worktree(repo: Path, full_slug: str, branch: str, *, push: bool) -> None:
+    """Remove the worktree and delete the branch — local and, when ``push`` is
+    true and a remote exists, on ``origin`` too. `-D` (not `-d`): a squash leaves
+    the branch without merge ancestry, so git never considers it "fully merged".
+    The remote delete is best-effort (``check=False``) and never fatal — callers
+    (delivery, cancel/abandon) have already durably recorded the outcome by the
+    time this runs."""
     git(repo, "worktree", "remove", "--force", str(repo / ".worktrees" / full_slug), check=False)
     git(repo, "branch", "-D", branch, check=False)
     if push and _has_remote(repo):
