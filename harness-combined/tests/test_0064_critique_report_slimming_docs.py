@@ -48,7 +48,7 @@ def test_build_ticket_keeps_critic_findings_append_unchanged():
     content = BUILD_TICKET.read_text()
     assert "**Persist this round's report.**" in content
     assert "critic-findings.md" in content
-    assert 'git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX critic findings round 1"' in content
+    assert '`<commit-message>` = `chore(ticket): XXXX critic findings round 1`' in content
 
 
 def test_build_ticket_trimmed_instruction_names_verdict_and_severities():
