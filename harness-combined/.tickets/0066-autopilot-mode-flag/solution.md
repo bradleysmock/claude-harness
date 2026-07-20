@@ -42,7 +42,7 @@ prose — so this ticket matches its shape, not just its appearance.
 | FR-3 | Content-verification | Step 7d calls `is_autopilot_mode(MODE)`, names Step A; `changes-requested`/ask-lead text preserved verbatim. |
 | FR-4 | Content-verification | Steps 7b/7c call `is_autopilot_mode(MODE)`, name Step B; "tell the lead" text preserved verbatim. |
 | FR-1, FR-5 | Content-verification | `autopilot-ticket.md` sets `MODE=autopilot`, omits removed interception headings, keeps Steps S/A/B. |
-| NFR-1 | Regression | `test_autopilot_batch_docs.py`, `test_0014_build_flow.py`, `test_spec_remediation_flow.py` pass unmodified. |
+| FR-7, NFR-1 | Regression | `autopilot-batch.md` unchanged; `test_autopilot_batch_docs.py`, `test_0014_build_flow.py`, `test_spec_remediation_flow.py` pass unmodified. |
 
 ## Tradeoffs
 
