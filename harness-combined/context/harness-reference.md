@@ -411,6 +411,14 @@ per-ticket `critic-findings.md`, the durable sibling of `gate-findings.md`, at
   `repair-escalation.md` Phase 1 appends the diagnostic subagent's output (root
   cause, fix strategy, target locations) as its own section. Nothing is ever
   rewritten or truncated in place — the file is the run's durable critic history.
+- **Per-finding key marker.** Every appended finding line also carries a hidden
+  `<!-- harness-finding-key file:line:severity:code -->` marker
+  (`gates/finding.finding_key` + `gates/critic_reconciler.marker_for_key`), additive
+  and invisible in rendered markdown, mirroring the existing PR-comment marker
+  convention in `gates/comment_deduplicator.py`. `/build` Step 7 (round 1) and Step 7a
+  (each repair round) call `gates/critic_reconciler.reconcile()` against the markers
+  harvested from the immediately preceding round to announce a one-line
+  fixed/persisted/new summary every round.
 - **Committed on the branch with each round.** Each append is committed inside the
   worktree alongside the repair commit for that round; it never touches `main`
   until the delivery squash archives it with the rest of the ticket.

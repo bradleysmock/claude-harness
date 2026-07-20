@@ -74,12 +74,16 @@ In both modes: read everything **before** writing a single finding. Do not inter
 
 Apply every relevant dimension from the loaded panels. Use the canonical 4-tier vocabulary — BLOCKER / MAJOR / MINOR / OBS — exactly as defined in the "### Severity tiers" section of `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`; read that section before producing findings.
 
-For each finding, include:
+**Each finding's header line must use this exact literal format** — `gates/critic_finding_parser.py`'s `parse_critic_findings` (ticket 0031, consumed by PR-comment dedup and by the repair-loop reconciler in `gates/critic_reconciler.py`, ticket 0062) parses findings structurally from this line, not from free prose:
 
-- Severity tier
-- Panel & dimension applied (e.g. "Core / Dimension 8 / McGraw")
-- File path and line number (or solution.md section for design review)
-- One-paragraph statement of the problem and the fix shape
+```
+**SEVERITY** · <Panel> / <Dimension> · `<file>:<line>`
+```
+
+- `SEVERITY` is exactly one of `BLOCKER`/`MAJOR`/`MINOR`/`OBS`, bold-closed immediately after the word (`**BLOCKER**`, never `**BLOCKER-1 — title**` or any other suffix inside the bold span).
+- `<Panel> / <Dimension>` is the panel/dimension label (e.g. "Core / Dimension 8 / McGraw").
+- `` `<file>:<line>` `` is the finding's primary location, backtick-quoted, first on the line. A finding touching multiple locations still names exactly one primary `file:line` here — mention the others in the body paragraph. A finding with no specific location (e.g. a solution-level design-review finding) omits the backtick token entirely; it still posts, degraded to a top-level comment.
+- The one-paragraph statement of the problem and the fix shape is the text following the header line, up to the next header line or end of report — do not repeat the severity/panel/location as a separate labeled line underneath the header.
 
 Do not praise. Do not summarize. Output structured findings only. If there are no findings, say so in one line.
 

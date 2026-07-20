@@ -38,8 +38,8 @@ If `findings_path` does not exist, return an **empty list**. Then, by `source_ki
 
 - **`"gate"`** — if the file contains no `##` gate section with a `**Status**: FAIL`
   line, return an **empty list**.
-- **`"critic"`** — if the file contains no `## Round`/`## Escalation` section carrying
-  a `**BLOCKER**` or `**MAJOR**` finding, return an **empty list**.
+- **`"critic"`** — if the file contains no `## Round` section carrying a `**BLOCKER**`
+  or `**MAJOR**` finding, return an **empty list**.
 
 The caller renders no section in that case (FR-8).
 
@@ -74,38 +74,38 @@ Skip sections whose `**Status**` is `PASS` and skip `clean` bullets.
 ## Step 2c — Parse critic-report sections (tolerant) — `source_kind == "critic"`
 
 `critic-findings.md` is written by `/build` Step 7/7a and `repair-escalation.md` (see
-"Critic findings file" in `harness-reference.md`) with this shape:
+"Critic findings file" in `harness-reference.md`) with this shape — each finding's
+header line is the exact literal grammar `critic-brief.md` Step 4 mandates
+(`gates/critic_finding_parser.py` parses it structurally):
 
 ```markdown
 ## Round N — <date>
 
-### BLOCKER
+**BLOCKER** · <Panel> / <Dimension> · `<file>:<line>` <!-- harness-finding-key ... -->
 
-**BLOCKER-1 — <one-line summary>.**
-<detail prose>
+<one-paragraph statement of the problem and the fix shape>
 
-### MAJOR
+**MAJOR** · <Panel> / <Dimension> · `<file>:<line>` <!-- harness-finding-key ... -->
 
-**MAJOR-1 — <one-line summary>.**
-<detail prose>
+<one-paragraph statement of the problem and the fix shape>
 ```
 
-Escalation sections (`## Escalation diagnosis — <date>`) use `**Root cause**` /
-`**Fix strategy**` / `**Target locations**` prose rather than BLOCKER/MAJOR bullets, so
-they satisfy the Step 1 non-empty check only when a round section elsewhere carries a
-finding; the diagnosis itself is already captured in `memory.db` (FR-2) and yields no
-learnings candidates here. Walk each `## Round`/`## Escalation` section and capture
-**only** its `**BLOCKER**` and `**MAJOR**` findings (ignore `MINOR`/`OBS` and the
+Escalation diagnosis sub-sections (`### Escalation diagnosis — <date>`, nested under the
+preceding `## Round` section) use `**Root cause**` / `**Fix strategy**` /
+`**Target locations**` prose rather than BLOCKER/MAJOR findings; the diagnosis itself is
+already captured in `memory.db` (FR-2) and yields no learnings candidates here. Walk each
+`## Round` section and capture **only** its `**BLOCKER**`/`**MAJOR**` header lines (ignore
+`**MINOR**`/`**OBS**`, any nested `### Escalation diagnosis` sub-section, and the
 `Step 2.5` coverage recap). For each:
 
 - `gate` — the **literal string `critic`** (never the round heading or date). This is
   the stable gate name that lets the memory records, dedup keys, and the rendered
   `_learnings.md` line all agree.
-- `message` — the finding's one-line summary (the bold `**BLOCKER-n — …**` text) with
-  the redundant label stripped: remove a leading `**`, a `(BLOCKER|MAJOR)-<n> — ` prefix,
-  and the trailing `**` (the severity is already carried in its own `severity` field, so
-  the label is noise that would otherwise consume the 120-char cap). Fall back to the
-  first sentence of the detail prose if the summary is absent.
+- `message` — the first sentence of the finding's body paragraph (the text following its
+  header line, up to the next header or section end) — trimmed at the first `.`/`!`/`?`
+  followed by whitespace or end-of-text, so a multi-sentence body doesn't blow the
+  120-char cap in Step 3. Fall back to the full body text if it contains no sentence
+  terminator. A finding whose body is empty is skipped, not errored.
 - `severity_signal` — the explicit `BLOCKER` / `MAJOR` token (always high-priority here).
 - `order` — source order (later rounds are more recent; used only for recency ties).
 

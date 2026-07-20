@@ -28,7 +28,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from gates.finding import DeduplicationFailed, Finding
+from gates.finding import DeduplicationFailed, Finding, finding_key
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,8 @@ def gate_hash(f: Finding) -> str:
 
 def critic_hash(f: Finding) -> str:
     """Dedup key for a critic finding: ``file:line:severity:code`` (prose is not deterministic)."""
-    return _sha(f"{f.file}:{f.line}:{f.severity}:{f.code}")
+    file_, line_, severity_, code_ = finding_key(f)
+    return _sha(f"{file_}:{line_}:{severity_}:{code_}")
 
 
 def hash_for(f: Finding, kind: str) -> str:

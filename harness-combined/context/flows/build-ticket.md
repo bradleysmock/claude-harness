@@ -240,12 +240,13 @@ The critic loads expert panels via `panel_detect.py` against the trigger data in
 
 Display the critic's structured report to the user verbatim.
 
-**Persist this round's report.** Append the critic's structured report to the ticket's `critic-findings.md` (the durable sibling of `gate-findings.md` — see "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`), as a new append-only section headed by its round number and date:
+**Persist this round's report.** Before appending, parse the critic's report text into `Finding` objects via `gates.critic_finding_parser.parse_critic_findings(report_text, worktree_root)` (all severities, not filtered) and, for each parsed finding, compute its marker with `gates.critic_reconciler.marker_for_key(gates.finding.finding_key(f))`. Append the critic's structured report to the ticket's `critic-findings.md` (the durable sibling of `gate-findings.md` — see "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`), as a new append-only section headed by its round number and date, with each finding's marker trailing that finding's header line (`**SEVERITY** · <Panel> / <Dimension> · \`<file>:<line>\` <!-- harness-finding-key ... -->`) — additive, invisible in rendered markdown:
 
 ```
 ## Round 1 — <today's date>
 
-<the critic's structured report verbatim>
+<the critic's structured report verbatim, each finding's header line trailed by its
+<!-- harness-finding-key file:line:severity:code --> marker>
 ```
 
 Then commit it on the branch (branch-local — it must **not** touch `main`):
@@ -264,6 +265,8 @@ git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX critic findings rou
 
 **Dry-run suppression:** if this run is a dry run (`DRY_RUN=true`, i.e. reached via `build-dry-run-ticket.md`), the auto-repair loop does **not** run — evaluate `should_auto_repair(dry_run)` (from `dry_run.py`) at this entry point; it returns `False` under dry-run. The critic still runs in Step 7 and its findings are shown, but no repair commit is made and no worktree is touched. A dry run stops after displaying the critic output. This check is placed at Step 7a entry (not Step 7) so the critic always runs.
 
+**Reconcile and announce (round 1).** Call `gates.critic_reconciler.reconcile(prev=[], curr=<round 1's findings parsed in Step 7>)` (round 1 has no prior round, so `prev` is always empty) and announce a one-line summary: "Round 1: F fixed, P persisted, N new BLOCKER/MAJOR." This runs unconditionally at entry, before the skip-to-7b.5 check below, so a clean round 1 still gets a summary before skipping.
+
 **If the critic surfaces no BLOCKER and no MAJOR findings**, skip the repair loop and go to **Step 7b.5** (craft polish), then Step 7c.
 
 Otherwise, enter the repair loop. Run up to `MAX_REPAIR_ATTEMPTS` (default 3) attempts:
@@ -275,7 +278,8 @@ For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
 3. Re-run the integration gate so fixes don't regress: `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`. If it fails, repair the gate failures (same inner loop as Step 4e) before proceeding — a green gate is a precondition for re-review.
 3a. **Repair-integrity check.** Run the repair-integrity check on **this round's own diff** — the changes this repair round introduced. Capture the round's diff before its commit (`git -C .worktrees/XXXX-<slug> diff` on the still-uncommitted fixes, or `git -C .worktrees/XXXX-<slug> diff HEAD` if you staged them) and pass it through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — that is the cumulative branch diff against a moving tip and would re-flag earlier accepted changes and drift from concurrent deliveries. If it reports any violation (removed test functions, added skip/xfail markers, or net-new bare suppression pragmas), the round **fails**: re-enter repair with the instruction to **restore the test and fix the implementation instead** of silencing the gate. A green gate obtained by weakening the safety net does not count as repaired.
 4. Commit the repair round: `git -C .worktrees/XXXX-<slug> commit -am "fix: address post-build critic round N findings"`.
-5. Re-spawn the critic subagent (**Round**: `N+1`, same Phase/Ticket) to verify. Display its report verbatim. **Persist this round's report**: append it to `critic-findings.md` as a new append-only section headed by its round number and date (`## Round N+1 — <today's date>`), and commit that append on the branch alongside the round (`git -C .worktrees/XXXX-<slug> commit -am "chore(ticket): XXXX critic findings round N+1"`) — never touching `main`. See "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`.
+5. Re-spawn the critic subagent (**Round**: `N+1`, same Phase/Ticket) to verify. Display its report verbatim. Parse the new report into `Finding` objects via `gates.critic_finding_parser.parse_critic_findings(report_text, worktree_root)` (all severities) — this is round N+1's `curr`.
+5a. **Reconcile and announce (round N+1) — before persisting.** Harvest `prev` via `gates.critic_reconciler.harvest_keys(gates.critic_reconciler.latest_section(<critic-findings.md's current on-disk content>))` — `latest_section` scopes to just the file's most recent `## Round` section (still round N's, since this round's own section has not been appended yet; a `### Escalation diagnosis` sub-section, if present, nests under its round and is not itself a `## ` boundary) so a key that persisted across several earlier rounds is never double-counted from re-embedded markers in older sections. Reconstruct each harvested key as `Finding(file=k[0], line=k[1], severity=k[2], code=k[3], message="")`. Call `reconcile(prev, curr)` with `curr` from step 5, and announce "Round N+1: F fixed, P persisted, N new BLOCKER/MAJOR." — before the check below, so a clean round still gets a summary. Only after this call, **persist this round's report**: append it to `critic-findings.md` as a new append-only section headed by its round number and date (`## Round N+1 — <today's date>`), with each finding's `gates.critic_reconciler.marker_for_key(gates.finding.finding_key(f))` marker trailing that finding's header line, and commit that append on the branch alongside the round (`git -C .worktrees/XXXX-<slug> commit -am "chore(ticket): XXXX critic findings round N+1"`) — never touching `main`. See "Critic findings file" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`.
 6. **If the new report has no BLOCKER and no MAJOR findings** → repair succeeded. Go to Step 7b (which runs the Step 7b.5 craft polish before the delivery handoff).
 7. **If BLOCKER / MAJOR findings remain** and attempts are left → loop to attempt `N+1`.
 

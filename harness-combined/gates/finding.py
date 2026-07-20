@@ -37,6 +37,15 @@ class Finding:
     message: str
 
 
+def finding_key(f: Finding) -> tuple[str, int | None, str, str]:
+    """The stable ``(file, line, severity, code)`` identity for ``f`` (message-independent).
+
+    Shared by :func:`gates.comment_deduplicator.critic_hash` (PR-comment dedup) and the
+    repair-loop reconciler (ticket 0062) — one implementation for both callers.
+    """
+    return (f.file, f.line, f.severity, f.code)
+
+
 @dataclass(frozen=True)
 class PR:
     """An open GitHub PR for the current branch."""
