@@ -448,6 +448,50 @@ rather than restating them. Body-content shape (the diagnosis's three-field
 Root cause / Fix strategy / Target locations vs. a critic round's verbatim
 structured report) is covered by the prose above, not by this template.
 
+### Incremental critic rounds (ticket 0067)
+
+Round 1 (`/build` Step 7) and every `/problem` Phase 5 design-review round stay
+**full-worktree / full-artifact scope**, unchanged — the critic reads the whole
+worktree (or the whole `problem.md`/`requirements.md`/`solution.md` set) and
+every panel loads against the full file set.
+
+Repair-loop rounds 2+ (`build-ticket.md` Step 7a's re-spawns) instead get an
+**incremental brief**, built by `gates/incremental_scope.py`:
+
+- `touched_files_from_diff(diff_text, worktree_root)` — the sorted, contained
+  list of files the round's own diff (`git diff HEAD~1 HEAD` against the
+  just-committed repair commit, never a diff against `main`) touches.
+- `format_incremental_brief(prior_findings, diff_text)` — a deterministic
+  `Mode: incremental` brief embedding the prior round's BLOCKER/MAJOR findings
+  (harvested via `gates.critic_reconciler.latest_section` +
+  `gates.critic_finding_parser.parse_critic_findings` — 0062's parser, no
+  second implementation) and the diff itself.
+
+Under `Mode: incremental`, `critic-brief.md`'s panel loading (Step 1) and
+*new*-finding evaluation (Step 4) scope to the diff's touched files only. Two
+things never shrink to the diff, by design:
+
+- **Prior-finding re-verification is never diff-scoped.** The critic retains
+  full Read/Grep access and must read each prior finding's actual current
+  `file:line` directly, whether or not that file is in the diff — a persisted
+  finding outside the diff must never read as "fixed" by omission.
+- **The weakened/deleted-tests check (Step 2.5) stays active**, scoped to the
+  diff's touched test files, with continued Read access to `solution.md`'s Test
+  Plan section — it is the acknowledged backstop (per `gates/repair_integrity.py`'s
+  own docstring) for a same-file "balanced swap" a repair round might otherwise
+  sneak past a green gate. Only requirements-coverage and solution-alignment
+  (both whole-artifact judgments already settled at round 1) are skipped on an
+  incremental round.
+
+**Fail-closed fallback.** If harvesting the prior round's findings parses to
+zero despite the round having been entered because the prior round reported
+BLOCKER/MAJOR findings, that is a parser/format mismatch, not a clean round —
+`build-ticket.md` Step 7a reverts to a full-scope, unmarked spawn (identical to
+round 1's) rather than risk an incremental brief with an empty, misleading
+prior-findings section. The fallback reverts file-content scope **and** the
+full Step 2.5 check set together — never a partial mix of full content with
+checks still skipped.
+
 ---
 
 ## Craft Polish Pass

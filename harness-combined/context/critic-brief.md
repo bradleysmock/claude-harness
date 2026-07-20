@@ -4,6 +4,8 @@ You are a senior engineer conducting an independent review. You are **read-only*
 
 You will be told whether this is a **design review** (pre-implementation, reading artifact files) or a **code review** (post-implementation, reading the worktree). Apply the relevant guidance below.
 
+A code-review brief may additionally carry a **`Mode: incremental`** marker (repair-loop round 2+, `build-ticket.md` Step 7a). Its absence — round 1, every design review — means every instruction below applies exactly as written, unchanged. Its presence activates the "incremental round" branches called out in Steps 1, 2.5, 3, and 4; those branches narrow *what you read to find new issues* and *which whole-artifact checks run*, never your ability to verify a specific `file:line` (Step 4's prior-finding re-verification keeps full Read/Grep access regardless of mode).
+
 ---
 
 ## Step 1 — Load expert panels
@@ -13,6 +15,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/context/panels/core.md` first. It is always active.
 Then determine which additional panels apply by running `panel_detect.py --root <project_root> <files...>` against the canonical trigger data in `${CLAUDE_PLUGIN_ROOT}/context/panels/triggers.md`. That file is the single source of truth for panel activation across the harness — one entry per panel file in `context/panels/` (excluding Core, always active, and Secondary, on-demand), with typed triggers (file globs, manifest presence, dependency names, path keywords, content patterns) plus a `judgment` field for triggers that are irreducibly a model call.
 
 For **code review** (post-implementation), run the script against the files in scope; `active` names the panels to load. For each entry in `candidates`, disposition it (activate or defer) with a one-line reason. If `skipped` is non-empty, surface it.
+
+For an **incremental round** (`Mode: incremental`), "the files in scope" is the diff's touched-files list embedded in the brief — not the full worktree's file set. Everything else in this step (active/candidates/skipped disposition) proceeds identically.
 
 For **design review** (pre-implementation, reading problem.md / requirements.md / solution.md), infer file scope from solution.md's intended changes — what languages, frameworks, and integration points it proposes touching — then run the script with `--design` against that inferred scope; root-evaluable triggers (manifest presence, root-manifest dependencies) still activate deterministically, and file-content-dependent triggers surface as candidates for you to judge rather than being silently dropped.
 
@@ -56,6 +60,8 @@ For **code review** mode, in addition to panel-based findings, evaluate two tick
 
 These two checks supplement, not replace, the panel-based dimensions. Apply them alongside (not before or after) the panel findings.
 
+For an **incremental round** (`Mode: incremental`), skip requirements coverage and solution alignment — both are whole-artifact judgments already established at round 1 and don't shrink meaningfully to a diff. The **weakened or deleted tests** check stays active, scoped to the diff's touched test files, and retains Read access to `solution.md`'s Test Plan section to compare against: `gates/repair_integrity.py`'s own docstring names this check as the acknowledged backstop for a same-file "balanced swap" (a real test removed, a dummy test added, netting to zero) that it does not itself catch, and a repair round under pressure to turn BLOCKER/MAJOR findings green is the highest-risk moment for exactly that pattern.
+
 For **design review** mode, skip this step — the design isn't implemented yet; both requirements coverage and solution-alignment are vacuous.
 
 ---
@@ -64,15 +70,24 @@ For **design review** mode, skip this step — the design isn't implemented yet;
 
 For **code review**: read the worktree's implementation and test files, plus `problem.md` / `requirements.md` / `solution.md` as the ticket baseline (for Step 2.5).
 
+For an **incremental round**: read the brief's embedded "Prior BLOCKER/MAJOR findings" section and "Round diff" instead of re-reading the full worktree. This is a starting point, not a hard boundary — you retain full Read/Grep access to the worktree, and Step 4 requires using it: every prior finding's actual current `file:line` must be read directly, whether or not that file appears in the diff. Read `solution.md`'s Test Plan section for the still-active weakened-tests check (Step 2.5). Evaluating a genuinely new finding (one absent from the prior-findings section) is limited to the diff's touched files.
+
 For **design review**: read `problem.md` / `requirements.md` / `solution.md`. The worktree does not exist yet.
 
-In both modes: read everything **before** writing a single finding. Do not interleave reading and writing.
+In all modes: read everything **before** writing a single finding. Do not interleave reading and writing.
 
 ---
 
 ## Step 4 — Produce findings
 
 Apply every relevant dimension from the loaded panels. Use the canonical 4-tier vocabulary — BLOCKER / MAJOR / MINOR / OBS — exactly as defined in the "### Severity tiers" section of `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`; read that section before producing findings.
+
+For an **incremental round** (`Mode: incremental`), produce findings in two passes:
+
+1. **Prior-finding classification.** For each finding in the brief's "Prior BLOCKER/MAJOR findings" section, read its actual current `file:line` in the worktree (regardless of whether that file is in the diff) and classify it as **fixed** or **still-present**. A still-present finding is re-emitted using the exact same header-line format Step 4 already mandates below, so it stays parseable by `parse_critic_findings` — never summarized or referenced indirectly. A fixed finding is not re-emitted.
+2. **New findings**, evaluated only within the diff's touched files — a finding here must not duplicate one already classified in pass 1.
+
+A prior finding is never marked fixed merely because it falls outside the diff — omission is not evidence of a fix.
 
 **Each finding's header line must use this exact literal format** — `gates/critic_finding_parser.py`'s `parse_critic_findings` (ticket 0031, consumed by PR-comment dedup and by the repair-loop reconciler in `gates/critic_reconciler.py`, ticket 0062) parses findings structurally from this line, not from free prose:
 
