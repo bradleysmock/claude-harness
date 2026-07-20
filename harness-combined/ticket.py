@@ -91,13 +91,17 @@ def format_number(n: int) -> str:
     return f"{n:04d}"
 
 
-def parse_status(status_md: Path) -> dict[str, str]:
+def _parse_status_lines(text: str) -> dict[str, str]:
     result: dict[str, str] = {}
-    for line in status_md.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         if ":" in line:
             key, _, value = line.partition(":")
             result[key.strip()] = value.strip()
     return result
+
+
+def parse_status(status_md: Path) -> dict[str, str]:
+    return _parse_status_lines(status_md.read_text(encoding="utf-8"))
 
 
 def git(
@@ -896,6 +900,18 @@ def _full_slug_of(record: dict) -> str:
     return f"{format_number(record['number'])}-{record['slug']}"
 
 
+def _branch_of(record: dict, full_slug: str) -> str:
+    """The record's ledger branch, or the conventional `ticket/<full_slug>` when
+    an older/migrated claim record lacks the field."""
+    return record.get("branch", f"ticket/{full_slug}")
+
+
+def _title_of(record: dict, full_slug: str) -> str:
+    """The record's title, or `full_slug` itself when an older/migrated claim
+    record lacks the field."""
+    return record.get("title", full_slug)
+
+
 def _read_ticket_docs(repo: Path, full_slug: str, branch: str) -> dict[str, str]:
     """Snapshot a ticket's docs (relpath → text) from its worktree if present,
     else from its branch ref. Empty when neither is available."""
@@ -935,7 +951,7 @@ def _terminate(repo: Path, ident: str, event: str, *, push: bool = True) -> int:
     record = _resolve_claim(repo, ident)
     number = record["number"]
     full_slug = _full_slug_of(record)
-    branch = record.get("branch", f"ticket/{full_slug}")
+    branch = _branch_of(record, full_slug)
     docs = _read_ticket_docs(repo, full_slug, branch)
 
     def mutate(records: list[dict]):
@@ -975,7 +991,7 @@ def reopen(repo: Path, ident: str, *, push: bool = True) -> str:
     full_slug = _full_slug_of(record)
     branch = f"ticket/{full_slug}"
     who = record.get("owner", owner(repo))
-    title = record.get("title", full_slug)
+    title = _title_of(record, full_slug)
 
     # Locate the archived docs: main's completed/ (delivered) else the ledger.
     docs: dict[str, str] = {}
@@ -1177,7 +1193,7 @@ def _scan_for_migration(tickets_root: Path, default_owner: str) -> list[dict]:
 def _main(argv: list[str]) -> int:
     if not argv:
         print("usage: ticket <claim|set-status|owner|cancel|abandon|reopen|"
-              "ensure-branch|migrate|next-number> ...", file=sys.stderr)
+              "deliver|deliver-batch|ensure-branch|migrate|next-number> ...", file=sys.stderr)
         return 2
     repo = find_tickets_root(Path.cwd()).parent
     cmd = argv[0]
@@ -1197,6 +1213,32 @@ def _main(argv: list[str]) -> int:
             return 2
         print(claim(repo, positional[0], positional[1], push=push))
         return 0
+    if cmd == "deliver":
+        positional = [a for a in argv[1:] if not a.startswith("--")]
+        if not positional:
+            print("usage: ticket deliver <ticket-id>", file=sys.stderr)
+            return 2
+        try:
+            record = _resolve_claim(repo, positional[0])
+            full_slug = _full_slug_of(record)
+            branch = _branch_of(record, full_slug)
+            title = _title_of(record, full_slug)
+            docs = _read_ticket_docs(repo, full_slug, branch)
+            if "status.md" not in docs:
+                raise FileNotFoundError(f"no status.md found for {full_slug!r}")
+            status = _parse_status_lines(docs["status.md"]).get("status", "")
+            if status != "review-ready":
+                print(
+                    f"deliver: {full_slug!r} is at status {status!r}, not "
+                    "'review-ready' — nothing delivered",
+                    file=sys.stderr,
+                )
+                return 1
+            print(deliver_squash(repo, branch, full_slug, title))
+            return 0
+        except (FileNotFoundError, RuntimeError) as exc:
+            print(f"deliver: {exc}", file=sys.stderr)
+            return 1
     if cmd == "deliver-batch":
         positional = [a for a in argv[1:] if not a.startswith("--")]
         if len(positional) < 2:
