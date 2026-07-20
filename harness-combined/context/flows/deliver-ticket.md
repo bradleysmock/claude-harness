@@ -67,6 +67,23 @@ Parse it with a strict JSON reader and inspect `coverage.passed`:
 This preflight is what makes the coverage floor binding at delivery: a formatting change
 or a deleted findings file can never silently unblock a merge.
 
+## Step 1.7 — Refine-touched marker check (fail-closed, independent of the caller)
+
+Before offering delivery, resolve `refine-touched.md` from the **branch's** copy of
+the ticket directory — the worktree path
+(`.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/refine-touched.md`) or, equivalently,
+`git show <branch>:.tickets/XXXX-<slug>/refine-touched.md` — **never** the root
+`.tickets/` stub, matching the Step 1.6 branch-copy resolution pattern.
+
+- **Marker absent** → continue to Step 2; delivery proceeds exactly as before, no
+  new gate.
+- **Marker present** → the ticket's design scope was machine-adjusted by a
+  `/refine` pass and must not merge unseen. Step 3's confirmation prompt is
+  **never skipped** for this delivery — this holds even when `/deliver` is
+  reached via autopilot's Step B skip-Step-3 override; that override does not
+  apply while the marker is present. Print the marker's contents (the `/refine`
+  audit trail) as part of the Step 3 confirmation block.
+
 ## Step 2 — Check for file conflicts with other review-ready tickets
 
 Get changed files: `git diff --name-only main....<branch>`
@@ -308,6 +325,11 @@ Publish and cleanup (the old sub-step: `git push`, `git worktree remove`, `git b
 If the `git merge --squash` reports a conflict, report the error and stop without committing or cleaning up.
 
 > **Squash status resolution:** because `main` carried only the `claimed` stub for this ticket and never re-touched `.tickets/XXXX-<slug>/` after the claim, the squash merge's merge base for that path is the claim stub and only the branch changed it — so it resolves cleanly with no conflict. The branch's `review-ready` `status.md` is squash-staged, then overwritten in place to `done` before the single commit. There is **no `--no-ff` merge commit and no separate `→ done` / archive commit** — `→ done` and the archive are folded into the one squash commit. A reopened ticket repeats this, adding a further squashed commit.
+
+**Marker cleanup:** if the ticket carried a `refine-touched.md` marker (Step 1.7),
+`_fold_archive` deletes it from the archived ticket directory as part of the fold
+in step 2 above — the squash commit lands with no `refine-touched.md` under
+`completed/<slug>/`, so the marker never survives into the archive.
 
 **Idempotency:** If `.tickets/completed/XXXX-<slug>/` already exists and `.tickets/XXXX-<slug>/` is absent, the ticket is already archived — skip the mv and continue with the commit.
 

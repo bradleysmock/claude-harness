@@ -34,10 +34,12 @@ and returns one of three outcomes:
 - **`succeeded(autonomous=True)`** — cleared by mechanical fixes only. Re-enter
   `build-ticket.md` at Step 1 (specs now generate against the PASS/WARN artifacts)
   and continue the build normally. Step B auto-delivers as usual.
-- **`succeeded(autonomous=False)`** — a semantic `/refine` pass was needed. Re-enter
-  `build-ticket.md` at Step 1 and build normally, but **mark this run "refine-touched"**
-  so Step B confirms the diff instead of auto-delivering (unapproved scope must not
-  merge unseen).
+- **`succeeded(autonomous=False)`** — a semantic `/refine` pass was needed. The mark
+  is the `refine-touched.md` file spec-remediation.md's S2 already wrote and
+  committed to the worktree's ticket directory **before** `/refine` ran — not an
+  in-session note. Re-enter `build-ticket.md` at Step 1 and build normally; Step B
+  below reads that persisted marker and confirms the diff instead of
+  auto-delivering (unapproved scope must not merge unseen).
 - **`bail`** — budget exhausted, an unrecognised BLOCK check, or `/refine` could not
   drive the fix from existing text. No implementation was written; the claim-time
   worktree is left with only its design artifacts. Show the residual
@@ -76,11 +78,15 @@ Show the diff (informational — not a gate):
 git -C .worktrees/XXXX-slug diff main
 ```
 
-**Refine-touched carve-out**: if Step S returned `succeeded(autonomous=False)` for
-this run (a semantic `/refine` pass revised `requirements.md`/`solution.md`), the
-scope was machine-adjusted and must not merge unseen. Show the diff **and** the
-`/refine` audit trail, then stop and ask the lead to confirm before delivering —
-do **not** skip the confirmation. Deliver only on explicit approval.
+**Refine-touched carve-out**: this decision is driven by **on-disk state, never
+session memory** — check for `refine-touched.md` in the worktree/branch copy of
+the ticket directory (`test -f .worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/refine-touched.md`),
+which is authoritative regardless of whether this session's Step S ran the
+`/refine` pass itself or the run is resuming a prior session. If present, the
+scope was machine-adjusted and must not merge unseen: show the diff **and** the
+marker's contents (the `/refine` audit trail), then stop and ask the lead to
+confirm before delivering — do **not** skip the confirmation. Deliver only on
+explicit approval.
 
 Otherwise (a clean build, or Step S cleared the BLOCK with mechanical fixes only —
 `succeeded(autonomous=True)` — or Step S was never entered), read

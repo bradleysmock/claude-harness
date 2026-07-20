@@ -80,9 +80,27 @@ If `mechanical` was empty, skip S1 and go straight to S2.
 
 ### S2 — Refine pass (if `semantic` BLOCKs remain)
 
-Semantic checks (`FR count`, `No placeholders`) need judgement. Run **one**
-non-interactive `/refine` pass (see `${CLAUDE_PLUGIN_ROOT}/commands/refine.md`,
-"Autopilot (non-interactive) mode"):
+Semantic checks (`FR count`, `No placeholders`) need judgement.
+
+**Write the marker before invoking `/refine`.** Before running `/refine`, write a
+`refine-touched.md` file into the worktree's ticket directory
+(`.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/refine-touched.md`) containing
+today's date and the semantic checks about to be fixed, then commit it on the
+branch inside the worktree — a scoped add (never touching `main`), per
+"Committing ticket metadata" in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`:
+
+```
+git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/refine-touched.md
+git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX refine-touched marker"
+```
+
+If either the write or the commit fails, **bail now** (go to "Hard-stop" below) —
+`/refine` must never run without a committed marker on the branch, so
+machine-adjusted scope can never exist unmarked.
+
+Only once the marker is committed, run **one** non-interactive `/refine` pass
+(see `${CLAUDE_PLUGIN_ROOT}/commands/refine.md`, "Autopilot (non-interactive)
+mode"):
 
 - Single pass, fixing **only** the flagged checks, deriving content **only** from
   existing artifact text, surfacing no Open Questions / next-command prompts.
@@ -93,6 +111,9 @@ non-interactive `/refine` pass (see `${CLAUDE_PLUGIN_ROOT}/commands/refine.md`,
 - **Re-score** the committed worktree files. This is re-score #2 (budget exhausted).
   - **PASS/WARN** → return `succeeded(autonomous=False)` to Step S. A refine clear
     reached build but **must not auto-deliver** — Step B confirms the diff (FR-9).
+    Best-effort: append the `/refine` commit's SHA to `refine-touched.md` in a
+    follow-up commit — this only thickens the audit trail Step B shows; a failure
+    to append does not change the outcome.
   - **Still BLOCK** → **hard-stop**.
 
 ### Hard-stop

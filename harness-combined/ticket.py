@@ -675,11 +675,12 @@ def _fold_archive(repo: Path, slug: str) -> None:
     """Fold a staged ticket dir into the pending delivery commit.
 
     OS-mv the (staged) `.tickets/<slug>/` into `completed/`, rewrite its status →
-    `done`, then clear the staged old path and stage the archived one. Mirrors the
-    archive pattern (OS mv + `git rm --cached` + `git add`) — never `git mv`, which
-    is unsound against the index a `merge --squash` / `cherry-pick -n` leaves. The
-    code changes already staged by the caller remain staged. Idempotent: a ticket
-    already archived (dst present, src gone) is left as-is."""
+    `done`, delete any `refine-touched.md` marker, then clear the staged old path
+    and stage the archived one. Mirrors the archive pattern (OS mv + `git rm
+    --cached` + `git add`) — never `git mv`, which is unsound against the index a
+    `merge --squash` / `cherry-pick -n` leaves. The code changes already staged by
+    the caller remain staged. Idempotent: a ticket already archived (dst present,
+    src gone) is left as-is."""
     completed = repo / ".tickets" / "completed"
     completed.mkdir(parents=True, exist_ok=True)
     src = repo / ".tickets" / slug
@@ -692,6 +693,7 @@ def _fold_archive(repo: Path, slug: str) -> None:
         text = _rewrite_field(text, "status", "done")
         text = _rewrite_field(text, "updated", date.today().isoformat())
         status_md.write_text(text, encoding="utf-8")
+    (dst / "refine-touched.md").unlink(missing_ok=True)
     git(repo, "rm", "-r", "--cached", "--", f".tickets/{slug}/", check=False)
     git(repo, "add", "--", f".tickets/completed/{slug}/")
 
@@ -793,7 +795,32 @@ def deliver_squash_batch(
     batch is atomic on `main` — and only on a successful publish are the batch
     branch and every member's vestigial per-ticket branch/worktree removed. A
     cherry-pick conflict or a rejected push raises with everything intact
-    (fail-closed), mirroring `deliver_squash`."""
+    (fail-closed), mirroring `deliver_squash`.
+
+    Before any cherry-pick is attempted, every member's branch head is probed
+    (read-only `git show`) for a `refine-touched.md` marker in its ticket
+    directory. A marker means that member's design scope was machine-adjusted by
+    a `/refine` pass and must never merge unseen into an atomic batch — a marked
+    member at any position raises RuntimeError before the first cherry-pick, so
+    no commit or index state is touched."""
+    marked: list[str] = []
+    for member in members:
+        probe = git(
+            repo, "show",
+            f"{member['head']}:.tickets/{member['slug']}/refine-touched.md",
+            check=False,
+        )
+        if probe.returncode == 0:
+            marked.append(member["slug"])
+    if marked:
+        raise RuntimeError(
+            f"deliver_squash_batch: member(s) {', '.join(marked)} carry a "
+            "refine-touched.md marker (a /refine pass revised their design scope) "
+            "and must not merge unseen into an atomic batch — deliver them "
+            "individually via `/autopilot <slug>` after review. No cherry-pick "
+            "was attempted; the batch branch and all member branches are intact."
+        )
+
     subjects: list[str] = []
     prev = "HEAD"
     for member in members:

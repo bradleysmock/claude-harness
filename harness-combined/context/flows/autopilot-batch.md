@@ -19,7 +19,22 @@ Every member has been confirmed at `status: solution`.
 `$ARGUMENTS` is a whitespace-separated list of 4-digit IDs. For each ID, resolve `.tickets/<id>*/` (do **not** fall back to `completed/` — a member must be live), read `status.md`, and record `slug`, `title`, and `branch` (`ticket/XXXX-<slug>`).
 
 - **Every member must be at `status: solution`.** If any is not, stop and list the offenders: "Batch aborted — these members are not at `status: solution`: …. Run `/problem` on them or drop them from the batch."
-- Require **≥ 2** distinct members. If only one resolves, tell the lead to use plain `/autopilot XXXX` and stop.
+- **Refine-touched exclusion.** For each candidate member, probe its own ticket
+  branch for a persisted `/refine` marker: `git show
+  ticket/XXXX-<slug>:.tickets/XXXX-<slug>/refine-touched.md`. A present marker
+  means that member's design scope was machine-adjusted by a `/refine` pass and
+  must not silently join an atomic batch delivery — exclude that member and
+  report it to the lead: "Excluded from batch — refine-touched: XXXX-slug. Deliver
+  it individually via `/autopilot XXXX` (Step B's confirmation carve-out applies)."
+  Apply this exclusion **before** requiring ≥ 2 members below, so the count check
+  reflects the post-exclusion membership.
+  - **Exactly 1 member remains** after exclusion → do not proceed with batch Steps
+    1+; instead run `autopilot-ticket.md` (single-ticket mode) on that one
+    remaining member.
+  - **0 members remain** → stop and report every excluded member; do not create
+    the integration worktree.
+- Require **≥ 2** distinct members (after refine-touched exclusion). If only one
+  resolves, tell the lead to use plain `/autopilot XXXX` and stop.
 
 **Build order.** There is no cross-ticket dependency graph in the harness, so default to the order the IDs were given; if the lead gave no meaningful order (e.g. reverse), fall back to ascending ticket number. State the resolved order in one line. The **lead** is the first member in build order; its slug names the batch branch/worktree (`batch/<lead-slug>`, `.worktrees/batch-<lead-slug>`).
 
