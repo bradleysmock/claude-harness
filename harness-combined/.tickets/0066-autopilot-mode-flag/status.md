@@ -1,4 +1,4 @@
-status: implementing
+status: review-ready
 ticket: 0066
 title: Autopilot mode flag: build-ticket.md branches explicitly; shrink autopilot-ticket.md to mode plus steps S/A/B
 type: refactor (inferred)
