@@ -1,4 +1,4 @@
-status: claimed
+status: problem
 ticket: 0073
 title: Craft-polish commits use a 'polish:' prefix that commit_lint's default allowed types don't recognize
 branch: ticket/0073-commit-lint-polish-type-missing
