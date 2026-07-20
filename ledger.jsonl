@@ -123,3 +123,4 @@
 {"event":"delivered","number":58,"sha":"9c0e7fc6a7d11e3f44b18bc0815e45438068e533","ts":"2026-07-20T02:43:14+00:00"}
 {"event":"delivered","number":55,"sha":"2afe5990fd43bb706d21924ffbde1c54233af1bc","ts":"2026-07-20T02:47:00+00:00"}
 {"event":"delivered","number":69,"sha":"b93df1c329c1dfb1b33ae9e9133f713336a48f01","ts":"2026-07-20T02:56:27+00:00"}
+{"event":"claim","number":71,"slug":"deliver-remote-branch-cleanup","title":"Deliver squash-merge must delete the remote ticket branch, not just the local one","owner":"bradleysmock@gmail.com","branch":"ticket/0071-deliver-remote-branch-cleanup","ts":"2026-07-20T12:30:17+00:00"}
