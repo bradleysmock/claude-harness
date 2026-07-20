@@ -41,6 +41,7 @@ for byte. Update `deliver-ticket.md` Step 4c's prose to document the result.
 | FR-2 | Regression | `test_deliver_squash_preserves_branch_and_worktree_on_rejected_push` (line 365) passes unmodified — cleanup, including the new remote delete, never runs on a rejected `main` push. |
 | FR-4 | Unit | No-remote fixture: cleanup completes, no remote-delete attempted. |
 | FR-5 | Unit | Forced remote-delete failure: delivery still reports success. |
+| FR-6 | Direct check | `deliver-ticket.md` Step 4c's prose names the helper call — reviewed for accuracy against the actual code change, no separate test (doc-only requirement). |
 | FR-7 | Direct check | `status`/`stale`/`ticket-status` read only worktree existence, never branch existence — confirmed by inspection, no test needed. |
 
 ## Tradeoffs
