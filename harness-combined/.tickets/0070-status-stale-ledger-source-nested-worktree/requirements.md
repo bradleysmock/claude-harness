@@ -5,56 +5,55 @@
 
 ## Functional Requirements
 
-1. `ticket.py` must compute each worktree's project-relative offset (git
-   top-level to `repo`, auto-detected via `git rev-parse --show-toplevel`, no
-   manual config) once per invocation, applied to every worktree/ticket-dir path
-   it constructs; empty offset (flat repo) keeps current behavior byte-identical.
-2. `claim()` must offset-correct the stub write, the `git add` pathspec, and the
-   idempotent-resume existence check together — not the stub write alone.
-3. `list_tickets()`'s worktree join must read from the offset-corrected path,
-   offset computed once outside its per-ticket loop, falling back to the
-   pre-fix path when the corrected one has no `status.md`.
-4. `_project_offset` must raise the module's `RuntimeError`-with-context
-   convention (matching `git()`), never a bare `ValueError`, when `repo` isn't
-   under the git top-level.
-5. `list_tickets()`'s output must surface `updated` (already parsed, currently
-   dropped) so `list-json` is a complete source for `/status`.
-6. `status/SKILL.md` Step 1 and `stale/SKILL.md`'s shared block must both
-   enumerate via `ticket.py list-json` as an embedded (not prose) primary
-   source, falling back to a legacy `.tickets/*` scan only when unreachable —
-   mirroring `ticket-list.md`; the two files end byte-identical in that block,
-   reconciling `stale/SKILL.md`'s current ambiguous-precedence wording.
-7. A newly-claimed nested-project ticket appears in `/status`'s Active Tickets
-   table immediately, before any design artifact exists.
+1. `ticket.py` gets one shared helper, `_worktree_ticket_dir(repo, worktree,
+   slug)`, computing the offset-corrected `.tickets/<slug>` path once; every
+   site building a worktree-relative ticket-dir path uses it —
+   `_create_branch_and_worktree`, `list_tickets`, `reopen`, `_read_ticket_docs`.
+2. The offset (`_project_offset`, git top-level to `repo`, auto-detected via
+   `git rev-parse --show-toplevel`, no manual config) is empty for a flat repo,
+   keeping all four sites byte-identical to current behavior there.
+3. `claim()` offset-corrects the stub write, `git add` pathspec, and
+   idempotent-resume check together, via the shared helper.
+4. `list_tickets()`'s worktree join reads via the shared helper (offset computed
+   once outside its per-ticket loop), falling back to the pre-fix path when the
+   corrected one has no `status.md`.
+5. `reopen()` and `_read_ticket_docs()` (cancel/abandon) use the shared helper —
+   both currently reproduce claim's exact pre-fix bug.
+6. `_project_offset` raises the module's `RuntimeError` convention (matching
+   `git()`), never a bare `ValueError`, off the git top-level.
+7. `list_tickets()`'s output surfaces `updated` (parsed already, dropped today).
+8. `status/SKILL.md` Step 1 and `stale/SKILL.md`'s shared block enumerate via
+   `ticket.py list-json` as an embedded primary source, scan-fallback only when
+   unreachable; both files end byte-identical there — a deliberate
+   simplification of, not a mirror of, `ticket-list.md`'s scan-wins merge (FR-7
+   makes `list-json` alone sufficient).
+9. A newly-claimed nested-project ticket appears in `/status` immediately —
+   covered by FR-3+FR-4+FR-8's tests, no separate end-to-end test needed.
 
 ## Non-Functional Requirements
 
-1. Flat-repo behavior byte-identical to pre-fix — existing test suite passes
-   unmodified.
-2. Offset computed once per invocation, not per path join — bounded `git()`
-   invocation-count test.
-3. No new dependencies; pure `pathlib` + the existing `git()` helper.
+1. Flat-repo behavior byte-identical to pre-fix (existing suite unmodified).
+2. Offset computed once per invocation (bounded `git()` call-count test); no new
+   dependencies — `pathlib` + the existing `git()` helper only.
 
 ## Test Strategy
 
 | Type       | Rationale                                                        |
 |------------|--------------------------------------------------------------------|
-| Unit       | Offset helper: flat → empty; nested → correct; outside ancestry → `RuntimeError`. |
-| Unit       | `claim()` on a nested fixture: stub, `git add`, resume-check all at corrected path. |
-| Unit       | `list_tickets()`: corrected-path read, pre-fix fallback, single `git()` call regardless of count. |
-| Unit       | Embedded `list-json`-union script in both SKILL.md files, tested like `ticket-list.md`'s. |
+| Unit       | Offset: flat → empty; nested → correct; outside ancestry → `RuntimeError`. |
+| Unit       | Shared helper used identically by all 4 call sites, nested fixture. |
+| Unit       | `list_tickets()`: corrected read, pre-fix fallback, single `git()` call. |
+| Unit       | Embedded `list-json` script + byte-equality of the two SKILL.md files' block. |
 | Regression | `tests/test_ticket_module.py` flat-repo cases pass unmodified. |
 
 ## Acceptance Criteria
 
-- Claiming in a nested fixture writes and commits `status.md` under the real
-  project dir — no stray root-level dir.
-- Resuming an already-claimed nested ticket never duplicates the stub.
+- Claim, reopen, and doc-snapshot (cancel/abandon) in a nested fixture all
+  resolve to the real project dir — no stray root-level dir, ever; resuming an
+  already-claimed nested ticket never duplicates the stub.
 - `list-json` reports the ticket's true worktree status and `updated`.
-- `status/SKILL.md`/`stale/SKILL.md` are byte-identical in the shared block.
-- All pre-existing flat-repo ticket tests pass unmodified.
+- `status/SKILL.md`/`stale/SKILL.md` byte-identical in the shared block (test-verified); all pre-existing flat-repo ticket tests pass unmodified.
 
 ## Open Questions
 
-None. Verified this session: all 8 live legacy worktrees already sit at the
-corrected nested path — FR-3's fallback is a forward-looking safety net only.
+None — verified this session: all 8 live legacy worktrees already sit at the corrected path; FR-4's fallback is forward-looking safety only.
