@@ -1,4 +1,4 @@
-status: solution
+status: implementing
 ticket: 0064
 title: Critique report slimming: write full report to .harness/critiques; show only header, verdict, finding table
 type: refactor (inferred)
