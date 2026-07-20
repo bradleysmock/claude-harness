@@ -207,8 +207,34 @@ def proceed_prompt(ticket_id: str) -> str:
     )
 
 
-def render_dry_run_report(report: DryRunReport) -> str:
+CRITIC_FINDING_TABLE_HEADER = "## Finding Table"
+
+
+def trim_critic_report(critic_findings: str) -> str:
+    """Trim a full critic report down to its header + verdict + finding table.
+
+    Returns everything from the report's start through the end of the
+    ``## Finding Table`` section (up to, but not including, the next ``##``
+    heading such as ``## BLOCKER & MAJOR Detail``), with trailing whitespace
+    stripped. Falls back to returning the input unchanged when no
+    ``## Finding Table`` heading is present (malformed/unexpected input).
+    """
+    start = critic_findings.find(CRITIC_FINDING_TABLE_HEADER)
+    if start < 0:
+        return critic_findings
+    search_from = start + len(CRITIC_FINDING_TABLE_HEADER)
+    next_heading = critic_findings.find("\n## ", search_from)
+    end = next_heading if next_heading >= 0 else len(critic_findings)
+    return critic_findings[:end].rstrip()
+
+
+def render_dry_run_report(report: DryRunReport, critic_report_path: str) -> str:
     """Format a ``DryRunReport`` for display (FR-9 labels, FR-11 proceed prompt).
+
+    ``critic_report_path`` is the path the full design-critic report was
+    written to (``.harness/critiques/...``); the rendered Critic findings
+    section shows only the trimmed header + verdict + finding table plus a
+    pointer to that file, never the full report (ticket 0064).
 
     Deterministic: no timestamps or other run-varying content, so identical
     input renders identical output (NFR-2).
@@ -239,7 +265,13 @@ def render_dry_run_report(report: DryRunReport) -> str:
     lines.append("## Critic findings")
     lines.append(CRITIC_COVERAGE_LABEL)
     lines.append("")
-    lines.append(report.critic_findings or "(no critic findings)")
+    critic_section = (
+        trim_critic_report(report.critic_findings)
+        if report.critic_findings
+        else "(no critic findings)"
+    )
+    lines.append(critic_section)
+    lines.append(f"Full report: {critic_report_path}")
     lines.append("")
 
     lines.append(proceed_prompt(report.ticket_id))

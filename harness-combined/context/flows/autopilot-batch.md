@@ -70,6 +70,8 @@ If a member's integration gate cannot go green after `MAX_REPAIR_ATTEMPTS`, **st
 
 With every member built into the one worktree, the tree is the true integration state. Run the gate once more over the whole worktree, then spawn **one** critic subagent (`critic`, Phase `code`, Round 1) over the union of all member changes. Follow the same severity policy and auto-repair loop as `build-ticket.md` Steps 7/7a (up to `MAX_REPAIR_ATTEMPTS`), committing each repair round on the batch branch.
 
+**Persist the full combined report.** Write the critic's full structured report to `.harness/critiques/batch-<lead-slug>-<YYYY-MM-DD>.md` at the main project root (never inside the integration worktree), using the naming logic from `skills/critique/SKILL.md`'s Output Format section (the same date/counter scheme, keyed here on the batch slug rather than a single target). Then append a `## Critique pointers` line (create the heading if absent) to **every** member's `critic-findings.md`, each carrying the same four fields as the single-ticket pointer rule — date, target (the batch slug), verdict, and this one report path — so every member has a discoverable trail back to the combined review. Print only a compact summary to the session — the header, the verdict, and the BLOCKER/MAJOR/MINOR/OBS finding-count table, plus this file's path — never the full combined report.
+
 - Repairs land **after** the last member's boundary, so they fold into the last member's delivery commit. After repairs settle, **update the last member's `head`** in the member-boundary map to the current batch HEAD:
   ```
   git -C .worktrees/batch-<lead-slug> rev-parse HEAD

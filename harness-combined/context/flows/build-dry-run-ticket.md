@@ -59,7 +59,16 @@ Spawn the critic subagent with **Phase: design**, **Ticket: XXXX-<slug>**,
 **Round: 1**, passing the ticket artifacts plus the structured spec metadata
 (id, target_file, description, acceptance_criteria) — **not** the raw generated
 code. This keeps untrusted generated code out of a tool-capable agent's context.
-Display the critic's report verbatim.
+
+**Persist the full report.** Write the critic's full structured report to
+`.harness/critiques/<YYYY-MM-DD>-<NN>-<slug>.md` at the main project root
+(never inside a worktree), using the naming/counter logic from
+`skills/critique/SKILL.md`'s Output Format section (date-first filename, a
+two-digit same-day counter scanned from existing `.harness/critiques/`
+entries, and a kebab-case target slug) rather than re-deriving it. Record the
+resulting path as `critic_report_path` — Step 5 passes it to
+`render_dry_run_report` so the displayed report shows only a trimmed
+header + verdict + finding table plus a pointer to this file.
 
 **No auto-repair.** Per `build-ticket.md` Step 7a, `should_auto_repair(dry_run)`
 returns `False` here — the repair loop is suppressed. The critic runs; nothing is
@@ -68,12 +77,16 @@ repaired or committed.
 ## Step 5 — Assemble and render the report
 
 Call `assemble_dry_run_report(ticket_id, specs, gate_findings, critic_findings)`
-then `render_dry_run_report(report)` and display the result. The rendered output
-opens with the header `=== DRY RUN — no files written ===`, lists the planned
-specs, the `would write: <file>` plan (one line per spec — FR-5), the gate
-findings under `Gate coverage: indicative only …`, the critic findings under
-`Critic coverage: design-phase panels only …`, and ends with the proceed prompt
-(FR-9, FR-11). The rendering is deterministic and timestamp-free (NFR-2).
+then `render_dry_run_report(report, critic_report_path)` (the path written in
+Step 4) and display the result. The rendered output opens with the header
+`=== DRY RUN — no files written ===`, lists the planned specs, the
+`would write: <file>` plan (one line per spec — FR-5), the gate findings under
+`Gate coverage: indicative only …`, and the critic findings under
+`Critic coverage: design-phase panels only …` — trimmed to header + verdict +
+BLOCKER/MAJOR/MINOR/OBS finding-count table plus a `Full report:
+<critic_report_path>` pointer, never the full critic detail — and ends with the
+proceed prompt (FR-9, FR-11). The rendering is deterministic and
+timestamp-free (NFR-2).
 
 ## Step 6 — Proceed prompt
 

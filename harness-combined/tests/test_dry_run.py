@@ -34,6 +34,7 @@ from dry_run import (
     run_dry_run_gates,
     should_auto_repair,
     summarize_specs,
+    trim_critic_report,
     validate_dry_run_mode,
     would_write_plan,
 )
@@ -173,11 +174,35 @@ def test_assemble_collects_all_sections() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _render_sample() -> str:
+SAMPLE_CRITIC_REPORT_PATH = ".harness/critiques/sample-critique.md"
+
+FULL_CRITIC_REPORT = """=== EXPERT CODE CRITIQUE ===
+
+## Verdict
+
+**Recommended action:** APPROVE
+
+## Summary
+
+Looks fine.
+
+## Finding Table
+
+| ID | Severity | Panel | Dimension | Location | Finding |
+|----|----------|-------|-----------|----------|---------|
+| C-01 | MINOR | Core | Naming | `a.py:1` | nit |
+
+## BLOCKER & MAJOR Detail
+
+(See Finding Table.)
+"""
+
+
+def _render_sample(critic_findings: str = "critic stuff") -> str:
     report = assemble_dry_run_report(
-        "0013", [_spec("a", "src/a.py")], "gate stuff", "critic stuff"
+        "0013", [_spec("a", "src/a.py")], "gate stuff", critic_findings
     )
-    return render_dry_run_report(report)
+    return render_dry_run_report(report, SAMPLE_CRITIC_REPORT_PATH)
 
 
 def test_render_contains_dry_run_header() -> None:
@@ -206,6 +231,31 @@ def test_render_is_deterministic() -> None:
 def test_render_has_no_timestamp() -> None:
     # NFR-2: no run-varying content such as an ISO date/time.
     assert not re.search(r"\d{4}-\d{2}-\d{2}", _render_sample())
+
+
+def test_render_requires_critic_report_path() -> None:
+    report = assemble_dry_run_report("0013", [_spec("a", "src/a.py")], "gate stuff", "critic stuff")
+    with pytest.raises(TypeError):
+        render_dry_run_report(report)  # type: ignore[call-arg]
+
+
+def test_render_critic_section_is_trimmed_and_points_at_report() -> None:
+    out = _render_sample(FULL_CRITIC_REPORT)
+    assert "## Finding Table" in out
+    assert "BLOCKER & MAJOR Detail" not in out
+    assert f"Full report: {SAMPLE_CRITIC_REPORT_PATH}" in out
+
+
+def test_trim_critic_report_keeps_header_through_finding_table() -> None:
+    trimmed = trim_critic_report(FULL_CRITIC_REPORT)
+    assert "## Verdict" in trimmed
+    assert "## Finding Table" in trimmed
+    assert "BLOCKER & MAJOR Detail" not in trimmed
+
+
+def test_trim_critic_report_returns_input_unchanged_without_finding_table() -> None:
+    malformed = "no finding table here"
+    assert trim_critic_report(malformed) == malformed
 
 
 # ---------------------------------------------------------------------------
