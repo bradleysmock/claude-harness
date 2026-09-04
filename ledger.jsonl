@@ -135,3 +135,4 @@
 {"event":"claim","number":73,"slug":"commit-lint-polish-type-missing","title":"Craft-polish commits use a 'polish:' prefix that commit_lint's default allowed types don't recognize","owner":"bradleysmock@gmail.com","branch":"ticket/0073-commit-lint-polish-type-missing","ts":"2026-07-20T18:56:56+00:00"}
 {"event":"claim","number":74,"slug":"data-driven-promotion-policy","title":"Data-driven promotion policy","owner":"bradleysmock@navapbc.com","branch":"ticket/0074-data-driven-promotion-policy","ts":"2026-09-04T15:36:12+00:00"}
 {"event":"claim","number":75,"slug":"identity-stamped-audit-log","title":"Identity-stamped audit log","owner":"bradleysmock@navapbc.com","branch":"ticket/0075-identity-stamped-audit-log","ts":"2026-09-04T18:25:28+00:00"}
+{"event":"claim","number":76,"slug":"local-context-packages","title":"Local context packages","owner":"bradleysmock@navapbc.com","branch":"ticket/0076-local-context-packages","ts":"2026-09-04T18:54:15+00:00"}
