@@ -6,64 +6,76 @@
 ## Functional Requirements
 
 1. The system must provide `PolicyRule` and `PromotionVerdict` frozen
-   dataclasses in `gates/policy.py` as specified in the design.
+   dataclasses in `gates/policy.py`.
 2. The system must provide `load_policy(standards_text) -> list[PolicyRule]`,
-   parsing a `[policy]` sub-block inside the existing fenced `[gates]` region
-   of `_standards.md`.
+   parsing a `[policy]` sub-block inside the existing fenced `[gates]`
+   region.
 3. The system must provide `evaluate_promotion(results, policy) ->
-   PromotionVerdict` as a pure function: no I/O, no subprocess calls.
-4. When no `[policy]` block is present, `load_policy` must return a default
-   policy where every known gate is `required=True`, `on_block="fail"`.
-5. `evaluate_promotion` must return `outcome="block"` when any required gate
-   with `on_block="fail"` has failed.
-6. `evaluate_promotion` must return `outcome="pause_for_human"` when a failed
-   gate's rule has `on_block="pause_for_human"`, and no unresolved `"fail"`
-   disposition outranks it.
-7. `evaluate_promotion` must return `outcome="promote"` when no required gate
-   with `on_block` in `{"fail", "pause_for_human"}` has failed.
-8. A gate marked `required=False` must not affect the outcome regardless of
-   its result.
-9. `load_policy` must reject an unknown gate name or an invalid `on_block`
-   value with a fail-closed `CONFIG_ERROR`, never silently ignoring it.
-10. `evaluate_promotion` must report every gate's individual verdict in
-    `reasons`/`blocking_gates`, regardless of `depends_on` ordering — full
-    picture, not first-blocker-only.
-11. `commands/gate.md` must replace its inline pass/fail check with one call
-    to `evaluate_promotion`, rendering the summary from `outcome`/`reasons`.
-12. `context/flows/build-ticket.md` and `repair-escalation.md` must route a
-    `pause_for_human` outcome through the existing exhausted-repair
-    escalation halt (`memory(action="record", outcome="escalated")`,
-    `debug` skill pointer), leaving ticket `status.md` untouched.
+   PromotionVerdict` as a pure function: no I/O, no subprocess.
+4. A policy rule's gate key must use the same `<language>.<gate>` dotted
+   form as the existing `[gates]` override syntax (`gates/config.py`); a
+   bare, undotted key is a `CONFIG_ERROR` — one gate namespace, not two.
+5. With no `[policy]` block, `load_policy` must default every known
+   `<language>.<gate>` pair to `required=True, on_block="fail"` (today's
+   behavior).
+6. `on_block` accepts exactly `{"fail", "pause_for_human", "warn"}`; any
+   other value, unknown language, or unknown gate (validated against
+   `gates/config.py`'s existing `_VALID_LANGUAGES`/`_VALID_GATES`) is a
+   `CONFIG_ERROR`.
+7. A failed required gate with `on_block="fail"` contributes `block`
+   severity; `"pause_for_human"` contributes `pause_for_human` severity;
+   `"warn"` contributes no severity but is still recorded in `reasons`.
+8. A gate marked `required=False` never contributes severity, regardless of
+   `on_block` or result.
+9. `outcome` is the worst severity across all required-gate dispositions
+   (`block` > `pause_for_human` > `promote`).
+10. `reasons` must include one entry per evaluated gate, always (full
+    picture, never suppressed): `"<gate>: <on_block> (<passed|failed>)"`.
+11. `blocking_gates` includes a failed required gate only if none of its
+    `depends_on` gates also failed — a failure whose `depends_on` prereq
+    already failed is presumed a downstream consequence and is omitted from
+    `blocking_gates` (but never from `reasons`).
+12. `commands/gate.md` must replace its inline pass/fail check with one call
+    to `evaluate_promotion`, rendering its summary from `outcome`/`reasons`.
+13. On `outcome="pause_for_human"`, the calling flow (`build-ticket.md`'s
+    interactive halt, or `autopilot-ticket.md` Step B) performs a "policy
+    pause halt": records `memory(..., outcome="escalated", attempt=0)` for
+    the pausing gate, prints the same lead-facing options framing already
+    used for exhausted repair, and leaves `status.md` untouched. It must
+    NOT invoke `repair-escalation.md`'s Phase 1 diagnostic subagent — no
+    critic findings or repair history exist to diagnose on a first pause.
 
 ## Non-Functional Requirements
 
-1. Backward compatibility: a project with no `[policy]` block must see
-   byte-for-byte identical promotion behavior to today, for both clean and
-   failing gate sets.
-2. Auditability: policy is a flat, inspectable table — no arbitrary
-   expressions or callables in `_standards.md`.
+1. Backward compatibility: no `[policy]` block yields byte-identical
+   promotion behavior to today, clean and failing gate sets alike.
+2. Auditability: policy is a flat, inspectable table; no expressions.
+3. No second gate-name registry: policy validation reuses
+   `gates/config.py`'s `_VALID_LANGUAGES`/`_VALID_GATES`.
 
 ## Test Strategy
 
 | Type        | Rationale                                              |
-|-------------|---------------------------------------------------------|
-| Unit        | `evaluate_promotion` outcome matrix (FR-5..10) in isolation from I/O |
-| Unit        | `load_policy` parsing, defaults, and `CONFIG_ERROR` cases (FR-2,4,9) |
-| Integration | `commands/gate.md` end-to-end with a policy block present/absent |
-| Integration | Build repair loop halts correctly on `pause_for_human` (FR-12) |
+|-------------|-----------------------------------------------------------|
+| Unit        | `evaluate_promotion` outcome matrix incl. `warn` (FR-7,9) |
+| Unit        | `blocking_gates` suppression via `depends_on` (FR-11)      |
+| Unit        | `load_policy` defaults, dotted-key + `CONFIG_ERROR` (FR-4-6) |
+| Unit        | Polyglot: `python.lint` and `typescript.lint` rules independent |
+| Integration | `commands/gate.md` renders from `evaluate_promotion`       |
+| Integration | Pause halt records memory + skips diagnostic subagent (FR-13) |
 
 ## Acceptance Criteria
 
-- No `[policy]` block: outcome matches today's behavior for both a clean and
-  a failing gate set.
-- A failing gate marked `required=false` does not block promotion.
-- An unknown gate name or invalid `on_block` value raises `CONFIG_ERROR`.
-- A `pause_for_human` gate produces that outcome and the build flow halts via
-  the existing escalation path, not a hard failure or a new ticket status.
+- No `[policy]` block: outcome matches today's behavior.
+- `required=false` failing gate never blocks; `on_block="warn"` failing
+  required gate never blocks but appears in `reasons`.
+- Undotted key, unknown language/gate, or bad `on_block` -> `CONFIG_ERROR`.
+- A `pause_for_human` gate halts via the lightweight pause halt (no
+  diagnostic subagent invoked), `status.md` unchanged.
+- A gate suppressed from `blocking_gates` by `depends_on` still appears in
+  `reasons`.
 
 ## Open Questions
 
-None — the three checkpoint questions raised in the source design doc
-(pause routing, critic-visibility, `depends_on` short-circuit) are resolved
-as design decisions in `solution.md § Tradeoffs`, for lead confirmation at
-Checkpoint 1.
+None — the checkpoint questions from the source design doc are resolved in
+`solution.md § Decisions`, for lead confirmation at Checkpoint 1.
