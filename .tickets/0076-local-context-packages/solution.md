@@ -28,7 +28,7 @@ that name would make two unrelated things look like one. The pack caches to
 | Choice | Rationale |
 |--------|-----------|
 | Rename to `context_rank.py` | Avoids colliding with the live `context_fetch` MCP tool in `server.py` |
-| Own `_exec`-shaped helper, modeled on `gates/go.py` | `gates/python.py`'s `_exec` is bound to a `tempfile.mkdtemp()` sandbox, not a live project root — not literally reusable |
+| Own `_exec`-shaped helper, modeled on `gates/go.py` | `gates/python.py`'s `_exec` is sandbox-bound; its own `_exec_dir(cmd, directory, timeout)` is the closer analog but is still private-by-convention, so a fresh helper is cleaner than reaching into another module's internals |
 | Public `tokenize` alias in `memory.py` | `_tokenise` is private-by-convention; `context_rank.py` is its first production (non-test) cross-module consumer |
 | `describe_environment()` separate from `gather_context()` | Keeps ranking genuinely pure; logging happens at the caller, the actual I/O boundary |
 | Cache key includes `git status --porcelain` | A same-`HEAD` repair-round edit must still invalidate a stale pack |
@@ -54,7 +54,7 @@ that name would make two unrelated things look like one. The pack caches to
 | FR-4        | Unit        | Own exec helper runs `rg`/`ast-grep` as argv lists with a timeout |
 | FR-5        | Unit        | `rg` absent -> empty pack; `ast-grep` absent -> ripgrep-only; neither raises or logs internally |
 | FR-6/7      | Unit        | Size caps enforced; cache key reacts to query/`HEAD`/dirty-tree changes |
-| FR-8/9/10   | Integration | `/problem` Phase 2->3 and `build-ticket.md` Step 1 each produce/load a pack; `.harness/context/` gitignored |
+| FR-8/9/10   | Integration | `/problem` Phase 2->3 and `build-ticket.md` Step 1 each produce/load a pack and surface `describe_environment()`'s message when non-`None`; `.harness/context/` gitignored |
 
 ## Tradeoffs / Risks
 
@@ -63,8 +63,8 @@ that name would make two unrelated things look like one. The pack caches to
 - **Dirty-tree hashing adds a `git status` call per check**: small fixed
   cost for correctness across repair-round resumes.
 - **`describe_environment`/`gather_context` could disagree** if the
-  environment changes between calls — mitigated by calling both
-  back-to-back at one call site.
+  environment changes between calls — mitigated by pairing both
+  back-to-back at each of FR-8/FR-9's two call sites, not just one.
 
 ## Implementation Order
 
