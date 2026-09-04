@@ -5,76 +5,76 @@
 
 ## Approach
 
-Add `context_fetch.py`: `gather_context()` ranks `rg -n` hits by
-keyword/co-occurrence overlap with `query` (reusing `memory.py`'s
-`_tokenise`), with an optional `ast-grep` structural pass for
-symbol-shaped queries. The pack caches to `.harness/context/<ticket>.md`
-keyed on `(query, HEAD)`. Injection sits at the point each flow actually
-has a `query` — corrected from the source doc's "inject the same way
-`_standards.md` is," impossible for `/problem` before `problem.md` exists.
+Add `context_rank.py`: `gather_context()` ranks `rg -n` hits by
+keyword/co-occurrence overlap (reusing `memory.py`'s tokenizer via a new
+public alias), with an optional `ast-grep` structural pass. Named
+`context_rank`, not `context_fetch` — `server.py` already exposes an
+unrelated MCP tool called `context_fetch` (used by `build-spec.md`); reusing
+that name would make two unrelated things look like one. The pack caches to
+`.harness/context/<ticket>.md` keyed on `(query, HEAD, dirty-tree state)`.
 
 ## Components
 
 | Component | Responsibility |
 |---|---|
-| `context_fetch.py` | Ranking, caching, degrade-on-missing-tool |
-| `commands/problem.md` | Generates/loads the pack right after Phase 2 |
-| `context/flows/build-ticket.md` Step 1 | Generates/loads the pack before spec generation |
+| `context_rank.py` | Pure ranking + its own exec helper; `describe_environment` for caller-side logging |
+| `memory.py` | Gains a public `tokenize` alias for `_tokenise` |
+| `commands/problem.md` (harness-combined) | Generates/loads the pack right after Phase 2 |
+| `context/flows/build-ticket.md` Step 1 | Generates/loads the pack right after resolving `problem.md`'s path |
 | `.gitignore` | `.harness/context/` ignored, like `.harness/craft/` |
 
 ## Tech Choices
 
 | Choice | Rationale |
 |--------|-----------|
-| Reuse `memory.py`'s `_tokenise` | One BM25-lite tokenizer, not a second, slightly different one |
-| `subprocess.run([...], shell=False)` | Matches `gates/python.py`'s `_exec` — the codebase's one existing subprocess convention |
-| Cache key `(query, HEAD)` | Mirrors ticket 0051's checkpoint-invalidation pattern instead of a new staleness rule |
-| Pack generated at Phase 2 (not Phase 0) for `/problem` | `problem.md` is the query source; it doesn't exist before Phase 2 |
+| Rename to `context_rank.py` | Avoids colliding with the live `context_fetch` MCP tool in `server.py` |
+| Own `_exec`-shaped helper, modeled on `gates/go.py` | `gates/python.py`'s `_exec` is bound to a `tempfile.mkdtemp()` sandbox, not a live project root — not literally reusable |
+| Public `tokenize` alias in `memory.py` | `_tokenise` is private-by-convention; `context_rank.py` is its first production (non-test) cross-module consumer |
+| `describe_environment()` separate from `gather_context()` | Keeps ranking genuinely pure; logging happens at the caller, the actual I/O boundary |
+| Cache key includes `git status --porcelain` | A same-`HEAD` repair-round edit must still invalidate a stale pack |
 
-## Decisions (resolves source doc's Checkpoint-1 questions)
+## Decisions (resolves source doc's Checkpoint-1 questions + corrections)
 
-- **Recency weighting**: out of scope for v1 — plain keyword/co-occurrence
-  only, kept simple and deterministic; a `git log`-recency term is a
-  follow-up once this is proven.
-- **Pack-size cap**: two module constants in `context_fetch.py` —
-  `max_snippets` (default 5) and `MAX_TOTAL_LINES` — not a `_standards.md`
-  knob yet; revisit if real usage needs per-project tuning.
-- **Regenerate on `/build` re-entry**: no special-casing needed — the
-  `(query, HEAD)` cache key already answers this; a resume regenerates
-  only if `problem.md`'s text or `HEAD` actually changed.
-- **Injection timing correction**: source doc cited a nonexistent
-  `context/flows/problem.md` — `/problem` has no separate flow file, so
-  `commands/problem.md` itself is edited, at the Phase-2-to-3 boundary.
+- **Recency weighting**: out of scope for v1, a follow-up once proven.
+- **Pack-size cap**: `max_snippets` (default 5) + `MAX_TOTAL_LINES`
+  constant, not a `_standards.md` knob yet.
+- **Regenerate on `/build` re-entry**: the `(query, HEAD, dirty-tree)`
+  cache key already answers this — no special-casing needed.
+- **Target subtree**: `harness-combined/` explicitly — the repo has other
+  plugin trees (`claude-plugin/`, `harness-full`) with different shapes.
+- **Corrections**: renamed `context_fetch.py` -> `context_rank.py` (name
+  collision); `_exec` reuse claim was wrong (sandbox-bound) — implements
+  its own, modeled on `gates/go.py`'s instead.
 
 ## Test Plan
 
 | Requirement | Test Type   | Scenario(s)            |
 |-------------|-------------|------------------------|
-| FR-1/2/3    | Unit        | `gather_context` ranks a needle file correctly; reuses `_tokenise` |
-| FR-4        | Unit        | `rg`/`ast-grep` invoked as argv lists with a timeout |
-| FR-5        | Unit        | `ast-grep` absent (PATH manipulation) degrades to ripgrep-only, logs once, never raises |
-| FR-6        | Unit        | Pack respects `max_snippets` and `MAX_TOTAL_LINES` |
-| FR-7        | Unit        | Cache hit/miss on `(query, HEAD)` combinations |
-| FR-8        | Integration | `/problem` generates the pack only after Phase 2, loads it for Phases 3-4 |
-| FR-9/10     | Integration | `build-ticket.md` Step 1 generates/loads the pack; `.harness/context/` is gitignored |
+| FR-1/2/3    | Unit        | `gather_context` ranks a needle file correctly; imports `memory.tokenize` |
+| FR-4        | Unit        | Own exec helper runs `rg`/`ast-grep` as argv lists with a timeout |
+| FR-5        | Unit        | `rg` absent -> empty pack; `ast-grep` absent -> ripgrep-only; neither raises or logs internally |
+| FR-6/7      | Unit        | Size caps enforced; cache key reacts to query/`HEAD`/dirty-tree changes |
+| FR-8/9/10   | Integration | `/problem` Phase 2->3 and `build-ticket.md` Step 1 each produce/load a pack; `.harness/context/` gitignored |
 
 ## Tradeoffs / Risks
 
-- **Query = `problem.md` text, not the raw request**: one consistent
-  query-source, but `/problem` Phase 0-2 gets no pack — acceptable, since
-  those phases define the problem, not the fix.
-- **HEAD-keyed cache invalidates per worktree commit**: intentional —
-  `gather_context` runs once per `/build` entry (Step 1), held in context
-  for that session; only a later re-entry re-checks the key. No existing
-  `rg`/`ast-grep` precedent — mitigated by matching `_exec` exactly.
+- **Query = `problem.md` text**: `/problem` Phase 0-2 gets no pack —
+  acceptable, those phases define the problem, not the fix.
+- **Dirty-tree hashing adds a `git status` call per check**: small fixed
+  cost for correctness across repair-round resumes.
+- **`describe_environment`/`gather_context` could disagree** if the
+  environment changes between calls — mitigated by calling both
+  back-to-back at one call site.
 
 ## Implementation Order
 
-1. Failing unit tests for ranking + `_tokenise` reuse (FR-1-3); implement
-   `gather_context`'s ripgrep path.
-2. Failing unit test for the `ast-grep` degrade path (FR-4/5); implement.
-3. Failing unit tests for size caps and cache key (FR-6/7); implement.
+1. Failing unit tests for ranking + `memory.tokenize` reuse (FR-1-3);
+   implement `gather_context`'s ripgrep path.
+2. Failing unit test for the own exec helper and both degrade paths
+   (FR-4/5); implement.
+3. Failing unit tests for size caps and the dirty-tree-aware cache key
+   (FR-6/7); implement.
 4. Failing integration tests + wire `commands/problem.md`'s Phase 2->3
    load (FR-8) and `build-ticket.md` Step 1 (FR-9).
-5. Add `.harness/context/` to `.gitignore`; document in
+5. Add `.harness/context/` to `.gitignore` (FR-10); document in
    `context/harness-reference.md`.
