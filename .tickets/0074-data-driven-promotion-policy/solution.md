@@ -62,13 +62,15 @@ instead of re-deriving pass/fail inline. Gate execution/scheduling untouched.
 
 | Requirement | Test Type   | Scenario(s)            |
 |-------------|-------------|------------------------|
-| FR-5,7,9    | Unit        | No `[policy]` block → identical outcome incl. cross-cutting gates |
+| FR-1/2/3    | Unit        | Dataclasses construct; `load_policy`/`evaluate_promotion` are pure (no I/O) |
+| FR-5/7/9    | Unit        | No `[policy]` block → identical outcome incl. cross-cutting gates; `warn` never blocks |
 | FR-8        | Unit        | `required=false` never blocks |
-| FR-4,6,11   | Unit        | Bad key form, unresolvable `depends_on`, bad `on_block` → `CONFIG_ERROR` |
+| FR-4/6/11   | Unit        | Bad key form, unresolvable `depends_on`, bad `on_block` → `CONFIG_ERROR` |
 | FR-4        | Unit        | `global.commit_lint` and `python.secrets` both resolve correctly |
+| FR-10       | Unit        | `reasons` formatted `"<gate>: <on_block> (<passed\|failed\|skipped>)"` for every gate |
 | FR-11       | Unit        | Downstream failure suppressed from `blocking_gates`, present in `reasons` |
 | FR-12       | Integration | `commands/gate.md` renders from `evaluate_promotion` output |
-| FR-13,14    | Integration | `/build` Step 4f/7a halts via Step A's framing on `pause_for_human` |
+| FR-13/14    | Integration | `/build` Step 4f/7a halts via Step A's framing on `pause_for_human` |
 
 ## Tradeoffs
 
