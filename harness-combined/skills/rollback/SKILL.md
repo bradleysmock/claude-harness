@@ -221,6 +221,15 @@ git commit -m "revert(ticket): XXXX <title> — reverts merge commit <SHA>"
 commit is **not** a merge commit, the `--merges` filter in Step 4 excludes it from any future
 `/rollback` search — the rollback does not become a target for a subsequent rollback.
 
+**Audit record (ticket 0075).** Only on this branch — never the "nothing to commit" early
+exit above — record the decision:
+
+```python
+import audit
+detail = "reverted merge " + SHA
+audit.record("rollback", "XXXX", detail, root=project_root)
+```
+
 ## Step 12 — Report
 
 Confirm what happened: the reverted merge SHA, the new revert commit's subject, and a reminder that

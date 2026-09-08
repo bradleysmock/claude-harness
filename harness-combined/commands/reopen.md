@@ -36,7 +36,9 @@ If a ticket number is provided as an argument, resolve it from the `harness-tick
    ```
    `main` keeps the delivered `completed/XXXX-<slug>/` archive until the next `/deliver` squash; reopening never touches `main`.
 
-5. **Report completion.**
+5. **Audit record (ticket 0075).** `audit.record("reopen", "XXXX", "lead-confirmed reopen", root=project_root)`.
+
+6. **Report completion.**
    Confirm the ticket dir is restored at `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/` with `status: solution` on the fresh branch. Remind the lead:
    - Run `/build XXXX` before resuming implementation — existing specs may be stale; `/build` resumes this worktree.
    - The next `/deliver` squashes the reopened work into a **further** commit on `main`.

@@ -352,6 +352,14 @@ Reached when Step 4b passed, was skipped (no smoke test configured), or ran in `
 python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" deliver-publish XXXX-<slug> <branch>
 ```
 
+**Audit record (ticket 0075).** Only after `deliver-publish` returns successfully (never
+before — a rejected push means the merge did not complete), record the decision:
+
+```python
+import audit
+audit.record("deliver", "XXXX", "merged to main", root=project_root)
+```
+
 ## Step 5 — Candidate learnings (present, then append accepted)
 
 `.tickets/_learnings.md` is lead-curated. The harness appends to it **only after the

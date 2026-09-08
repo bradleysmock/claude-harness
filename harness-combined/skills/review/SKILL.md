@@ -71,6 +71,13 @@ Unlike `critique`, do **not** write the report to `CRITIQUE.md` — the interact
 
 **If approved** (no BLOCKER items):
 - Keep `status.md` at `review-ready`.
+- **Audit record (ticket 0075).** If the ticket's status was `changes-requested`
+  when this review started (Step 0's resolution), this approval resolves that
+  pause — record it:
+  ```python
+  import audit
+  audit.record("resolve-pause", "XXXX", "approved via /review", root=project_root)
+  ```
 - Tell the lead the ticket is approved and they can run `/deliver XXXX`.
 
 **If changes required** (BLOCKER items exist):

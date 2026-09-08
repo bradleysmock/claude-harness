@@ -20,6 +20,11 @@ __pycache__/
 # Transient craft-polish reports (.harness/craft/<ticket>.json) — ephemeral, like results/
 .harness/craft/
 
+# Identity-stamped audit log (ticket 0075) — local accountability aid, not a
+# committed record: avoids usernames in shared history and merge noise on an
+# append-only file with no merge semantics.
+.harness/audit.log
+
 # macOS
 .DS_Store
 

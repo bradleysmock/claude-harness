@@ -40,5 +40,7 @@ If a ticket number is provided as an argument, resolve it from the `harness-tick
 
    **Partial-cleanup guard:** if the worktree or branch was already partially removed, the helper's removals are best-effort (`--force`) and will not error out; it always finishes by ensuring both are gone.
 
-6. **Report completion.**
+6. **Audit record (ticket 0075).** `audit.record("abandon" if abandon_flag else "cancel", "XXXX", "lead-confirmed cleanup", root=project_root)`.
+
+7. **Report completion.**
    Confirm what was cleaned up (worktree, branch removed local+origin, docs archived onto `harness-tickets`), note that **no `main` commit was made**, and remind the lead that `/reopen XXXX` restores the ticket from its `harness-tickets` archive onto a fresh branch.

@@ -347,6 +347,30 @@ repair loop — that every gate is required and any failure blocks.
 
 ---
 
+### Identity-stamped audit log (ticket 0075)
+
+`audit.py` appends one JSON line to `.harness/audit.log` (gitignored — a
+local accountability aid, not a committed record) for every lead-confirmed
+decision, naming who made the call: `git config user.name` -> `$USER` ->
+`getpass.getuser()` -> `"unknown"` (fail-open — a logging failure must never
+look like the real operation failed). Call sites are the exact step each
+decision resolves, not where a status merely transitions:
+
+| `action` | Call site |
+|---|---|
+| `deliver` | `deliver-ticket.md` Step 4c, after a successful publish |
+| `rollback` | `rollback/SKILL.md` Step 11, only on the branch that commits a revert |
+| `resolve-pause` | `build-ticket.md` Step 6 (resumed `changes-requested`) or `review/SKILL.md`'s approved branch |
+| `confirm-scope-drift` | `autopilot-ticket.md` Step B's refine-touched confirmation |
+| `cancel` / `abandon` / `reopen` | `commands/cancel.md`/`abandon.md`/`reopen.md`, after the lead-confirmed helper transaction |
+
+Setting `changes-requested` (`build-ticket.md` Step 7d, `autopilot-ticket.md`
+Step A) never logs — that's a machine escalation, not a human decision.
+`commands/ticket-status.md XXXX` shows a ticket's entries as a trailing
+`### Audit` section.
+
+---
+
 ## Gate/Repair Loop
 
 When a gate fails in `/build`:

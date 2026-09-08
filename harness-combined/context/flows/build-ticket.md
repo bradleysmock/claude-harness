@@ -26,7 +26,7 @@ Scan `.tickets/` for the ticket matching `$ARGUMENTS`; if not found, scan `.tick
 
 Resolve the ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN_ROOT}/context/harness-reference.md`: the claim-time worktree `.worktrees/XXXX-<slug>` already exists, so its `.tickets/` copy of `status.md` (and its `solution.md` / `requirements.md`) is authoritative; the root copy shows only claim/terminal states. Read the design artifacts scored below from the worktree copy.
 
-If `status` is `changes-requested`, the worktree already exists from a prior `/build`. Skip Step 2; resume with the existing worktree and skip already-passed specs via `checkpoint(action="read", ...)`.
+If `status` is `changes-requested`, the worktree already exists from a prior `/build`. Skip Step 2; resume with the existing worktree and skip already-passed specs via `checkpoint(action="read", ...)`. **Set a local `resumed_pause = True` flag (ticket 0075)** — Step 6 uses it to record who resolved the pause. Any other status leaves `resumed_pause = False`.
 
 Find the spec or task for this ticket:
 - `.harness/tasks/XXXX-<slug>.py` — multi-spec task (preferred if it exists)
@@ -249,6 +249,14 @@ Update `status.md` to `status: review-ready`. Commit it **in the worktree** (bra
 ```
 git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/status.md
 git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX → review-ready"
+```
+
+**Audit record (ticket 0075).** If Step 1 set `resumed_pause = True`, this is the lead
+resolving a `changes-requested` pause — record it:
+
+```python
+import audit
+audit.record("resolve-pause", "XXXX", "resumed /build past changes-requested", root=project_root)
 ```
 
 Run and display:
