@@ -75,6 +75,25 @@ def test_identity_all_fail_writes_unknown(tmp_path: Path, monkeypatch) -> None:
     assert entry["who"] == "unknown"
 
 
+def test_identity_all_fail_writes_unknown_on_keyerror(tmp_path: Path, monkeypatch) -> None:
+    """getpass.getuser()'s real failure mode for an unmapped UID (routine in
+    arbitrary-UID containers) is KeyError, not OSError."""
+    def _fake_run(cmd, **kwargs):
+        raise OSError("no git")
+
+    def _fake_getuser():
+        raise KeyError("getpwuid(): uid not found")
+
+    monkeypatch.setattr(audit.subprocess, "run", _fake_run)
+    monkeypatch.delenv("USER", raising=False)
+    monkeypatch.setattr(audit.getpass, "getuser", _fake_getuser)
+    audit.record("deliver", "0001", "x", root=tmp_path)
+    entry = json.loads(
+        (tmp_path / ".harness" / "audit.log").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert entry["who"] == "unknown"
+
+
 def test_read_filters_by_ticket(tmp_path: Path) -> None:
     audit.record("deliver", "0001", "a", root=tmp_path)
     audit.record("deliver", "0002", "b", root=tmp_path)

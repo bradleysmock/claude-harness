@@ -36,8 +36,26 @@ commit_lint(branch, project_root)          # add require_scope=True to also requ
 
 The tool runs `git log main..<branch>` and validates each subject against `type(scope): subject` (allowed types default to the conventional-commit set; merge commits are skipped). It reads `allowed_types` / `require_scope` overrides from a `## Commit Lint` block in `.tickets/_standards.md` when present.
 
-- **`passed: true`** → continue to Step 2.
-- **`passed: false`** → **stop before the confirm prompt.** Print each error's `message` (`<short-sha>: <subject>`) so the lead sees exactly which commits are malformed, and tell them to fix the commit messages (e.g. `git rebase -i main` to reword) and re-run `/deliver XXXX`. Do **not** proceed to Step 3. A `BASE_BRANCH_UNKNOWN` or `GIT_ERROR` code also blocks (fail closed) — surface it and stop.
+**Evaluate via the promotion policy (ticket 0074)** instead of branching on `passed` directly — this is the one real caller of the `global.commit_lint` namespace:
+
+```python
+from gates.policy import load_policy, evaluate_promotion
+from models import GateError, GateResult
+
+raw = json.loads(commit_lint(branch, project_root))  # or with require_scope=True
+result = GateResult(
+    gate="commit_lint", passed=raw["passed"],
+    errors=[GateError(**e) for e in raw["errors"]], duration_ms=raw["duration_ms"],
+)
+standards_path = Path(project_root) / ".tickets" / "_standards.md"
+policy = load_policy(standards_path.read_text(encoding="utf-8") if standards_path.exists() else "")
+verdict = evaluate_promotion([], [result], policy)
+```
+
+- **`verdict.outcome == "promote"`** → continue to Step 2.
+- **`verdict.outcome == "block"`** → **stop before the confirm prompt.** Print each error's `message` (`<short-sha>: <subject>`) so the lead sees exactly which commits are malformed, and tell them to fix the commit messages (e.g. `git rebase -i main` to reword) and re-run `/deliver XXXX`. Do **not** proceed to Step 3.
+- **`verdict.outcome == "pause_for_human"`** — an operator-set `global.commit_lint.on_block = "pause_for_human"` rule fired: perform the same policy pause halt `build-ticket.md` uses (record `outcome="escalated"`, print the lead-options framing, stop before Step 3).
+- A `BASE_BRANCH_UNKNOWN` or `GIT_ERROR` code from `commit_lint` itself also blocks (fail closed, independent of policy) — surface it and stop.
 
 This gate is independent of `/deliver` and can be run standalone (e.g. in CI) by invoking `commit_lint` directly.
 

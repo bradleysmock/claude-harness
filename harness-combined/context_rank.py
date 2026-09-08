@@ -51,6 +51,13 @@ def _exec(command: list[str], cwd: str | Path, timeout: int = _EXEC_TIMEOUT) -> 
     )
 
 
+#: A real problem statement routinely yields dozens-to-hundreds of unique
+#: tokens; without a cap, gather_context previously spawned one `rg`
+#: subprocess per term (now batched into one call regardless, but this cap
+#: is defense-in-depth against a pathologically long query).
+_MAX_QUERY_TERMS = 40
+
+
 def _query_terms(query: str) -> list[str]:
     seen: set[str] = set()
     terms: list[str] = []
@@ -59,30 +66,39 @@ def _query_terms(query: str) -> list[str]:
             continue
         seen.add(token)
         terms.append(token)
+        if len(terms) >= _MAX_QUERY_TERMS:
+            break
     return terms
 
 
-def _rg_hits(term: str, project_root: str) -> list[tuple[str, int]]:
-    """(file, line) hits for one fixed-string term. `[]` on any failure —
-    absent binary, timeout, or no matches — never raises."""
-    if shutil.which("rg") is None:
+def _rg_hits(terms: list[str], project_root: str) -> list[tuple[str, int, str]]:
+    """(file, line, matched-line-text) hits for every term in ONE `rg`
+    invocation (one `-e` per term, all fixed-string) — not one subprocess
+    spawn per term, which a multi-dozen-token query would make expensive.
+    `[]` on any failure: absent binary, timeout, or no matches — never
+    raises."""
+    if shutil.which("rg") is None or not terms:
         return []
+    args = ["rg", "-Fn", "-i", "--no-heading"]
+    for term in terms:
+        args += ["-e", term]
+    args += ["--", "."]
     try:
-        result = _exec(["rg", "-Fn", "-i", "--no-heading", "--", term, "."], project_root)
+        result = _exec(args, project_root)
     except (OSError, subprocess.TimeoutExpired):
         return []
     if result.returncode not in (0, 1):  # 1 = ran cleanly, no matches
         return []
-    hits: list[tuple[str, int]] = []
+    hits: list[tuple[str, int, str]] = []
     for line in result.stdout.splitlines():
         parts = line.split(":", 2)
         if len(parts) != 3:
             continue
-        file_path, line_no_text, _rest = parts
+        file_path, line_no_text, text = parts
         if file_path.startswith("./"):
             file_path = file_path[2:]
         try:
-            hits.append((file_path, int(line_no_text)))
+            hits.append((file_path, int(line_no_text), text))
         except ValueError:
             continue
     return hits
@@ -97,10 +113,13 @@ def gather_context(query: str, project_root: str, max_snippets: int = 5) -> list
 
     file_terms: dict[str, set[str]] = {}
     file_line_hits: dict[str, dict[int, set[str]]] = {}
-    for term in terms:
-        for file_path, line_no in _rg_hits(term, project_root):
-            file_terms.setdefault(file_path, set()).add(term)
-            file_line_hits.setdefault(file_path, {}).setdefault(line_no, set()).add(term)
+    for file_path, line_no, text in _rg_hits(terms, project_root):
+        lowered = text.lower()
+        matched = {term for term in terms if term in lowered}
+        if not matched:
+            continue
+        file_terms.setdefault(file_path, set()).update(matched)
+        file_line_hits.setdefault(file_path, {}).setdefault(line_no, set()).update(matched)
 
     ranked_files = sorted(
         file_terms, key=lambda f: (-len(file_terms[f]), f),

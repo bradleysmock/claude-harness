@@ -92,6 +92,12 @@ back to strict full-suite (fail-closed). The shared engine lives in
 `gates/_baseline.py`. When a delta failure is later fixed, the repair is recorded via
 `memory(action="record", gate="test", outcome="passed", resolution=…)`.
 
+**Pluggable external gates (SARIF-in).** An `[external_gates]` sub-block in
+`_standards.md`'s `[gates]` fence declares an already-installed subprocess
+whose stdout is SARIF 2.1.0 as an additional gate — no new `gates/*.py`
+module required. See `context/harness-reference.md`'s "Pluggable external
+gates" section for the config schema and fail-closed validation rules.
+
 ---
 
 ## Memory contract

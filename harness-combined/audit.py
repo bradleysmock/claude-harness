@@ -40,7 +40,10 @@ def _resolve_identity() -> str:
 
     try:
         return getpass.getuser()
-    except OSError:
+    except (OSError, KeyError):
+        # KeyError: the running UID has no /etc/passwd entry (routine for
+        # arbitrary-UID containers — rootless Docker, many CI runners), not
+        # an OSError as getpass's own docs might suggest.
         return "unknown"
 
 

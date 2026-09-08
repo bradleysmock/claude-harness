@@ -392,6 +392,44 @@ indexing daemon; search-and-rank at request time only.
 
 ---
 
+### Pluggable external gates — SARIF-in (ticket 0077)
+
+`[external_gates]`, a sub-block inside the same fenced `[gates]` region as
+command overrides and `[policy]`, lets `_standards.md` declare an
+already-installed subprocess whose stdout is SARIF 2.1.0 as a gate — no new
+`gates/*.py` module required:
+
+```
+```gates
+[external_gates]
+snyk = { command = "snyk test --sarif", scope = "*.py,*.ts", timeout = 120 }
+```
+```
+
+- **Parsed fail-closed** by `gates/config.py`'s `load_external_gates`,
+  reusing the existing argv hardening (`_FORBIDDEN_ARG0_CHARS`/`_MAX_ARGS`)
+  and `gates/_scope.py`'s pattern compiler for `scope`. A `name` colliding
+  with any built-in gate (any language, or `secrets`/`coverage`/
+  `dep-audit`/`sast`/`commit_lint`) or another `[external_gates]` entry is
+  a `CONFIG_ERROR`, matching a malformed `[gates]` override exactly —
+  parsed in `server.py`'s pre-loop `ConfigError` handler, not inside
+  `run_suite_on_dir`, so it never inherits that function's own
+  degrade-to-warning exception handling.
+- **Scheduled** by appending each matched result sequentially in
+  `run_suite_on_dir`, alongside coverage/dep-audit/sast — never through the
+  `GateSpec`/scheduler path. `timeout_seconds` is its own field (default
+  60s), not composed into `GateTimeoutConfig`'s closed `GateType`-keyed
+  fields. A scope-unrestricted gate re-runs once per detected language,
+  matching the existing secrets/coverage precedent.
+- **SARIF ingestion** (`gates/external.py`) mirrors `sarif_output.py`'s
+  emission-side path containment: an ingested `physicalLocation` escaping
+  the gated directory becomes `file=None`, never passed through raw. A
+  `results` array over `MAX_SARIF_RESULTS` (500), or invalid/absent SARIF,
+  is `TOOL_ERROR` — a non-zero exit alone is never sufficient, since many
+  scanners exit non-zero because they found something.
+
+---
+
 ## Gate/Repair Loop
 
 When a gate fails in `/build`:

@@ -35,6 +35,8 @@ import re
 import shlex
 from pathlib import Path
 
+from gates._scope import _compile_pattern
+from gates.external import ExternalGateSpec
 from models import StackName
 
 #: Upper bound on argv length for a single override (defense-in-depth).
@@ -156,11 +158,11 @@ def load_gate_overrides(
         line = raw.strip()
         if not line or line.startswith("#") or line.lower() == "[gates]":
             continue
-        if line.lower() == "[policy]":
-            # Everything after this marker belongs to the promotion-policy
-            # sub-block (ticket 0074) and is parsed by gates/policy.py, never
-            # here — a policy line's `<language>.<gate>.<field>` shape would
-            # otherwise misparse as a malformed override.
+        if line.lower() in ("[policy]", "[external_gates]"):
+            # Everything from here to the end of the fence belongs to another
+            # sub-block (ticket 0074's [policy], ticket 0077's
+            # [external_gates]) and is parsed elsewhere — their line shapes
+            # would otherwise misparse as malformed overrides.
             break
         if "=" not in line:
             raise ConfigError(f"malformed override line (no '='): {line!r}")
@@ -188,20 +190,235 @@ def load_gate_overrides(
     return overrides
 
 
+#: Section markers that can appear inside the `[gates]` fence, each starting
+#: its own sub-block. A sub-block extractor stops at whichever of the
+#: *other* markers comes next, so two sub-blocks never bleed into each other
+#: regardless of which order the lead wrote them in.
+_SUB_BLOCK_MARKERS = frozenset({"[policy]", "[external_gates]"})
+
+
+def _extract_sub_block(block: list[str], marker: str) -> list[str] | None:
+    start = None
+    for index, raw in enumerate(block):
+        if raw.strip().lower() == marker:
+            start = index + 1
+            break
+    if start is None:
+        return None
+    end = len(block)
+    for index in range(start, len(block)):
+        if block[index].strip().lower() in _SUB_BLOCK_MARKERS:
+            end = index
+            break
+    return block[start:end]
+
+
 def extract_policy_block(text: str) -> list[str] | None:
     """Return the content lines of the `[policy]` sub-block, or ``None``.
 
     The sub-block lives inside the same fenced `[gates]` region as the command
-    overrides, demarcated by a `[policy]` marker line (ticket 0074). Text
-    extraction only — parsing and validation live in ``gates/policy.py``.
+    overrides, demarcated by a `[policy]` marker line (ticket 0074), and stops
+    at a subsequent `[external_gates]` marker if present. Text extraction
+    only — parsing and validation live in ``gates/policy.py``.
     """
     block = _extract_gates_block(text)
     if block is None:
         return None
-    for index, raw in enumerate(block):
-        if raw.strip().lower() == "[policy]":
-            return block[index + 1:]
-    return None
+    return _extract_sub_block(block, "[policy]")
+
+
+def extract_external_gates_block(text: str) -> list[str] | None:
+    """Return the content lines of the `[external_gates]` sub-block, or
+    ``None``. Mirrors :func:`extract_policy_block` (ticket 0077) — text
+    extraction only, stopping at a subsequent `[policy]` marker if present.
+    """
+    block = _extract_gates_block(text)
+    if block is None:
+        return None
+    return _extract_sub_block(block, "[external_gates]")
+
+
+#: Every built-in gate name across every language, plus the cross-cutting
+#: gates that aren't overridable commands (so absent from `_VALID_GATES`)
+#: but are still real, addressable gate names a `name` could collide with.
+_BUILTIN_GATE_NAMES: frozenset[str] = frozenset(
+    gate for gates_for_language in _VALID_GATES.values() for gate in gates_for_language
+) | frozenset({"secrets", "coverage", "dep-audit", "sast", "commit_lint"})
+
+_DEFAULT_EXTERNAL_TIMEOUT = 60
+
+_EXTERNAL_GATE_LINE_RE = re.compile(r"^(?P<name>[A-Za-z0-9_-]+)\s*=\s*\{(?P<body>.*)\}\s*$")
+
+
+def _split_top_level(text: str, sep: str = ",") -> list[str]:
+    """Split ``text`` on ``sep``, ignoring any ``sep`` inside a quoted span."""
+    parts: list[str] = []
+    current: list[str] = []
+    in_quote: str | None = None
+    for char in text:
+        if in_quote:
+            current.append(char)
+            if char == in_quote:
+                in_quote = None
+            continue
+        if char in "\"'":
+            in_quote = char
+            current.append(char)
+            continue
+        if char == sep:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    parts.append("".join(current))
+    return parts
+
+
+def _unquote(value: str) -> str:
+    if len(value) < 2 or value[0] not in "\"'" or value[-1] != value[0]:
+        raise ConfigError(f"expected a quoted string, got {value!r}")
+    return value[1:-1]
+
+
+def _validate_bracket_expression(body: str, pattern: str) -> None:
+    """Reject a reversed character range (``[z-a]``) inside one ``[...]``
+    body — ``PurePosixPath.match`` accepts these silently (they just never
+    match), never raising, so this is real syntax validation, not merely
+    forcing the compiler's own (nonexistent, for this shape) exception."""
+    index = 0
+    while index < len(body):
+        if index + 2 < len(body) and body[index + 1] == "-":
+            start, end = body[index], body[index + 2]
+            if start > end:
+                raise ConfigError(
+                    f"reversed character range '{start}-{end}' in scope glob {pattern!r}"
+                )
+            index += 3
+        else:
+            index += 1
+
+
+def _validate_complex_glob_syntax(pattern: str) -> None:
+    """Reject the malformed-bracket shapes ``PurePosixPath.match`` itself
+    will not raise on: an unmatched/unclosed/out-of-order ``[``/``]``, or a
+    reversed character range. ``_compile_pattern``'s fallback branch
+    (``PurePosixPath.match``) never raises for any of these — it silently
+    returns a predicate that just never matches anything, exactly the "gate
+    silently degrades to never runs" failure this validation exists to
+    prevent — so this is real syntax validation, not a compiler round-trip.
+    """
+    depth = 0
+    index = 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "[":
+            if depth > 0:
+                raise ConfigError(f"nested '[' in scope glob {pattern!r}")
+            depth += 1
+            close = pattern.find("]", index + 1)
+            if close == -1:
+                raise ConfigError(f"unclosed '[' in scope glob {pattern!r}")
+            _validate_bracket_expression(pattern[index + 1:close], pattern)
+            depth -= 1
+            index = close + 1
+            continue
+        if char == "]":
+            raise ConfigError(f"unmatched ']' in scope glob {pattern!r}")
+        index += 1
+
+
+def _validate_scope(scope: str) -> None:
+    """Validate every comma-separated glob, then compile each via
+    ``gates/_scope.py``'s pattern compiler (kept for the empty-segment case
+    it does reject, and so a future compiler change is still exercised)."""
+    for segment in scope.split(","):
+        segment = segment.strip()
+        if not segment:
+            raise ConfigError(f"empty scope glob segment in {scope!r}")
+        _validate_complex_glob_syntax(segment)
+        try:
+            _compile_pattern(segment)
+        except ValueError as exc:
+            raise ConfigError(f"invalid scope glob {segment!r}: {exc}") from exc
+
+
+def _parse_external_gate_fields(body: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for segment in _split_top_level(body):
+        segment = segment.strip()
+        if not segment:
+            continue
+        if "=" not in segment:
+            raise ConfigError(f"malformed external_gates field: {segment!r}")
+        key, _, value = segment.partition("=")
+        fields[key.strip()] = value.strip()
+    return fields
+
+
+def load_external_gates(standards_path: Path | str) -> list[ExternalGateSpec]:
+    """Parse `[external_gates]` entries from `standards_path` (ticket 0077).
+
+    Each entry: ``name = { command = "...", scope = "...", timeout = N }``.
+    Fail-closed: a malformed entry, a `name` colliding with a built-in gate
+    or another `[external_gates]` entry, a bad `command`/`scope`, or a
+    non-positive `timeout` raises :class:`ConfigError`.
+    """
+    path = Path(standards_path)
+    if not path.exists():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"cannot read {path}: {exc}") from exc
+
+    block = extract_external_gates_block(text)
+    if block is None:
+        return []
+
+    seen_names: set[str] = set()
+    specs: list[ExternalGateSpec] = []
+    for raw in block:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = _EXTERNAL_GATE_LINE_RE.match(line)
+        if not match:
+            raise ConfigError(f"malformed external_gates entry: {line!r}")
+        name = match.group("name")
+        if name in _BUILTIN_GATE_NAMES:
+            raise ConfigError(
+                f"external gate name {name!r} collides with a built-in gate"
+            )
+        if name in seen_names:
+            raise ConfigError(f"duplicate external_gates entry: {name!r}")
+        seen_names.add(name)
+
+        fields = _parse_external_gate_fields(match.group("body"))
+        if "command" not in fields:
+            raise ConfigError(f"external_gates.{name} is missing 'command'")
+        command = _parse_argv(fields["command"])
+
+        scope: str | None = None
+        if "scope" in fields:
+            scope = _unquote(fields["scope"])
+            _validate_scope(scope)
+
+        timeout = _DEFAULT_EXTERNAL_TIMEOUT
+        if "timeout" in fields:
+            raw_timeout = fields["timeout"].strip("\"'")
+            try:
+                timeout = int(raw_timeout)
+            except ValueError as exc:
+                raise ConfigError(
+                    f"external_gates.{name}.timeout must be an integer, got {raw_timeout!r}"
+                ) from exc
+            if timeout < 1:
+                raise ConfigError(f"external_gates.{name}.timeout must be >= 1")
+
+        specs.append(ExternalGateSpec(
+            name=name, command=command, scope=scope, timeout_seconds=timeout,
+        ))
+    return specs
 
 
 def load_parallel_gate_limit(standards_path: Path | str) -> int | None:

@@ -26,7 +26,12 @@ from dag import DAGResolver
 from gates import GateTimeoutConfig, run_suite_for, run_suite_on_dir
 from gates.commit_lint import CommitLintConfig
 from gates.commit_lint import run as run_commit_lint
-from gates.config import ConfigError, load_gate_overrides, load_parallel_gate_limit
+from gates.config import (
+    ConfigError,
+    load_external_gates,
+    load_gate_overrides,
+    load_parallel_gate_limit,
+)
 from gates.doctor import DoctorError, format_report, run_doctor
 from gates.red_gate import RedGateError, check_red, next_action
 from memory import SQLiteFailureMemory
@@ -437,6 +442,11 @@ def gate_run_on_dir(
             # explicit limit => all independent gates run concurrently (FR-5). A
             # malformed value fails closed via ConfigError, same as the overrides.
             parallel_limit = load_parallel_gate_limit(standards_path)
+            # [external_gates] (ticket 0077) is parsed here, not inside
+            # run_suite_on_dir, so a malformed entry reuses this exact
+            # fail-closed CONFIG_ERROR path instead of inheriting the
+            # coverage/dep-audit/sast phases' own degrade-to-warning handling.
+            external_gates = load_external_gates(standards_path)
         except ConfigError as exc:
             return _config_error_payload(exc, standards_path)
 
@@ -476,6 +486,8 @@ def gate_run_on_dir(
                 kwargs["changed_files"] = changed_files
             if parallel_limit is not None:
                 kwargs["max_workers"] = parallel_limit
+            if external_gates:
+                kwargs["external_gates"] = external_gates
             results = run_suite_on_dir(stack, directory, **kwargs)
             lang_results.append(LanguageResult(stack, results))
             if fail_fast and not all(r.passed for r in results):

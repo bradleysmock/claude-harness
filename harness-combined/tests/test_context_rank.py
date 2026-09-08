@@ -51,6 +51,29 @@ def test_gather_context_is_deterministic(tmp_path: Path):
     assert first == second
 
 
+def test_multi_term_query_uses_one_rg_invocation(tmp_path: Path, monkeypatch):
+    """Regression: gather_context previously spawned one `rg` subprocess per
+    query term — a real problem statement can yield dozens of terms."""
+    _init_repo(tmp_path)
+    (tmp_path / "a.py").write_text(
+        "def resolve_ticket_status_for_gate_promotion_policy():\n    pass\n"
+    )
+    _commit_all(tmp_path)
+
+    calls: list[list[str]] = []
+    real_exec = context_rank._exec
+
+    def _tracking_exec(command, cwd, timeout=context_rank._EXEC_TIMEOUT):
+        calls.append(command)
+        return real_exec(command, cwd, timeout)
+
+    monkeypatch.setattr(context_rank, "_exec", _tracking_exec)
+    query = "resolve ticket status for gate promotion policy and many other words here"
+    gather_context(query, str(tmp_path))
+    rg_calls = [c for c in calls if c[0] == "rg"]
+    assert len(rg_calls) == 1
+
+
 def test_reuses_memory_tokenize():
     import memory
 

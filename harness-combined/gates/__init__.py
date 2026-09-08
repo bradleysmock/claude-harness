@@ -4,9 +4,12 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
-from gates._scope import SKIP_REASON, GateSpec
+from gates._scope import SKIP_REASON, GateSpec, has_scope_match
+
+if TYPE_CHECKING:
+    from gates.external import ExternalGateSpec
 from models import GateError, GateResult
 
 try:  # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport
@@ -510,6 +513,7 @@ def run_suite_on_dir(
     changed_files: list[str] | None = None,
     max_workers: int | None | object = _WORKERS_UNSET,
     log_dir: Path | None = None,
+    external_gates: "list[ExternalGateSpec] | None" = None,
 ) -> list[GateResult]:
     """Directory mode: language gates, then coverage and dep-audit phases.
 
@@ -553,7 +557,33 @@ def run_suite_on_dir(
     # fail-fast mode a failing prior gate already short-circuited above — the
     # solution's documented fail-fast bypass.
     _append_sast_gate(results, directory)
+    # Pluggable external gates (ticket 0077) — appended sequentially, exactly
+    # like coverage/dep-audit/sast above, never through the GateSpec/scheduler
+    # path. Unlike those phases, a TOOL_ERROR here is never degraded to a
+    # pass: run_external_gate already returns a well-formed GateResult on
+    # every failure mode, so no extra exception handling wraps it here.
+    _append_external_gates(results, external_gates, directory, changed_files)
     return results
+
+
+def _append_external_gates(
+    results: list[GateResult],
+    external_gates: "list[ExternalGateSpec] | None",
+    directory: str,
+    changed_files: list[str] | None,
+) -> None:
+    if not external_gates:
+        return
+    from gates.external import run_external_gate
+    for spec in external_gates:
+        scope_patterns = [s.strip() for s in spec.scope.split(",")] if spec.scope else None
+        if not has_scope_match(changed_files, scope_patterns):
+            results.append(GateResult(
+                gate=spec.name, passed=True, errors=[], duration_ms=0,
+                skipped=True, skip_reason=SKIP_REASON,
+            ))
+            continue
+        results.append(run_external_gate(spec, directory))
 
 
 def _append_sast_gate(results: list[GateResult], directory: str) -> None:
