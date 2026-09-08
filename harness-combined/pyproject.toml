@@ -5,6 +5,15 @@ version = "0.0.0"
 # 0031) dispatches typed result types with a `match` statement.
 requires-python = ">=3.10"
 
+[tool.mypy]
+# Multiple `skills/*/compute.py` files share a basename with no `__init__.py`
+# chain; explicit_package_bases lets mypy qualify each by its directory path
+# instead of raising "Duplicate module named" (pre-existing, unrelated to any
+# ticket — this repo predates mypy needing this since ticket 0035 added the
+# second same-named file).
+explicit_package_bases = true
+mypy_path = "."
+
 [tool.bandit]
 # B102 (exec_used): server.py uses exec() to load harness-authored spec/task files
 # from .harness/specs/ and .harness/tasks/ — never external user input.

@@ -46,9 +46,20 @@ Read each ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN
 
    **Skipped Tools section (ticket 0043).** A `TOOL_SKIPPED` entry is different from a `skipped: true` gate: it rides on a gate that **passed** because an *optional* tool was not installed (e.g. `staticcheck` for Go, `cargo-audit` for Rust) — distinct from `TOOL_ERROR` (the tool was present but crashed, which fails the gate). Whenever any gate result carries a `TOOL_SKIPPED` entry, the renderer appends a trailing `## Skipped Tools` section listing each absent tool with its gate and one-line message; those warnings are **not** repeated as per-gate findings, so the tool's own gate section still reads `clean`. The section is informational and never makes the run non-zero — provision the missing tools via the ticket 0022 doctor.
 
-6. **Print summary line**: one `<language>=<PASS|FAIL: gate-names-failing>` token per detected language, e.g. `gate: python=PASS typescript=FAIL: lint`. With a single language this collapses to the original `gate: <language>=<PASS|FAIL: gate-names-failing>`. A gate that fails in **any** language makes the overall run non-zero.
+6. **Evaluate the promotion policy** instead of an inline "any gate fails" check (ticket 0074). Reconstruct `LanguageResult` objects from the response's per-language `gates` arrays (`global_results=[]` — `/gate` does not run `commit_lint`), load the policy, and evaluate:
 
-   If the response is a `CONFIG_ERROR` (a malformed `[gates]` override block in `_standards.md`), report it as a failing run and surface the `CONFIG_ERROR` finding — the gate fails closed and does **not** fall back to the default commands.
+   ```python
+   from gates.policy import load_policy, evaluate_promotion, PolicyConfigError
+
+   standards_path = Path(".tickets/_standards.md")
+   text = standards_path.read_text(encoding="utf-8") if standards_path.exists() else ""
+   policy = load_policy(text)  # PolicyConfigError -> treat as CONFIG_ERROR, same as a malformed [gates] block
+   verdict = evaluate_promotion(language_results, [], policy)
+   ```
+
+   **Print summary line**: one `<language>=<PASS|FAIL: gate-names-failing>` token per detected language, e.g. `gate: python=PASS typescript=FAIL: lint`, now driven by `verdict.outcome` instead of an inline "any gate fails" check: `promote` renders as `PASS`; `block`/`pause_for_human` render as `FAIL: <verdict.blocking_gates>`, and for `pause_for_human` additionally note that a `/build` run would halt via `context/flows/build-ticket.md`'s policy-pause step (this manual `/gate` run itself never halts — it only reports). With a single language this collapses to the original `gate: <language>=<PASS|FAIL: gate-names-failing>`. The overall run is non-zero exactly when `outcome != "promote"`.
+
+   If the response is a `CONFIG_ERROR` (a malformed `[gates]` override block) or `load_policy` raised `PolicyConfigError` (a malformed `[policy]` sub-block), report it as a failing run and surface the finding — fail closed, never fall back to defaults.
 
 ## SARIF output (`--sarif`)
 

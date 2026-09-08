@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from gates.config import ConfigError, load_gate_overrides
+from gates.config import ConfigError, extract_policy_block, load_gate_overrides
 
 
 def _write(tmp_path: Path, body: str) -> Path:
@@ -31,6 +31,30 @@ def test_valid_override_marker_line_fence(tmp_path: Path) -> None:
         "# Standards\n\n```\n[gates]\ntypescript.test = \"npm test\"\n```\n",
     )
     assert load_gate_overrides(p) == {"typescript": {"test": ["npm", "test"]}}
+
+
+def test_policy_marker_stops_override_parsing(tmp_path: Path) -> None:
+    """A [policy] sub-block (ticket 0074) must not be misparsed as an override."""
+    p = _write(
+        tmp_path,
+        '```gates\npython.lint = "ruff check ."\n'
+        '[policy]\npython.test.on_block = "warn"\n```\n',
+    )
+    assert load_gate_overrides(p) == {"python": {"lint": ["ruff", "check", "."]}}
+
+
+def test_extract_policy_block_returns_lines_after_marker() -> None:
+    text = '```gates\npython.lint = "ruff check ."\n[policy]\npython.test.on_block = "warn"\n```\n'
+    assert extract_policy_block(text) == ['python.test.on_block = "warn"']
+
+
+def test_extract_policy_block_none_when_no_marker() -> None:
+    text = '```gates\npython.lint = "ruff check ."\n```\n'
+    assert extract_policy_block(text) is None
+
+
+def test_extract_policy_block_none_when_no_gates_block() -> None:
+    assert extract_policy_block("# just prose, no fence") is None
 
 
 def test_quoted_inner_arg_survives(tmp_path: Path) -> None:

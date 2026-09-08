@@ -196,15 +196,38 @@ Write the spec's implementation source **directly** to `worktree_dir / spec.targ
 
 **f. Integration gate (directory mode):**
 
-Call `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`.
+Call `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`, then evaluate the promotion policy (ticket 0074) instead of reading the raw pass/fail boolean directly:
 
-If it fails:
+```python
+from gates.policy import load_policy, evaluate_promotion
+
+standards_path = Path(".worktrees/XXXX-<slug>") / ".tickets" / "_standards.md"
+text = standards_path.read_text(encoding="utf-8") if standards_path.exists() else ""
+policy = load_policy(text)  # no [policy] block -> default: every gate required, on_block="fail"
+verdict = evaluate_promotion(language_results, [], policy)
+```
+
+- **`verdict.outcome == "promote"`** — continue to sub-step g (checkpoint).
+- **`verdict.outcome == "pause_for_human"`** — perform the **policy pause halt** below instead of entering the repair loop.
+- **`verdict.outcome == "block"`** — enter the repair loop:
+
 1. Call `memory(action="retrieve", errors_text=errors_text, gate=gate, project_root=project_root)`.
 2. Fix the specific `file:line` locations in the worktree files directly.
 3. **Repair-integrity check.** Before accepting the round, run the repair-integrity check on **this round's own diff** — the changes this repair attempt introduced, not the cumulative branch. Since the fixes here are still uncommitted, pass `git -C .worktrees/XXXX-<slug> diff` (the working-tree changes) through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — under concurrent delivery `main` advances and its new test functions would read as spurious removals. If the check reports any violation (a net removal of test functions, an added skip/xfail marker, or a net-new bare suppression pragma), the round **fails**: do not accept the green gate. Re-enter repair with the corrective instruction to **restore the test and fix the implementation** (or add a reason suffix to a genuinely justified suppression) rather than weakening the safety net.
-4. Re-run `gate_run_on_dir`. Repeat up to `MAX_REPAIR_ATTEMPTS`.
-5. If pass: call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="passed", resolution="<one-line fix summary>", target_file=spec.target_file, project_root=project_root)`. Pass a concise `resolution` describing **how** the failure was fixed (e.g. `resolution="added missing return-type annotation on parse()"`) — retrieval surfaces this line so a future repair learns the fix, not merely that a similar failure once passed. Pass `target_file` (the spec's target) so this record is retrievable proactively via `action="gotchas"` for future builds in the same area — Step 4c above — not only via the legacy error-keyed `retrieve`.
-6. If still failing after `MAX_REPAIR_ATTEMPTS`: record the exhausted loop so future repairs are warned away from it — call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="escalated", target_file=spec.target_file, project_root=project_root)` — then note the failure and continue to the next spec. (This mirrors the existing `outcome="passed"` record on success; retrieval surfaces both, marking escalated entries with `⚠`. Note `gotchas` surfaces only `passed` records, so an escalated row informs the reactive `retrieve` path but not proactive generation.)
+4. Re-run `gate_run_on_dir` and re-evaluate the policy (same call as above). Repeat up to `MAX_REPAIR_ATTEMPTS`.
+5. If `outcome` becomes `"promote"`: call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="passed", resolution="<one-line fix summary>", target_file=spec.target_file, project_root=project_root)`. Pass a concise `resolution` describing **how** the failure was fixed (e.g. `resolution="added missing return-type annotation on parse()"`) — retrieval surfaces this line so a future repair learns the fix, not merely that a similar failure once passed. Pass `target_file` (the spec's target) so this record is retrievable proactively via `action="gotchas"` for future builds in the same area — Step 4c above — not only via the legacy error-keyed `retrieve`.
+6. If `outcome` becomes `"pause_for_human"` mid-repair-loop: exit the loop and perform the **policy pause halt** below (do not continue repairing — a pause disposition is a lead decision point, not a repair target).
+7. If `outcome` is still `"block"` after `MAX_REPAIR_ATTEMPTS`: record the exhausted loop so future repairs are warned away from it — call `memory(action="record", spec_id=spec_id, gate=gate, errors_text=errors_text, attempt=attempt, outcome="escalated", target_file=spec.target_file, project_root=project_root)` — then note the failure and continue to the next spec. (This mirrors the existing `outcome="passed"` record on success; retrieval surfaces both, marking escalated entries with `⚠`. Note `gotchas` surfaces only `passed` records, so an escalated row informs the reactive `retrieve` path but not proactive generation.)
+
+**Policy pause halt (ticket 0074).** Entered whenever `evaluate_promotion` returns `outcome="pause_for_human"`, here or in Step 7a. Reuses `autopilot-ticket.md` Step A's halt framing — never Step B, which has no lead checkpoint — and does **not** invoke `repair-escalation.md`'s Phase 1 diagnostic subagent (no critic report or repair history exists to diagnose on a first-failure pause):
+
+1. Call `memory(action="record", spec_id=spec_id, gate=<the pausing gate from verdict.blocking_gates>, errors_text="\n".join(verdict.reasons), attempt=0, outcome="escalated", project_root=project_root)`.
+2. Leave `status.md` untouched — this is a flow-level halt, not a status transition.
+3. Tell the user:
+   > A `pause_for_human` policy rule paused the build on `<blocking gate(s)>` — your input is needed. Options:
+   > - Advise on the approach, then run `/build XXXX` to resume.
+   > - Run `/review XXXX` for an interactive panel-aware deep-dive.
+4. Stop the build entirely — do not continue to the next spec.
 
 **g. Checkpoint:**
 
@@ -273,7 +296,7 @@ For each attempt `N` (1 … `MAX_REPAIR_ATTEMPTS`):
 
 1. Announce: "Auto-repair attempt N/`MAX_REPAIR_ATTEMPTS` — addressing M BLOCKER / K MAJOR finding(s)."
 2. For each BLOCKER and MAJOR finding, fix the specific `file:line` location in the worktree files directly. Call `memory(action="retrieve", ...)` first when a finding overlaps a known failure pattern. Do **not** touch MINOR / OBS findings.
-3. Re-run the integration gate so fixes don't regress: `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`. If it fails, repair the gate failures (same inner loop as Step 4f) before proceeding — a green gate is a precondition for re-review.
+3. Re-run the integration gate so fixes don't regress: `gate_run_on_dir(".worktrees/XXXX-<slug>", "auto", project_root)`, then re-evaluate the promotion policy the same way Step 4f does. If `outcome == "pause_for_human"`, perform the **policy pause halt** (Step 4f) instead of continuing this repair round. If `outcome == "block"`, repair the gate failures (same inner loop as Step 4f) before proceeding — a `"promote"` outcome is a precondition for re-review.
 3a. **Repair-integrity check.** Run the repair-integrity check on **this round's own diff** — the changes this repair round introduced. Capture the round's diff before its commit (`git -C .worktrees/XXXX-<slug> diff` on the still-uncommitted fixes, or `git -C .worktrees/XXXX-<slug> diff HEAD` if you staged them) and pass it through `classify_diff` in `gates/repair_integrity.py`. Do **not** diff against `main` — that is the cumulative branch diff against a moving tip and would re-flag earlier accepted changes and drift from concurrent deliveries. If it reports any violation (removed test functions, added skip/xfail markers, or net-new bare suppression pragmas), the round **fails**: re-enter repair with the instruction to **restore the test and fix the implementation instead** of silencing the gate. A green gate obtained by weakening the safety net does not count as repaired.
 4. Commit the repair round: `git -C .worktrees/XXXX-<slug> commit -am "fix: address post-build critic round N findings"`.
 4b. **Prep the incremental brief (ticket 0067).** Before re-spawning, read `critic-findings.md`'s current on-disk content and take `gates.critic_reconciler.latest_section(text)` — the round just completed (round N)'s own section, since its findings are exactly what round N+1 must re-verify. Parse it with `gates.critic_finding_parser.parse_critic_findings(section_text, worktree_root)` (reusing 0062's parser — no second implementation) and filter to BLOCKER/MAJOR as `prior_findings`. Capture this round's own diff via `git -C .worktrees/XXXX-<slug> diff HEAD~1 HEAD` (the just-committed repair commit from item 4) as `diff_text` — never a diff against `main` (same rationale as item 3a's repair-integrity check).

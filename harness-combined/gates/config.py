@@ -156,6 +156,12 @@ def load_gate_overrides(
         line = raw.strip()
         if not line or line.startswith("#") or line.lower() == "[gates]":
             continue
+        if line.lower() == "[policy]":
+            # Everything after this marker belongs to the promotion-policy
+            # sub-block (ticket 0074) and is parsed by gates/policy.py, never
+            # here — a policy line's `<language>.<gate>.<field>` shape would
+            # otherwise misparse as a malformed override.
+            break
         if "=" not in line:
             raise ConfigError(f"malformed override line (no '='): {line!r}")
         key, _, value = line.partition("=")
@@ -180,6 +186,22 @@ def load_gate_overrides(
             )
         overrides.setdefault(language, {})[gate] = _parse_argv(value)
     return overrides
+
+
+def extract_policy_block(text: str) -> list[str] | None:
+    """Return the content lines of the `[policy]` sub-block, or ``None``.
+
+    The sub-block lives inside the same fenced `[gates]` region as the command
+    overrides, demarcated by a `[policy]` marker line (ticket 0074). Text
+    extraction only — parsing and validation live in ``gates/policy.py``.
+    """
+    block = _extract_gates_block(text)
+    if block is None:
+        return None
+    for index, raw in enumerate(block):
+        if raw.strip().lower() == "[policy]":
+            return block[index + 1:]
+    return None
 
 
 def load_parallel_gate_limit(standards_path: Path | str) -> int | None:

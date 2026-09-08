@@ -303,6 +303,50 @@ always the language's declared order, so `gate-findings.md` is unchanged.
 
 ---
 
+### Data-driven promotion policy (ticket 0074)
+
+`gates/policy.py` centralizes "which gates block delivery, and what happens
+when one fails" into one declarative table plus one pure evaluator, replacing
+the assumption — implicit in `commands/gate.md` and `build-ticket.md`'s
+repair loop — that every gate is required and any failure blocks.
+
+- **Config surface.** A `[policy]` sub-block inside the existing fenced
+  `[gates]` region of `_standards.md`, demarcated by a `[policy]` marker line
+  (`gates/config.py`'s `extract_policy_block` — text extraction only):
+  ```
+  ```gates
+  [policy]
+  python.security.on_block = "pause_for_human"
+  python.lint.required = false
+  python.test.depends_on = "python.type_check"
+  ```
+  ```
+  Each key is `<language>.<gate>.<field>` or `global.<gate>.<field>` — a bare,
+  undotted gate name is rejected (`CONFIG_ERROR`), since a shared namespace
+  can't honestly address both per-language gates and the few gates
+  (`commit_lint`) that run once, independent of language. No `[policy]` block
+  reproduces today's exact behavior: every known gate `required=True,
+  on_block="fail"`.
+- **`evaluate_promotion(language_results, global_results, policy) ->
+  PromotionVerdict`** is pure (no I/O, no subprocess). `outcome` is
+  `"promote"` / `"block"` / `"pause_for_human"` — the worst severity across
+  all required gates. `reasons` always lists every evaluated gate's verdict,
+  full picture, never suppressed. `blocking_gates` omits a failed gate when a
+  gate it `depends_on` also failed (presumed a downstream symptom).
+- **Callers**: `commands/gate.md` Step 6 and `build-ticket.md` Step 4f/7a
+  each load the policy and call `evaluate_promotion` instead of re-deriving
+  pass/fail inline.
+- **Policy pause halt.** On `outcome="pause_for_human"`, the calling flow
+  records `memory(..., outcome="escalated", attempt=0)`, prints the same
+  lead-facing options framing `autopilot-ticket.md` **Step A** ("Repair
+  exhaustion") already uses, and leaves `status.md` untouched — a flow-level
+  halt, not a status transition. It never invokes `repair-escalation.md`'s
+  diagnostic subagent (no critic report or repair history exists to diagnose
+  on a first-failure pause), and never routes through Step B ("Auto-deliver"),
+  which has no lead checkpoint.
+
+---
+
 ## Gate/Repair Loop
 
 When a gate fails in `/build`:

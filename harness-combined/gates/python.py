@@ -89,8 +89,15 @@ def _rel(path: str, env: ExecutionEnvironment) -> str:
         return path
 
 
+#: Matches both mypy's plain (`file:line:`) and `--show-column-numbers`
+#: (`file:line:col:`) output forms — the column group is optional so the
+#: gate's own `--show-column-numbers` flag doesn't make every error fail to
+#: match and fall through to the generic TOOL_ERROR blob (pre-existing bug,
+#: fixed alongside tickets 0074-0077 since it blocked reading any real signal
+#: out of the type_check gate).
 _MYPY_PATTERN = re.compile(
-    r"^(?P<file>[^:]+):(?P<line>\d+):\s*(?P<severity>error|warning|note):\s*"
+    r"^(?P<file>[^:]+):(?P<line>\d+):(?:(?P<column>\d+):)?\s*"
+    r"(?P<severity>error|warning|note):\s*"
     r"(?P<message>.+?)(?:\s+\[(?P<code>[^\]]+)\])?$"
 )
 
@@ -107,10 +114,11 @@ def _parse_mypy_output(output: str, root: Path | None = None) -> list[GateError]
                 file_path = str(Path(file_path).relative_to(root))
             except ValueError:
                 pass
+        column = m.group("column")
         errors.append(GateError(
             message=m.group("message").strip(),
             file=file_path,
-            line=int(m.group("line")), column=None,
+            line=int(m.group("line")), column=int(column) if column else None,
             code=m.group("code"), severity=m.group("severity"),
         ))
     return errors
@@ -288,7 +296,7 @@ def _security_gate(env: ExecutionEnvironment, config: GateTimeoutConfig | None =
         result = _exec([
             sys.executable, "-m", "bandit",
             str(env.implementation_file),
-            "-f", "json", "--severity-level", "medium",
+            "-f", "json", "--severity-level", "medium", "-q",
         ], env, timeout=timeout)
     except subprocess.TimeoutExpired:
         return _timeout_error("security", timeout)
@@ -556,9 +564,14 @@ def _security_gate_dir(directory: str, config: GateTimeoutConfig | None = None) 
     start = time.monotonic()
     root = Path(directory)
     timeout = config.timeout_for("security", 60) if config else 60
+    # `-q` is required, not cosmetic: newer bandit versions print a progress bar
+    # to stdout even with `-f json`, which breaks `json.loads` in
+    # `_parse_bandit_json` and silently degrades every real finding to an
+    # empty, unexplained `passed=False` (pre-existing bug, fixed alongside
+    # tickets 0074-0077 since it blocked reading any signal from this gate).
     bandit_cmd = [
         sys.executable, "-m", "bandit", "-r", ".",
-        "-f", "json", "--severity-level", "medium",
+        "-f", "json", "--severity-level", "medium", "-q",
         "--exclude", ".venv,venv,node_modules,.git",
     ]
     if (root / "pyproject.toml").exists():
