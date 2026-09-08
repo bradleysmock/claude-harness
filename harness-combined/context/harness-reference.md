@@ -371,6 +371,27 @@ Step A) never logs — that's a machine escalation, not a human decision.
 
 ---
 
+### Local context packages (ticket 0076)
+
+`context_rank.py` assembles a ranked snippet pack from `rg -Fn` hits —
+keyword overlap between `query` (a ticket's `problem.md` text) and matched
+lines, weighted by how many distinct query terms co-occur per file. No
+indexing daemon; search-and-rank at request time only.
+
+- **Pure core.** `gather_context`/`describe_environment` never raise or log;
+  absent `rg` yields an empty pack, absent `ast-grep` degrades to
+  keyword-only ranking. The caller (`commands/problem.md`, `build-ticket.md`
+  Step 1) logs `describe_environment()`'s message itself.
+- **Cache.** `get_or_generate_pack` writes `.harness/context/<ticket>.md`
+  (gitignored), keyed by a hash of `(query, git rev-parse HEAD, git status
+  --porcelain)` — an uncommitted repair-round edit invalidates a same-`HEAD`
+  cache, so a resumed build never reads a stale pack.
+- **Timing.** `/problem` generates the pack right after Phase 2 writes
+  `problem.md` (the query source doesn't exist before then); `/build`
+  generates it in Step 1, right after resolving `problem.md`'s path.
+
+---
+
 ## Gate/Repair Loop
 
 When a gate fails in `/build`:

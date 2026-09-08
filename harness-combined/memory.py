@@ -44,6 +44,13 @@ def _tokenise(text: str) -> list[str]:
     )
 
 
+#: Public alias (ticket 0076): `context_rank.py` is the first production
+#: (non-test) cross-module consumer of this tokenizer, so it gets a public
+#: name rather than reaching into `memory.py`'s private one directly — one
+#: BM25-lite tokenizer, not a second, slightly different implementation.
+tokenize = _tokenise
+
+
 # ── Domain-keyed retrieval helpers ────────────────────────────────────────────
 
 def _gates_for_language(language: str) -> frozenset[str]:

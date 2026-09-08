@@ -25,6 +25,10 @@ __pycache__/
 # append-only file with no merge semantics.
 .harness/audit.log
 
+# Local context packages (ticket 0076) — ephemeral, regenerated per (query,
+# HEAD, dirty-tree state), like .harness/craft/.
+.harness/context/
+
 # macOS
 .DS_Store
 

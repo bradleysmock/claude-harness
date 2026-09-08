@@ -145,6 +145,22 @@ The optional `milestone:` field associates the ticket with a named milestone def
 in `.tickets/_milestones.md` (see `/milestone`); leave it blank if the ticket belongs
 to no milestone. Names use the charset `[A-Za-z0-9._-]` (max 40 chars).
 
+**Local context pack (ticket 0076).** Now that `problem.md` exists (it is the query
+source — this could not run any earlier), generate/refresh the ranked context pack
+and load it for Phases 3-4:
+
+```python
+from context_rank import get_or_generate_pack, describe_environment
+
+pack = get_or_generate_pack(problem_md_text, project_root, "XXXX-<slug>")
+notice = describe_environment(project_root)
+if notice:
+    print(notice)  # e.g. "ast-grep not found — degraded to keyword ranking only"
+```
+
+Then load `@.worktrees/XXXX-<slug>/.harness/context/XXXX-<slug>.md` as additional
+context for Phases 3-4, the same additive way `_standards.md`/`_learnings.md` are.
+
 ---
 
 ## Phase 3 — Requirements

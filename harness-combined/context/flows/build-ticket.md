@@ -28,6 +28,19 @@ Resolve the ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUG
 
 If `status` is `changes-requested`, the worktree already exists from a prior `/build`. Skip Step 2; resume with the existing worktree and skip already-passed specs via `checkpoint(action="read", ...)`. **Set a local `resumed_pause = True` flag (ticket 0075)** — Step 6 uses it to record who resolved the pause. Any other status leaves `resumed_pause = False`.
 
+**Local context pack (ticket 0076).** Right after resolving `problem.md`'s path above, before the spec-existence check below, generate/refresh the ranked context pack and load it:
+
+```python
+from context_rank import get_or_generate_pack, describe_environment
+
+pack = get_or_generate_pack(problem_md_text, project_root, "XXXX-<slug>")
+notice = describe_environment(project_root)
+if notice:
+    print(notice)
+```
+
+Load `@.worktrees/XXXX-<slug>/.harness/context/XXXX-<slug>.md` as additional context for the rest of this build.
+
 Find the spec or task for this ticket:
 - `.harness/tasks/XXXX-<slug>.py` — multi-spec task (preferred if it exists)
 - `.harness/specs/XXXX-<slug>*.py` — individual spec(s)
