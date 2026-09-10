@@ -5,11 +5,12 @@
 
 ## Functional Requirements
 
-1. `/problem` Phase 5 must run `panel_detect.py` itself, in-session, before
-   spawning any critic agent — `--root` the project root, `--design`, and
-   the file list inferred from solution.md's intended changes — to obtain
-   `active`/`candidates`/`skipped`, and must disposition every `candidates`
-   entry itself (activate or defer, one-line reason).
+1. `/problem` Phase 5 must run `panel_detect.py` itself, in-session,
+   before spawning any critic agent — `--root` the project root,
+   `--design`, and the file list inferred from solution.md's intended
+   changes — to obtain `active`/`candidates`/`skipped`, and must
+   disposition every `candidates` entry itself (activate or defer,
+   one-line reason).
 2. Every spawned agent, in either branch below, must receive the fully
    resolved active-panel list via a new `Panels:` field — no code path
    must leave an agent to independently re-run its own panel detection.
@@ -30,13 +31,22 @@
    complete active set, and must not additionally self-activate or
    disposition any other candidate panel — a `Panels:`-scoped agent reviews
    only the named panel(s), full stop. When absent, Step 1 is unchanged.
-6. Before merging, Phase 5 must verify, per spawned agent: (a) a report was
+6. `critic-brief.md` Step 1 must define one exact literal format for the
+   "active panels" announcement line — mirroring Step 4's treatment of the
+   finding-header line, which is pinned to an exact format for the same
+   reason (downstream parsing needs a fixed string, not free prose):
+   `Panels active: <Name>[, <Name>...]`, comma-separated. This format
+   applies to every critic invocation, `Panels:`-scoped or not, so FR-7's
+   verification always has a fixed string to check against.
+7. Before merging, Phase 5 must verify, per spawned agent: (a) a report was
    actually returned (not missing, errored, or timed out), and (b) the
-   agent's own "active panels" announcement names exactly its assigned
-   `Panels:` value, no more and no fewer. Any missing report or
+   agent's `Panels active: ...` line (FR-6's format) names exactly its
+   assigned `Panels:` value, no more and no fewer. Any missing report or
    panel-label mismatch must halt the round and report the failure to the
-   lead — it must never be silently merged as if complete.
-7. The merge is concatenation of every verified report into one findings
+   lead — it must never be silently merged as if complete. A halted round
+   is a retry, not a spent pass: it must not consume any of the 2 total
+   Checkpoint-1 revision passes (FR-10).
+8. The merge is concatenation of every verified report into one findings
    document, under one header naming every contributing panel once; no
    fuzzy dedup logic. Content overlap between Core's broad dimensions and
    a specific panel's specialized dimension (e.g. both independently
@@ -44,15 +54,15 @@
    accepted, undeduped tradeoff — the no-duplication guarantee is that no
    two agents redo work within the *same* assigned panel, not that two
    different panels can never describe the same location.
-8. If a second round is reached, Phase 5 must re-run panel detection fresh
+9. If a second round is reached, Phase 5 must re-run panel detection fresh
    against the revised solution.md rather than reusing round 1's resolved
    set. If round 2's fan-out decision (agent count or assignment) differs
    from round 1's, Phase 5 must state that difference in one line before
    spawning round 2's agents.
-9. The 2-round Checkpoint-1 budget stays 2 total revision passes; a pass
-   possibly fans out per FR-3/FR-4, but that never counts as more than one
-   round.
-10. Secondary-panel escalation must never be automatically triggered by the
+10. The 2-round Checkpoint-1 budget stays 2 total revision passes; a pass
+    possibly fans out per FR-3/FR-4, but that never counts as more than one
+    round, and a halted-and-retried pass (FR-7) never counts as an extra one.
+11. Secondary-panel escalation must never be automatically triggered by the
     fan-out; both files must document it as an orchestrator-optional
     manual step, exercised only after reading the merged reports.
 
@@ -69,11 +79,12 @@
 | Type       | Rationale                                                            |
 |------------|-------------------------------------------------------------------------|
 | Doc-wiring | `critic-brief.md` documents the optional `Panels:` field, its skip-detection behavior, and the no-self-activation constraint |
+| Doc-wiring | `critic-brief.md` documents the exact `Panels active: <list>` announcement format, applying to every invocation |
 | Doc-wiring | Phase 5 documents in-session detection + candidate disposition, and that every spawned agent (both branches) receives a `Panels:` field |
 | Doc-wiring | Phase 5 documents the fan-out threshold, the Core agent's added evaluations, and non-Core agents receiving none |
-| Doc-wiring | Phase 5 documents the per-agent report-verification step (presence + panel-label match) before merging, and the halt-on-mismatch behavior |
+| Doc-wiring | Phase 5 documents the per-agent verification (presence + exact `Panels active:` match) before merging, the halt-on-mismatch behavior, and that a halted round doesn't consume budget |
 | Doc-wiring | Phase 5 documents concatenation-only merge, the accepted cross-panel content-overlap tradeoff, and the contributing-panels header |
-| Doc-wiring | Phase 5 documents round-2 fresh re-detection and surfacing a changed fan-out decision |
+| Doc-wiring | Phase 5 documents round-2 fresh re-detection and surfacing a changed fan-out |
 | Doc-wiring | Both files document Secondary-panel escalation as manual-only |
 
 ## Acceptance Criteria
@@ -84,13 +95,15 @@
   per panel, in parallel, each agent's `Panels:` value naming only its own
   assigned panel(s); the Core agent alone also carries the 5 design-specific
   evaluations.
-- Phase 5 verifies every spawned agent's report is present and its
-  announced panels match its assignment before merging; a missing or
-  mismatched report halts the round rather than merging silently.
+- Every agent's report uses the exact `Panels active: <list>` format;
+  Phase 5 verifies presence and an exact match to `Panels:` before
+  merging; a missing or mismatched report halts the round without
+  spending a revision pass.
 - The merged findings document names every contributing panel once and
   preserves every finding's exact header-line format.
 - Round budget stays at 2 total revision passes regardless of fan-out size
-  in either pass; a changed fan-out between rounds is surfaced, not silent.
+  or a halted-and-retried pass; a changed fan-out between rounds is
+  surfaced, not silent.
 
 ## Open Questions
 

@@ -22,8 +22,8 @@ enforced explicitly (Step 1's new constraint), not assumed.
 
 | Component | Responsibility |
 |---|---|
-| `context/critic-brief.md` Step 1 | Additive `Panels:` field: skip self-detection, use the given fixed set, never self-activate another panel |
-| `commands/problem.md` Phase 5 | Run `panel_detect.py` in-session; disposition `candidates`; always pass `Panels:` to every spawn; branch single-vs-parallel; verify each report before merging |
+| `context/critic-brief.md` Step 1 | Additive `Panels:` field: skip self-detection, use the given fixed set, never self-activate another panel; pin the exact `Panels active: <list>` announcement format for every invocation |
+| `commands/problem.md` Phase 5 | Run `panel_detect.py` in-session; disposition `candidates`; always pass `Panels:` to every spawn; branch single-vs-parallel; verify each report's presence and exact announcement match before merging; a halt doesn't spend a round |
 
 ## Tech Choices
 
@@ -31,7 +31,8 @@ enforced explicitly (Step 1's new constraint), not assumed.
 |--------|-----------|
 | Every agent gets `Panels:`, not just the parallel branch | Removes the single-agent path's silent re-detection gap (round 1 critic finding: it could legitimately diverge from Phase 5's own threshold decision) |
 | Core's agent gets `Panels: Core` explicitly in the fan-out branch | Without it, an unconstrained Core agent could self-activate a panel already assigned elsewhere, breaking the partition (round 1 critic BLOCKER) |
-| Verify presence + panel-label match before merging | A missing or overreaching agent report must halt the round, not silently merge as complete (round 1 critic BLOCKER) — cheap because Step 1 already requires an "active panels" announcement line to check against |
+| Pin one exact `Panels active: <list>` announcement format | FR-7's verification needs a fixed string, not free prose — mirrors Step 4's own exact-format treatment of the finding-header line, for the identical reason (round 2 critic MAJOR: an unpinned announcement makes "exact match" unimplementable) |
+| Verify presence + exact-format match before merging | A missing or overreaching agent report must halt the round, not silently merge as complete (round 1 critic BLOCKER); a halted round is a retry, not a spent pass (round 2 critic MINOR) |
 | Concatenation, accepted content-overlap tradeoff | Core's broad security/quality dimensions can legitimately restate a panel-specific finding at the same location; declared as an accepted redundancy rather than a false disjointness claim (round 1 critic MAJOR) |
 
 ## Test Plan
@@ -42,10 +43,11 @@ enforced explicitly (Step 1's new constraint), not assumed.
 | FR-2/FR-3   | Doc-wiring  | Phase 5 documents every spawn (single or parallel) receiving a `Panels:` field |
 | FR-4        | Doc-wiring  | Phase 5 documents the fan-out threshold, Core's added evaluations, others' none |
 | FR-5        | Doc-wiring  | `critic-brief.md` documents the field, skip-detection, and no-self-activation constraint |
-| FR-6        | Doc-wiring  | Phase 5 documents the presence + panel-label verification and halt-on-mismatch |
-| FR-7        | Doc-wiring  | Phase 5 documents concatenation-only merge, the overlap tradeoff, contributing-panels header |
-| FR-8/FR-9   | Doc-wiring  | Phase 5 documents round-2 fresh re-detection, surfacing a changed fan-out, and that a fan-out never counts as more than one round |
-| FR-10       | Doc-wiring  | Both files document Secondary-panel escalation as manual-only |
+| FR-6        | Doc-wiring  | `critic-brief.md` documents the exact `Panels active: <list>` announcement format for every invocation |
+| FR-7        | Doc-wiring  | Phase 5 documents the presence + exact-format verification, halt-on-mismatch, and that a halt doesn't spend a revision pass |
+| FR-8        | Doc-wiring  | Phase 5 documents concatenation-only merge, the overlap tradeoff, contributing-panels header |
+| FR-9/FR-10  | Doc-wiring  | Phase 5 documents round-2 fresh re-detection, surfacing a changed fan-out, and that a fan-out (or a halted retry) never counts as more than one round |
+| FR-11       | Doc-wiring  | Both files document Secondary-panel escalation as manual-only |
 
 ## Tradeoffs
 
