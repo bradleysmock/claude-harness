@@ -7,69 +7,76 @@
 
 Move panel detection out of the critic subagent and into `/problem` Phase 5
 itself (already-deterministic Python, `panel_detect.py`), so the
-orchestrator knows the full active-panel set *before* deciding how many
-agents to spawn. Add one optional field to `critic-brief.md`'s brief,
-`Panels: <name>[, <name>...]`, that lets the orchestrator hand a critic
-agent a pre-resolved, fixed panel assignment instead of having it run its
-own detection. Below the 2-non-Core-panel threshold, spawn exactly one
-agent exactly as today (the field is simply omitted). At or above it, spawn
-one agent per panel in parallel and concatenate their structured reports —
-no fuzzy merge needed, since panel assignment makes the finding-spaces
-disjoint by construction.
+orchestrator resolves the full active-panel list *before* deciding how
+many agents to spawn — and passes that same resolved list to *every*
+spawned agent via one new `critic-brief.md` field, `Panels:
+<name>[, <name>...]`, so no agent (single or parallel) ever re-derives it
+independently. Below the 2-non-Core-panel threshold, spawn one agent
+carrying the full list (same total review depth as today, just
+pre-resolved). At or above it, spawn one agent per panel in parallel,
+verify every report actually arrived and stayed inside its assigned
+panel(s), then concatenate — no fuzzy merge, because panel assignment is
+enforced explicitly (Step 1's new constraint), not assumed.
 
 ## Components
 
 | Component | Responsibility |
 |---|---|
-| `context/critic-brief.md` Step 1 | Additive `Panels:` field: when present, skip the script call, use the given fixed set |
-| `commands/problem.md` Phase 5 | Run `panel_detect.py` in-session; disposition `candidates`; branch single-vs-parallel spawn; concatenate reports |
+| `context/critic-brief.md` Step 1 | Additive `Panels:` field: skip self-detection, use the given fixed set, never self-activate another panel |
+| `commands/problem.md` Phase 5 | Run `panel_detect.py` in-session; disposition `candidates`; always pass `Panels:` to every spawn; branch single-vs-parallel; verify each report before merging |
 
 ## Tech Choices
 
 | Choice | Rationale |
 |--------|-----------|
-| Orchestrator runs `panel_detect.py` directly, not inside the critic | The orchestrator must know the panel count *before* spawning to decide fan-out — deterministic Python, matches the LLM/Python boundary rule |
-| Concatenation merge, no dedup logic | Panel assignment (one panel per agent, Core owns cross-cutting evals) makes finding-spaces disjoint by construction — a fuzzy merge would be solving a problem this partition doesn't create |
-| New `Panels:` field is additive/optional | Its absence leaves every existing single-agent call site (this ticket's own code-review path, `build-ticket.md` Step 7) byte-identical — no regression risk from a field they never set |
+| Every agent gets `Panels:`, not just the parallel branch | Removes the single-agent path's silent re-detection gap (round 1 critic finding: it could legitimately diverge from Phase 5's own threshold decision) |
+| Core's agent gets `Panels: Core` explicitly in the fan-out branch | Without it, an unconstrained Core agent could self-activate a panel already assigned elsewhere, breaking the partition (round 1 critic BLOCKER) |
+| Verify presence + panel-label match before merging | A missing or overreaching agent report must halt the round, not silently merge as complete (round 1 critic BLOCKER) — cheap because Step 1 already requires an "active panels" announcement line to check against |
+| Concatenation, accepted content-overlap tradeoff | Core's broad security/quality dimensions can legitimately restate a panel-specific finding at the same location; declared as an accepted redundancy rather than a false disjointness claim (round 1 critic MAJOR) |
 
 ## Test Plan
 
 | Requirement | Test Type   | Scenario(s) |
 |-------------|-------------|--------------|
-| FR-1/FR-2   | Doc-wiring  | Phase 5 documents the in-session `panel_detect.py` run and candidate disposition |
-| FR-3        | Doc-wiring  | Phase 5 documents the single-agent fallback below the 2-non-Core-panel threshold, unchanged brief |
-| FR-4        | Doc-wiring  | Phase 5 documents the per-panel parallel spawn, Core's added evaluations, other panels' no-added-evaluations |
-| FR-5        | Doc-wiring  | `critic-brief.md` Step 1 documents the optional `Panels:` field additively, skip-detection behavior |
-| FR-6        | Doc-wiring  | Phase 5 documents concatenation-only merge, no dedup logic, format preserved |
-| FR-7        | Doc-wiring  | Phase 5 states the 2-round budget is per-pass, not per-panel |
-| FR-8        | Doc-wiring  | Both files state Secondary-panel escalation stays manual |
+| FR-1        | Doc-wiring  | Phase 5 documents the in-session `panel_detect.py` run and candidate disposition |
+| FR-2/FR-3   | Doc-wiring  | Phase 5 documents every spawn (single or parallel) receiving a `Panels:` field |
+| FR-4        | Doc-wiring  | Phase 5 documents the fan-out threshold, Core's added evaluations, others' none |
+| FR-5        | Doc-wiring  | `critic-brief.md` documents the field, skip-detection, and no-self-activation constraint |
+| FR-6        | Doc-wiring  | Phase 5 documents the presence + panel-label verification and halt-on-mismatch |
+| FR-7        | Doc-wiring  | Phase 5 documents concatenation-only merge, the overlap tradeoff, contributing-panels header |
+| FR-8/FR-9   | Doc-wiring  | Phase 5 documents round-2 fresh re-detection, surfacing a changed fan-out, and that a fan-out never counts as more than one round |
+| FR-10       | Doc-wiring  | Both files document Secondary-panel escalation as manual-only |
 
 ## Tradeoffs
 
-- **Chose a 2-non-Core-panel threshold over always splitting because**:
-  splitting Core+1 into two agents trades a small wall-clock win for
-  spawn/read/merge overhead that isn't clearly worth it below that count —
-  tunable later if real usage says otherwise.
-- **Accepting risk of**: more total tokens spent (each panel-agent reads
-  the same design docs independently) in exchange for wall-clock speed —
-  acceptable since Checkpoint 1 latency is the pain point, not token spend.
+- **Chose explicit per-agent panel constraints over trusting disjointness
+  by convention because**: round 1's critic review showed an unconstrained
+  agent can drift (self-activate, re-detect) — an explicit `Panels:` field
+  plus a verification step is cheap and closes that gap directly.
+- **Chose to declare Core/panel content overlap as accepted, not fixed,
+  because**: this ticket is explicitly out of scope for changing panel
+  content, and the alternative (a fuzzy cross-panel dedup) trades a small
+  reviewer redundancy for real merge complexity.
+- **Accepting risk of**: more total tokens spent (independent reads per
+  agent) in exchange for wall-clock speed — unchanged from the original
+  tradeoff, still judged worth it since Checkpoint 1 latency is the pain
+  point.
 
 ## Risks
 
-- A panel-agent given a fixed `Panels:` set could still be tempted to
-  additionally judge `candidates` itself if not explicitly told not to —
-  mitigate by stating in `critic-brief.md`'s new field text that a
-  `Panels:`-scoped agent reviews *only* the named panel(s), full stop.
-- Losing the single-critic's own "Announce which panels are active" framing
-  across split reports — mitigate by having the orchestrator's merge
-  header name every contributing panel once, at the top of the concatenated
-  document.
+- A `Panels:`-scoped agent could still, despite the instruction, judge and
+  report on an out-of-scope panel — mitigated by FR-6's verification step,
+  not by trusting the instruction alone.
+- Round-2 re-detection changing the fan-out from round 1 could surprise
+  the lead if unstated — mitigated by FR-8's explicit one-line surfacing.
 
 ## Implementation Order
 
 1. Doc-wiring tests for both files — red first.
-2. `context/critic-brief.md`: add the additive `Panels:` field to Step 1.
-3. `commands/problem.md` Phase 5: add in-session panel detection, the
-   threshold branch, the parallel spawn instructions, and the merge step.
+2. `context/critic-brief.md`: add the additive `Panels:` field, its
+   skip-detection behavior, and the no-self-activation constraint to Step 1.
+3. `commands/problem.md` Phase 5: in-session detection, always-pass-`Panels:`,
+   the threshold branch, per-agent verification, concatenation merge, and
+   round-2 fresh re-detection.
 4. Confirm tests green; confirm no existing Phase 5 / critic-brief.md
    content removed or reworded outside the additive sections.

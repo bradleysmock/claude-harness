@@ -32,9 +32,13 @@ requires one agent to produce it in one pass.
   design-specific evaluations in one agent; each other panel alone in its
   own), in parallel, merged into one findings document with no duplicate
   or dropped findings.
-- When 0 or 1 non-Core panel is active, behavior is byte-for-byte identical
-  to today: one agent, no split, no merge step (no regression, no added
-  overhead for the common case).
+- When 0 or 1 non-Core panel is active, one agent runs — same total review
+  depth and content as today, no split, no merge step — the only
+  difference being it receives the already-resolved panel list instead of
+  re-deriving it itself (no added overhead for the common case).
+- Every spawned agent's report is verified present and scoped to its
+  assignment before merging; a missing or overreaching report halts the
+  round rather than merging silently.
 - The 2-round-per-Checkpoint-1 budget is unchanged; a "round" still means
   one full pass (now possibly parallel-fanned) with revision in between.
 
