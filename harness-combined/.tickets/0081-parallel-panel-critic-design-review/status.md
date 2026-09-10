@@ -1,4 +1,4 @@
-status: implementing
+status: review-ready
 ticket: 0081
 title: Parallelize multi-panel design-review critic rounds
 type: feature
