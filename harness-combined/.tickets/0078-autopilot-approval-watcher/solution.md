@@ -52,6 +52,7 @@ XXXX"` until it exits — so at most one build is ever in flight.
 | FR-7        | Integration | `stop` mid-dispatch terminates the child via process-group signal; log entry stays "dispatched," no crash, no auto-retry |
 | FR-8/FR-9   | Unit + Integration | PID staleness reused from `ticket.py` pattern; double `start` refused; `stop` idempotent; `status` reports outcome/exit code, including "interrupted" |
 | FR-10       | Unit        | a raising tick is caught, logged, loop continues next interval      |
+| FR-11/FR-12 | Doc-wiring  | `autopilot-watch.md` documents `start`/`stop`/`status`; `problem.md`'s Checkpoint 1 note mentions the watcher |
 
 ## Tradeoffs
 
