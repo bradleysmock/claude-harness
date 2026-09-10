@@ -24,6 +24,14 @@ def _phase_5() -> str:
     return _PROBLEM[start:end]
 
 
+def _subsection(heading: str) -> str:
+    """One `###` sub-section of Phase 5, so an assertion can be branch-scoped."""
+    phase_5 = _phase_5()
+    start = phase_5.index(heading)
+    tail = phase_5.index("\n### ", start + len(heading))
+    return phase_5[start:tail]
+
+
 # --- FR-1: in-session detection and candidate disposition --------------------
 
 
@@ -53,17 +61,24 @@ def test_phase_5_dispositions_every_candidate_with_a_one_line_reason() -> None:
 
 def test_every_spawned_agent_receives_a_panels_field() -> None:
     phase_5 = _phase_5()
-    assert "`Panels:" in phase_5
-    lowered = phase_5.lower()
-    assert "every" in lowered and "agent" in lowered
-    assert "re-derive" in lowered or "re-run" in lowered
+    assert "every agent Phase 5 spawns, in either branch, receives the fully resolved list" in phase_5
+    assert "not optional here" in phase_5
+    assert "re-derive" in phase_5.lower()
+
+
+def test_the_shared_brief_carries_the_panels_field() -> None:
+    brief = _subsection("### The shared brief")
+    assert "Panels: **<this agent's assigned panels, comma-separated>**" in brief
+    assert "subagent_type: critic" in brief
 
 
 def test_single_agent_branch_is_documented_as_equivalent_to_today() -> None:
-    lowered = _phase_5().lower()
-    assert "fewer than 2" in lowered
-    assert "one" in lowered
-    assert "comma-joined" in lowered or "comma-separated" in lowered
+    branch_a = _subsection("### Branch A")
+    assert "fewer than 2" in branch_a
+    assert "Spawn exactly one critic agent" in branch_a
+    assert "comma-joined" in branch_a
+    assert "same total review depth" in branch_a
+    assert "pre-resolved list instead of re-deriving it" in branch_a
 
 
 # --- FR-4 / NFR-2: the fan-out branch ----------------------------------------
@@ -95,9 +110,31 @@ def test_only_the_core_agent_carries_the_design_specific_evaluations() -> None:
 
 
 def test_phase_5_verifies_report_presence_per_agent() -> None:
-    lowered = _phase_5().lower()
-    assert "missing" in lowered
-    assert "timed out" in lowered or "errored" in lowered
+    verify = _subsection("### Verify every report before merging")
+    assert "A missing, errored, or timed-out agent fails this check" in verify
+    assert "an empty response is a missing report, not a clean review" in verify
+
+
+def test_verification_applies_to_both_branches_not_only_the_fanout() -> None:
+    verify = _subsection("### Verify every report before merging")
+    assert "**every** agent Phase 5 spawns, in **both** branches" in verify
+    branch_a = _subsection("### Branch A")
+    assert "Verification still applies" in branch_a
+    assert "which is unconditional" in branch_a
+
+
+def test_panel_scope_is_verified_against_the_findings_not_only_the_announcement() -> None:
+    verify = _subsection("### Verify every report before merging")
+    assert "self-declared" in verify
+    assert "subset" in verify
+    assert "critic_finding_parser.py" in verify
+
+
+def test_the_halt_retry_is_bounded_to_one_respawn_per_agent() -> None:
+    verify = _subsection("### Verify every report before merging")
+    assert "one re-spawn per failing agent" in verify
+    assert "do not re-spawn a third time" in verify
+    assert "the second failure is the lead's call" in verify.lower()
 
 
 def test_phase_5_verifies_an_exact_panels_active_match() -> None:
@@ -130,9 +167,9 @@ def test_merge_is_concatenation_with_no_fuzzy_dedup() -> None:
 
 
 def test_merged_header_names_every_contributing_panel_once() -> None:
-    lowered = _phase_5().lower()
-    assert "contributing panel" in lowered
-    assert "once" in lowered
+    merge = _subsection("### Merge the verified reports")
+    assert "naming every contributing panel **once**" in merge
+    assert "in the order the panels were resolved" in merge
 
 
 def test_cross_panel_content_overlap_is_an_accepted_tradeoff() -> None:

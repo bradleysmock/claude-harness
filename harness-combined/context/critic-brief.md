@@ -10,7 +10,7 @@ A code-review brief may additionally carry a **`Mode: incremental`** marker (rep
 
 ## Step 1 — Load expert panels
 
-Read `${CLAUDE_PLUGIN_ROOT}/context/panels/core.md` first. It is always active.
+Read `${CLAUDE_PLUGIN_ROOT}/context/panels/core.md` first. It is always active — **unless a `Panels:` field is present** (see below), in which case Core is active only when the field names it.
 
 Then determine which additional panels apply by running `panel_detect.py --root <project_root> <files...>` against the canonical trigger data in `${CLAUDE_PLUGIN_ROOT}/context/panels/triggers.md`. That file is the single source of truth for panel activation across the harness — one entry per panel file in `context/panels/` (excluding Core, always active, and Secondary, on-demand), with typed triggers (file globs, manifest presence, dependency names, path keywords, content patterns) plus a `judgment` field for triggers that are irreducibly a model call.
 
@@ -23,12 +23,13 @@ For **design review** (pre-implementation, reading problem.md / requirements.md 
 **Optional `Panels:` field.** A brief may instead arrive with the active set already resolved, named in a **`Panels: <name>[, <name>...]`** field (`commands/problem.md` Phase 5 resolves panels in-session and passes them to every agent it spawns, single or fanned-out). When that field is present:
 
 - **Skip your own `panel_detect.py` invocation entirely.** Do not run it, do not disposition `candidates`, do not surface `skipped` — the orchestrator has already done all three.
-- Treat the named panels as the **fixed and complete** active set, and read exactly those panel files (`Core` means `core.md`, always).
+- Treat the named panels as the **fixed and complete** active set, and read exactly those panel files — no more and no fewer.
+- **The field overrides Core's always-active default.** Load `core.md` only when the field names `Core`. A `Panels: Python` agent does not read `core.md`, does not apply Core's dimensions, and announces `Panels active: Python` — not `Panels active: Core, Python`, which the orchestrator's exact-match check would reject as overreach.
 - **Do not self-activate or disposition any other panel.** A `Panels:`-scoped agent reviews only the named panel(s), full stop. When the artifacts plainly implicate a panel outside your assignment, that panel belongs to another agent this round — or to none — and adding it breaks the partition the orchestrator is about to verify. Say nothing about it.
 
 When the field is absent, this step is unchanged: run `panel_detect.py` as described above and disposition `candidates` yourself.
 
-Read only the panel files for active panels. Core is always active. Do not read panel files for inactive panels.
+Read only the panel files for active panels. Absent a `Panels:` field, Core is always among them. Do not read panel files for inactive panels.
 
 The Secondary panel (`${CLAUDE_PLUGIN_ROOT}/context/panels/secondary.md`) is loaded on demand only when the primary panels reach a genuine impasse that synthesis cannot resolve. Reaching for it is an orchestrator-optional manual step and **never automatic**: a panel fan-out (`commands/problem.md` Phase 5) does not trigger Secondary activation, and a `Panels:`-scoped agent never loads it on its own — the orchestrator escalates, if at all, after reading the merged reports.
 

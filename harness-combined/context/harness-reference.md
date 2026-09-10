@@ -523,11 +523,11 @@ Use bullet points, not prose. Omit sections that don't apply.
 
 ## Multi-Agent Critique
 
-The critic subagent (`critic`) is read-only. It loads expert panels by file scope and produces structured BLOCKER / MAJOR / MINOR / OBS findings with `file:line` references — the same 4-tier vocabulary the `critique` and `review` skills use, ensuring one severity model across every review path in the harness.
+The critic subagent (`critic`) is read-only. It loads expert panels by file scope — or, when its brief carries a `Panels:` field, exactly the panels that field names (`context/critic-brief.md` Step 1) — and produces structured BLOCKER / MAJOR / MINOR / OBS findings with `file:line` references — the same 4-tier vocabulary the `critique` and `review` skills use, ensuring one severity model across every review path in the harness.
 
 The critic runs **automatically at both SDLC checkpoints**:
 
-- **Pre-build / design phase**: `/problem` Phase 5 spawns the critic with `Phase: design` against the three design artifacts. Max 2 rounds. Findings revise `solution.md` before Checkpoint 1.
+- **Pre-build / design phase**: `/problem` Phase 5 resolves the active panels itself (`panel_detect.py --design`), then spawns the critic with `Phase: design` and a `Panels:` field against the three design artifacts. With fewer than 2 active non-Core panels that is one agent carrying the whole list; with 2 or more it is one agent per panel, spawned in parallel and merged by concatenation after each report's presence and panel scope are verified. Max 2 rounds either way — a fan-out is one round, however many agents it spawns. Findings revise `solution.md` before Checkpoint 1.
 - **Post-build / code phase**: `/build` Step 7 spawns the critic with `Phase: code` against the worktree, using `problem.md` / `requirements.md` / `solution.md` as the ticket baseline. BLOCKER **and** MAJOR findings are must-fix: `/build` auto-repairs them in the worktree and re-spawns the critic to verify, looping up to `MAX_REPAIR_ATTEMPTS` (default 3) before consulting the lead. Only if auto-repair is exhausted does it set `status: changes-requested` and ask for the lead's input. MINOR / OBS findings are never auto-fixed — they are listed for the lead. The manual `/review` skill is the conversational re-review path.
 
 Optional manual review paths after the post-build critic:
@@ -602,8 +602,11 @@ structured report) is covered by the prose above, not by this template.
 
 Round 1 (`/build` Step 7) and every `/problem` Phase 5 design-review round stay
 **full-worktree / full-artifact scope**, unchanged — the critic reads the whole
-worktree (or the whole `problem.md`/`requirements.md`/`solution.md` set) and
-every panel loads against the full file set.
+worktree (or the whole `problem.md`/`requirements.md`/`solution.md` set), and
+every panel it loads is applied against that full set. *Artifact* scope is what
+is unchanged here; *panel assignment* is not, since ticket 0081: a `Panels:`-scoped
+design-review agent still reads all three artifacts, but applies only the panels
+its brief names.
 
 Repair-loop rounds 2+ (`build-ticket.md` Step 7a's re-spawns) instead get an
 **incremental brief**, built by `gates/incremental_scope.py`:

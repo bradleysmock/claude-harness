@@ -49,6 +49,20 @@ def test_panels_field_forbids_self_activating_another_panel() -> None:
     assert "reviews only the named panel(s)" in lowered
 
 
+def test_panels_field_overrides_cores_always_active_default() -> None:
+    step_1 = _step_1()
+    assert "The field overrides Core's always-active default." in step_1
+    assert "Load `core.md` only when the field names `Core`." in step_1
+    assert "A `Panels: Python` agent does not read `core.md`" in step_1
+
+
+def test_core_is_only_unconditionally_active_absent_a_panels_field() -> None:
+    step_1 = _step_1()
+    assert "**unless a `Panels:` field is present**" in step_1
+    assert "Core is active only when the field names it" in step_1
+    assert "Absent a `Panels:` field, Core is always among them." in step_1
+
+
 def test_panels_field_absence_leaves_step_1_unchanged() -> None:
     lowered = _step_1().lower()
     assert "when the field is absent" in lowered
@@ -94,7 +108,7 @@ def test_secondary_panel_escalation_is_documented_as_manual_only() -> None:
 def test_pre_existing_step_1_instructions_survive() -> None:
     step_1 = _step_1()
     assert "context/panels/core.md" in step_1
-    assert "It is always active." in step_1
+    assert "It is always active" in step_1
     assert "--design" in step_1
     assert "For each entry in `candidates`, disposition it (activate or defer) with a one-line reason." in step_1
     assert "Read only the panel files for active panels." in step_1
