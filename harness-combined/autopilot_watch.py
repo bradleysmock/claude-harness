@@ -194,7 +194,7 @@ def default_dispatch(ticket_info: TicketInfo, repo: Path) -> int:
     log_file = log_dir / f"{ticket_info.number}.log"
     with log_file.open("a", encoding="utf-8") as handle:
         result = subprocess.run(
-            ["claude", "-p", f"/autopilot {ticket_info.number}"],
+            ["claude", "-p", f"/harness-combined:autopilot {ticket_info.number}"],
             cwd=ticket_info.worktree_dir,
             stdout=handle,
             stderr=subprocess.STDOUT,

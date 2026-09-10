@@ -156,6 +156,34 @@ def test_dispatch_log_roundtrip(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_default_dispatch_uses_fully_qualified_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: a bare `/autopilot` command does not resolve in headless
+    `claude -p` mode (verified live) — the dispatched command must be the
+    fully-qualified `/harness-combined:autopilot <number>` form."""
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    ticket_info = watch.scan_worktree_tickets(repo)[0]
+
+    captured: dict[str, list[str]] = {}
+
+    class _FakeCompleted:
+        returncode = 0
+
+    def fake_run(args: list[str], **kwargs: object) -> _FakeCompleted:
+        captured["args"] = args
+        return _FakeCompleted()
+
+    monkeypatch.setattr(watch.subprocess, "run", fake_run)
+    watch.default_dispatch(ticket_info, repo)
+
+    assert captured["args"][0] == "claude"
+    assert captured["args"][1] == "-p"
+    assert captured["args"][2] == "/harness-combined:autopilot 0001"
+
+
 def test_run_tick_no_candidates_returns_none(tmp_path: Path) -> None:
     repo = init_repo(tmp_path)
     result = watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda t: 0)
