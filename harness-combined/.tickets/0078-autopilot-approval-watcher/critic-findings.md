@@ -38,3 +38,20 @@ Requirements.md FR-3 specifies scanning `.worktrees/*/.tickets/*/status.md` and 
 - **MAJOR** — Added a `## Steps` section to `commands/autopilot-watch.md` naming the exact `bin/autopilot-watch <subcommand> . [--interval N]` invocation. New test: `test_documents_execution_directive`.
 - **MINOR** — Extracted `tests/_watch_fixtures.py`; both test files now import from it instead of duplicating or cross-importing.
 - **OBS** — No change; left as documented, deliberate deviation.
+
+## Round 2 — 2026-09-10
+
+Verification round. Read the code/tests directly rather than trusting the round-1 repair summary.
+
+- **BLOCKER 1 (dispatch exit code discarded) — RESOLVED.** `run_tick` returns `exit_code`; `_outcome_label` folds it in. Verified by `test_run_tick_surfaces_dispatch_exit_code` and `test_cli_tick_records_exit_code_in_outcome`.
+- **BLOCKER 2 ("interrupted" outcome never implemented) — RESOLVED.** `cli_tick`'s SIGTERM handler writes `"interrupted"` before re-raising; `_Interrupted` is not `OSError` so `run_tick` doesn't swallow it. `test_stop_mid_dispatch_terminates_child_and_keeps_log_entry` now asserts the post-stop snapshot.
+- **BLOCKER 3 (fail-closed gate skips never logged) — RESOLVED.** `_log_rejection` appends to `.harness/autopilot-watch/rejections.log`, gitignored. Verified by `test_content_drift_after_approval_is_logged`.
+- **MAJOR (no execution directive) — RESOLVED.** `commands/autopilot-watch.md`'s new `## Steps` section names the exact `bin/autopilot-watch <subcommand> . [--interval N]` invocation, matching the `bisect.md`/`solution.md` convention.
+- **MINOR (fixture duplication) — RESOLVED.** `tests/_watch_fixtures.py` extracted; no cross-module `from tests.` import remains.
+
+### New findings (MINOR — not auto-fixed per severity policy; listed for the lead)
+
+- **MINOR — `running` field in `status.json` is written with contradictory values (`True` on a normal tick, `False` from the interrupt handler) but `cli_status` never reads it — derives liveness from the PID file instead. Dead, misleading field.** Fix shape: drop `running`/`pid` from `write_status_snapshot`'s persisted shape (keep them CLI-computed), or wire `cli_status` to actually use the persisted value and pick one source of truth.
+- **MINOR — `_log_rejection` appends one line per tick for a persistently-rejected ticket, unbounded (no dedup, no rotation).** Fix shape: dedup by `(ticket, approved_commit, reason)` before appending, or log only on state transition.
+
+No BLOCKER/MAJOR remain. Proceeding to craft polish and the delivery handoff.
