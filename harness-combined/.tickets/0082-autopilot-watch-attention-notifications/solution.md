@@ -6,43 +6,53 @@
 ## Approach
 
 After `run_tick`'s dispatch call returns (or raises `OSError`), re-read the
-target ticket's `status.md` and classify the outcome purely from that
-field — `done` is success, anything else is needs-attention with a
-one-line reason. A needs-attention outcome appends to a durable log and
-fires a best-effort desktop notification (macOS `osascript`, Linux
-`notify-send`, silently skipped if neither exists). `cli_status` surfaces
-a summary of that log. Separately, document a zero-code "watch via
-Claude" pattern using the existing `/loop` skill.
+target ticket's `status.md` inside a guard that itself never raises —
+`done` is success, any other status (or an unreadable/missing state) is
+needs-attention with a one-line reason. A needs-attention outcome appends
+to a durable, plain-append log and fires a best-effort desktop
+notification: `osascript` on macOS, `notify-send` on Linux, silently
+skipped if neither exists. The notification body is passed as a separate
+subprocess argument consumed via AppleScript's `on run argv`, never
+embedded into the `-e` script string, closing the injection path a naive
+string-interpolated notification would open. `cli_status` surfaces a
+summary of the log, tolerating a malformed trailing line exactly like the
+existing dispatch-log reader does. Separately, document a zero-code "watch
+via Claude" pattern using the existing `/loop` skill.
 
 ## Components
 
 | Component | Responsibility |
 |---|---|
-| `autopilot_watch.py`: `_classify_outcome` | Pure function: (pre-dispatch status known to be `solution`, post-dispatch `status.md` read) → `(needs_attention, reason)` |
-| `autopilot_watch.py`: `_append_needs_attention` | Append one JSON line (ticket, reason, status, timestamp) to `needs-attention.jsonl` |
-| `autopilot_watch.py`: `_notify_desktop` | Best-effort `osascript`/`notify-send` shell-out; catches every failure, never raises |
+| `autopilot_watch.py`: `ClassifyResult` | Frozen dataclass (`needs_attention: bool`, `reason: str \| None`) — structured, not a bare tuple, matching `TicketInfo`'s existing precedent |
+| `autopilot_watch.py`: `_classify_outcome` | Pure function: re-reads `status.md` inside its own try/except, returns a `ClassifyResult`; never raises |
+| `autopilot_watch.py`: `_append_needs_attention` | Plain `open(path, "a")` append of one JSON line (ticket, reason, status, timestamp) |
+| `autopilot_watch.py`: `_load_needs_attention` | Reader with the same skip-malformed-line tolerance as `load_dispatch_log` |
+| `autopilot_watch.py`: `_notify_desktop` | Best-effort `osascript` (body via `on run argv`) / `notify-send` shell-out; catches every failure, never raises |
 | `autopilot_watch.py`: `run_tick` | Wire classification + logging + notification in after the existing dispatch call |
-| `autopilot_watch.py`: `cli_status` | Read `needs-attention.jsonl`; add count + latest entry to the status text |
+| `autopilot_watch.py`: `cli_status` | Use `_load_needs_attention` to add count + latest entry to the status text |
+| `tests/test_0078_autopilot_watch_core.py` | Update the two existing exact dict-equality assertions to the widened return shape |
 | `commands/autopilot-watch.md` | New section documenting the `/loop`-based conversational-notification pattern |
 
 ## Tech Choices
 
 | Choice | Rationale |
 |--------|-----------|
-| Classify from `status.md` only, never log/stdout text | Matches this repo's own structural-signal convention (e.g. the critic's finding-header format) — free-text parsing is fragile and was explicitly ruled out in requirements |
-| OS-native notification tools, no new dependency | `osascript`/`notify-send` ship with the OS; adding a Python notification library would be new supply-chain surface for a best-effort nicety |
-| `/loop`-based Claude-side watching, not new code | The harness already ships this skill; documenting its use against `bin/autopilot-watch status` is a zero-risk, zero-new-code channel for the "through Claude" half of the ask |
+| Classify from `status.md` only, wrapped so re-read failure can't escape | Matches this repo's structural-signal convention, and closes the round-1 critic BLOCKER-adjacent gap where the ticket's own state vanishing mid-build would otherwise produce silence, not an alert |
+| Plain append, not read/tmp-write/replace | This log is pure-append (no membership check needed before writing, unlike `dispatch-log.jsonl`); a single small `open("a")` write is POSIX-atomic — matches `_log_rejection`'s existing, already-accepted pattern |
+| Reader tolerates a malformed trailing line | Mirrors `load_dispatch_log`'s existing handling of a line caught mid-write by a concurrent writer — the same hazard applies here since `cli_tick` can append while `cli_status` reads |
+| `osascript` body via `on run argv`, never `-e`-string-interpolated | The reason text crosses into AppleScript source, not just a shell argv — passing it as a separate argument sidesteps quote/backslash injection entirely rather than requiring a bespoke escaping routine |
+| `/loop`-based Claude-side watching, not new code | Zero-risk, zero-new-code channel for the "through Claude" half of the ask, using a skill the harness already ships |
 
 ## Test Plan
 
 | Requirement | Test Type | Scenario(s) |
 |-------------|-----------|--------------|
-| FR-1        | Unit      | each post-dispatch status (`done`, `changes-requested`, unchanged `solution`, `implementing`, `review-ready`, unrecognized) classifies correctly |
-| FR-2        | Unit      | an `OSError` dispatch failure classifies needs-attention with the error text |
-| FR-3        | Unit      | `run_tick`'s return dict carries `needs_attention`/`reason` alongside existing fields |
-| FR-4        | Unit      | a needs-attention outcome appends exactly one durable line; a success outcome appends none |
-| FR-5        | Unit      | notification helper invoked only on needs-attention; an injected failing subprocess call never propagates |
-| FR-6        | Unit      | `cli_status` reports count + latest entry when the log is non-empty, and zero/none cleanly when absent/empty |
+| FR-1        | Unit      | each post-dispatch status classifies correctly; a missing/unreadable `status.md` after dispatch classifies needs-attention instead of raising |
+| FR-2        | Unit      | an `OSError` dispatch-launch failure classifies needs-attention with the error text |
+| FR-3        | Unit      | `run_tick`'s return dict carries `needs_attention`/`reason`; the two pre-existing 0078 tests are updated to the widened shape |
+| FR-4        | Unit      | a needs-attention outcome appends exactly one durable line; success appends none; the reader skips a malformed trailing line |
+| FR-5        | Unit      | the notification helper's `osascript` call passes the reason as a separate argv element (asserted on the constructed argument list, not string content); invoked only on needs-attention; an injected failing subprocess call never propagates |
+| FR-6        | Unit      | `cli_status` reports count + latest entry when the log is non-empty, tolerates a malformed line, and reports zero/none cleanly when absent/empty |
 | FR-7        | Doc-wiring| `autopilot-watch.md` documents the `/loop` pattern |
 
 ## Tradeoffs
@@ -62,14 +72,21 @@ Claude" pattern using the existing `/loop` skill.
 - Desktop notifications are OS-specific and untested on Linux in this
   session — mitigated by the try-then-skip ordering and full exception
   containment; absence of either tool degrades to log-only, not a crash.
+- A reason string embedded in an `on run argv`-based AppleScript is safe
+  from injection but still crosses into a notification UI surface — kept
+  to a short, factual one-liner (status/error text only, never raw
+  ticket-authored prose) to avoid any UX confusion, not a security concern.
 
 ## Implementation Order
 
-1. Unit tests for `_classify_outcome`, `_append_needs_attention`,
-   `_notify_desktop`, updated `run_tick`, and updated `cli_status` — red
-   first.
-2. Implement the three new functions and wire them into `run_tick`.
-3. Update `cli_status` to surface the needs-attention summary.
-4. Update `commands/autopilot-watch.md` with the `/loop` pattern.
-5. Confirm tests green; confirm no behavior change to a successful
-   dispatch beyond the new no-op classification check.
+1. Unit tests for `ClassifyResult`/`_classify_outcome` (including the
+   re-read-failure path), `_append_needs_attention`, `_load_needs_attention`,
+   `_notify_desktop` (including the argv-safety assertion), updated
+   `run_tick`, and updated `cli_status` — red first.
+2. Update the two pre-existing `test_0078_autopilot_watch_core.py`
+   exact-equality assertions to the widened `run_tick` return shape.
+3. Implement the new functions and wire them into `run_tick`.
+4. Update `cli_status` to surface the needs-attention summary.
+5. Update `commands/autopilot-watch.md` with the `/loop` pattern.
+6. Confirm tests green; confirm a successful dispatch's on-disk/log
+   behavior is otherwise unchanged.
