@@ -43,3 +43,31 @@ The critic declares `tools: Read, Grep, Glob`, so it cannot execute `panel_detec
 **OBS** · Core / Dimension 4 · `context/critic-brief.md:114` <!-- harness-finding-key context/critic-brief.md:114:OBS:Core / Dimension 4 -->
 
 Pre-existing: the bullet says the location token is "first on the line" while the pinned template places it third.
+
+## Round 2 — 2026-09-10
+
+Panels active: Core, Python, Testing, AI/LLM
+
+Pass 1 — prior-finding classification: all six prior BLOCKER/MAJOR findings **fixed**, verified by reading the current text at each location. Weakened/deleted-tests check against solution.md's Test Plan: no test removed, skipped, or suppressed; every Test Plan row still has a covering test; the two suites grew by six tests.
+
+Pass 2 — new findings:
+
+**MINOR** · Core / Dimension 4 · `context/harness-reference.md:530` <!-- harness-finding-key context/harness-reference.md:530:MINOR:Core / Dimension 4 -->
+
+The bullet attaches verification only to the fan-out arm, so a reader draws exactly the inference this round's BLOCKER repair removed from `commands/problem.md:372`. The same sentence names two checks where Phase 5 now has three.
+
+**MINOR** · Core / Dimension 4 · `context/critic-brief.md:15` <!-- harness-finding-key context/critic-brief.md:15:MINOR:Core / Dimension 4 -->
+
+Step 1's repair updated lines 13 and 32 but left line 15's parenthetical asserting Core's unconditional activation ("excluding Core, always active"). Resolving that residue the wrong way reproduces the round-1 BLOCKER's failure mode.
+
+**MINOR** · Testing / Dimension 22 · `tests/test_0081_problem_phase5_fanout.py:126` <!-- harness-finding-key tests/test_0081_problem_phase5_fanout.py:126:MINOR:Testing / Dimension 22 -->
+
+The check-3 test pins only that the prose exists, not its consequence. The widened halt sentence could revert to "either check" and the suite would stay green.
+
+**OBS** · AI/LLM / Dimension 15 / Willison · `commands/problem.md:376` <!-- harness-finding-key commands/problem.md:376:OBS:AI/LLM / Dimension 15 / Willison -->
+
+Check 3 makes a pass/fail verdict the orchestrating model computes by reading a subagent's prose — Willison's text-parsed-success-detection hazard, and against CLAUDE.md's LLM/Python boundary. `gates/critic_finding_parser.py` already extracts the panel token, but a subagent's report arrives in context rather than on disk, so a deterministic check costs a temp-file write. Worth naming which of checks 2 and 3 is authoritative if a future round wants the verdict reproducible.
+
+**OBS** · Core / Dimension 7 · `tests/test_0081_critic_brief_panels.py:111` <!-- harness-finding-key tests/test_0081_critic_brief_panels.py:111:OBS:Core / Dimension 7 -->
+
+The diff loosened `assert "It is always active." in step_1` to drop the period. Legitimate — the sentence genuinely gained a qualifier — and compensated by two new tests pinning the replacement text exactly. No fix needed.

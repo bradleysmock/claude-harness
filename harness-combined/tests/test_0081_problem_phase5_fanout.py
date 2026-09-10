@@ -128,6 +128,7 @@ def test_panel_scope_is_verified_against_the_findings_not_only_the_announcement(
     assert "self-declared" in verify
     assert "subset" in verify
     assert "critic_finding_parser.py" in verify
+    assert "Any failure on any of the three **halts the round**" in verify
 
 
 def test_the_halt_retry_is_bounded_to_one_respawn_per_agent() -> None:
@@ -146,9 +147,9 @@ def test_phase_5_verifies_an_exact_panels_active_match() -> None:
 
 
 def test_verification_failure_halts_the_round_rather_than_merging() -> None:
-    lowered = _phase_5().lower()
-    assert "halt" in lowered
-    assert "never" in lowered and "silently" in lowered
+    verify = _subsection("### Verify every report before merging")
+    assert "Any failure on any of the three **halts the round**" in verify
+    assert "never silently merged as if it were a complete review" in verify
 
 
 def test_a_halted_round_does_not_consume_a_revision_pass() -> None:

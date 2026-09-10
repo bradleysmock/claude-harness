@@ -12,7 +12,7 @@ A code-review brief may additionally carry a **`Mode: incremental`** marker (rep
 
 Read `${CLAUDE_PLUGIN_ROOT}/context/panels/core.md` first. It is always active — **unless a `Panels:` field is present** (see below), in which case Core is active only when the field names it.
 
-Then determine which additional panels apply by running `panel_detect.py --root <project_root> <files...>` against the canonical trigger data in `${CLAUDE_PLUGIN_ROOT}/context/panels/triggers.md`. That file is the single source of truth for panel activation across the harness — one entry per panel file in `context/panels/` (excluding Core, always active, and Secondary, on-demand), with typed triggers (file globs, manifest presence, dependency names, path keywords, content patterns) plus a `judgment` field for triggers that are irreducibly a model call.
+Then determine which additional panels apply by running `panel_detect.py --root <project_root> <files...>` against the canonical trigger data in `${CLAUDE_PLUGIN_ROOT}/context/panels/triggers.md`. That file is the single source of truth for panel activation across the harness — one entry per panel file in `context/panels/` (excluding Core, which the trigger table always activates absent a `Panels:` field, and Secondary, on-demand), with typed triggers (file globs, manifest presence, dependency names, path keywords, content patterns) plus a `judgment` field for triggers that are irreducibly a model call.
 
 For **code review** (post-implementation), run the script against the files in scope; `active` names the panels to load. For each entry in `candidates`, disposition it (activate or defer) with a one-line reason. If `skipped` is non-empty, surface it.
 
