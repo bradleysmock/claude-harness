@@ -128,6 +128,12 @@ exists in neither `.tickets/` nor `.tickets/completed/` raises `ValueError` here
 
 The branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` already exist — they were created at claim time (`/problem` Phase 1), and the design artifacts live on the branch. **Resume** that worktree; do not fork a new one.
 
+**Write the active-ticket sentinel now, before anything else below** (this line, and only this line, sets it — the fallback branch further down no longer has its own copy). Run this at the repo root, with the explicit worktree-relative path — a bare `.tickets/.active` would resolve against the repo root's own `.tickets/`, not the worktree's, and the coverage gate (`gates/coverage.py`'s `_active_ticket_dir`) reads it from inside the worktree (`server.py` derives `standards_path` as `<directory>/.tickets/_standards.md`, where `directory` is the worktree):
+
+```
+echo 'XXXX-<slug>' > .worktrees/XXXX-<slug>/.tickets/.active
+```
+
 **Cycle check on every `status.md` write.** Each time this flow writes `status.md`
 (`implementing`, `review-ready`, `changes-requested`), run a full-graph cycle check first so
 an edit to any ticket's `depends-on:` cannot introduce a cycle that slips through:
@@ -145,7 +151,6 @@ A `TicketCyclicDependencyError` (a `ValueError` subclass) names the full cycle p
 
 ```
 git worktree add .worktrees/XXXX-<slug> ticket/XXXX-<slug>   # fallback only — normally the worktree already exists
-echo 'XXXX-<slug>' > .tickets/.active
 ```
 
 Then transition `status: implementing` **on the branch** (branch only — it must **not** touch `main`), committing+pushing inside the worktree by running the helper from within it:
