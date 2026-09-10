@@ -146,3 +146,4 @@
 {"event":"delivered","number":79,"sha":"6730e570d906fed713765da13bb7c514d15aae08","ts":"2026-09-10T17:13:56+00:00"}
 {"event":"delivered","number":78,"sha":"6b96a1ca40fa33d4bc621c5b91eece763ef27fae","ts":"2026-09-10T17:21:13+00:00"}
 {"event":"claim","number":80,"slug":"active-sentinel-not-set-on-build-resume","title":"Set .tickets/.active on the normal /build resume path, not just the fallback","owner":"bradleysmock@navapbc.com","branch":"ticket/0080-active-sentinel-not-set-on-build-resume","ts":"2026-09-10T17:26:34+00:00"}
+{"event":"delivered","number":80,"sha":"4e7d9f969fc7e4d65ed37bcf7620cad759c14766","ts":"2026-09-10T17:48:37+00:00"}
