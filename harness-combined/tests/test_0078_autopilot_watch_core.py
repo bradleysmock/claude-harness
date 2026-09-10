@@ -16,8 +16,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
-import autopilot_watch as watch
 from _watch_fixtures import (
     approve,
     base_fields,
@@ -26,6 +24,8 @@ from _watch_fixtures import (
     seed_claim,
     seed_ticket_branch_and_worktree,
 )
+
+import autopilot_watch as watch
 
 # ---------------------------------------------------------------------------
 # scan / discovery

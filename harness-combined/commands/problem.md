@@ -309,11 +309,29 @@ Before spawning the critic, verify that all three artifact files exist and are n
 
 If any file is missing or empty, fix the write before proceeding.
 
-Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
+### Resolve the active panels first (in-session)
+
+Phase 5 — not the critic — resolves panel activation, so the fan-out decision below is made against a known panel set and no spawned agent ever re-derives it:
+
+1. **Infer the file scope** from `solution.md`'s intended changes — the languages, frameworks, and integration points it proposes touching.
+2. **Run the detector yourself**, in-session, before spawning anything:
+   ```
+   python3 "${CLAUDE_PLUGIN_ROOT}/panel_detect.py" --root <project root> --design <inferred files...>
+   ```
+   It prints one JSON object: `active`, `candidates`, `skipped`.
+3. **Disposition every `candidates` entry yourself** — activate or defer, with a one-line reason each. An activated candidate joins the active set.
+4. If `skipped` is non-empty, surface it in one line.
+
+The resolved active set is Core plus every activated panel. Let `N` be the count of active **non-Core** panels; `N` alone decides the branch below.
+
+### The shared brief
+
+Both branches spawn the **critic subagent** (`subagent_type: critic`) with this brief, differing only in the `Panels:` value and whether the design-specific evaluations are appended:
 
 > Phase: **design**
 > Ticket: **XXXX-<slug>**
 > Round: **1** (max 2)
+> Panels: **<this agent's assigned panels, comma-separated>**
 >
 > Follow `@${CLAUDE_PLUGIN_ROOT}/context/critic-brief.md`. The artifact files to review are (in the worktree):
 >
@@ -321,7 +339,13 @@ Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
 > - `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/requirements.md`
 > - `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/solution.md`
 >
-> You are reviewing documents, not code — apply expert lenses at the design level. Add these design-specific evaluations on top of the standard brief:
+> You are reviewing documents, not code — apply expert lenses at the design level.
+
+The `Panels:` field is **not optional here**: every agent Phase 5 spawns, in either branch, receives the fully resolved list. That closes the gap where a self-detecting agent could legitimately reach a different active set than the one Phase 5 branched on. `critic-brief.md` Step 1 defines the field's contract — skip self-detection, treat the list as fixed and complete, never self-activate another panel.
+
+**Design-specific evaluations.** The agent whose `Panels:` value **includes Core** — and only that agent — gets this block appended to the brief above:
+
+> Add these design-specific evaluations on top of the standard brief:
 >
 > 1. **Requirements coverage** — does the solution address every FR and success criterion? Are acceptance criteria testable as designed?
 > 2. **Test plan gaps** — what scenarios would the loaded panels' experts flag as missing?
@@ -329,7 +353,52 @@ Spawn the **critic subagent** (`subagent_type: critic`) with this brief:
 > 4. **Security design** — apply McGraw: are trust boundaries correct? Does the design fail closed?
 > 5. **Implementation order risks** — dependencies or sequencing that could cause rework.
 
-Revise `solution.md` based on the critic's findings. If significant issues were raised, verify the revised file is fully written, then spawn a second critic round with `Round: 2`. **Maximum 2 rounds.**
+These five are Core's own design lenses, not the specialist panels'. A specialist agent receives **no added evaluations** — its `Panels:` value names exactly one panel and its brief ends at the shared block above.
+
+### Branch A — `N` fewer than 2: one agent
+
+Spawn exactly one critic agent, with `Panels:` set to every active panel, comma-joined (Core first). Since that list includes Core, the agent also gets the design-specific evaluations — so this branch is functionally what Phase 5 has always done, at the same total review depth. The only difference is that the agent receives the pre-resolved list instead of re-deriving it, which costs nothing in the common case.
+
+Skip the per-agent verification and merge below: one agent, one report, nothing to reconcile. Continue at **Revise and round 2**.
+
+### Branch B — `N` 2 or more: one agent per panel, in parallel
+
+Spawn one critic agent per active panel — Core included — as **multiple Agent tool calls in a single message**. Sequential calls defeat the entire point of the fan-out; the wall-clock win comes from the panels, which have no dependency on each other, being read and applied concurrently.
+
+Each agent's `Panels:` value names **exactly its own assigned panel** — `Panels: Core` for the Core agent, `Panels: <Name>` for each specialist. No panel is assigned to two agents, and none is left unassigned.
+
+### Verify every report before merging
+
+For **each** agent spawned in Branch B, check both of these before the report is allowed into the merge:
+
+1. **Presence** — a report actually came back. A missing, errored, or timed-out agent fails this check; an empty response is a missing report, not a clean review.
+2. **Panel scope** — the report's first line, in `critic-brief.md` Step 1's pinned `Panels active: <Name>[, <Name>...]` format, names **exactly** the panels that agent was assigned — no more and no fewer. A report that reviewed a panel it was not assigned has broken the partition; a report that skipped its own panel has left a hole.
+
+Any failure on either check **halts the round**. Report the failing agent and which check it failed to the lead; a partial fan-out is never silently merged as if it were a complete review.
+
+A halted round is a **retry, not a spent pass**: re-spawning after a halt does not consume either of the two Checkpoint-1 revision passes, because no critique was delivered and nothing was revised.
+
+### Merge the verified reports
+
+The merge is **plain concatenation** of every verified report into one findings document — no fuzzy dedup, no rewriting, no re-ranking. Each finding keeps the exact header-line format `critic-brief.md` Step 4 pins, so the merged document stays parseable by `gates/critic_finding_parser.py`.
+
+Head the merged document with one line naming every contributing panel **once**, in the order the panels were resolved.
+
+Content overlap across panels is an **accepted tradeoff**, not a defect: Core's broad security and quality dimensions can legitimately flag the same location a specialist panel flags, and both findings stand. The guarantee the fan-out makes is that no two agents redo work *within the same assigned panel* — not that two different panels can never describe one location. Deduping across panels would trade a small reviewer redundancy for real merge complexity, so it is deliberately not done.
+
+### Revise and round 2
+
+Revise `solution.md` based on the merged findings. If significant issues were raised, verify the revised file is fully written, then run a second round with `Round: 2`. **Maximum 2 rounds.**
+
+Round 2 **re-runs panel detection fresh** against the revised `solution.md` — the revision can add or drop an integration point, and reusing round 1's resolved set would review the new design through the old lens. Re-run the detector, re-disposition candidates, and recompute `N`.
+
+If round 2's fan-out decision differs from round 1's — a different agent count, or a different panel-to-agent assignment — state that difference in **one line** before spawning round 2's agents, so a changed fan-out is surfaced rather than silent.
+
+A fan-out never counts as more than one round, however many agents it spawns; the Checkpoint-1 budget stays **2 total revision passes**, and a halted-and-retried pass does not count against it either.
+
+### Secondary-panel escalation is manual
+
+The Secondary panel is never activated automatically by the fan-out, and no `Panels:`-scoped agent loads it on its own. Escalating to it stays an **orchestrator-optional manual step**, exercised only after reading the merged reports and only when the primary panels reached a genuine impasse that synthesis could not resolve.
 
 ### Commit the design artifacts (on the branch)
 

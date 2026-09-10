@@ -20,11 +20,25 @@ For an **incremental round** (`Mode: incremental`), "the files in scope" is the 
 
 For **design review** (pre-implementation, reading problem.md / requirements.md / solution.md), infer file scope from solution.md's intended changes — what languages, frameworks, and integration points it proposes touching — then run the script with `--design` against that inferred scope; root-evaluable triggers (manifest presence, root-manifest dependencies) still activate deterministically, and file-content-dependent triggers surface as candidates for you to judge rather than being silently dropped.
 
+**Optional `Panels:` field.** A brief may instead arrive with the active set already resolved, named in a **`Panels: <name>[, <name>...]`** field (`commands/problem.md` Phase 5 resolves panels in-session and passes them to every agent it spawns, single or fanned-out). When that field is present:
+
+- **Skip your own `panel_detect.py` invocation entirely.** Do not run it, do not disposition `candidates`, do not surface `skipped` — the orchestrator has already done all three.
+- Treat the named panels as the **fixed and complete** active set, and read exactly those panel files (`Core` means `core.md`, always).
+- **Do not self-activate or disposition any other panel.** A `Panels:`-scoped agent reviews only the named panel(s), full stop. When the artifacts plainly implicate a panel outside your assignment, that panel belongs to another agent this round — or to none — and adding it breaks the partition the orchestrator is about to verify. Say nothing about it.
+
+When the field is absent, this step is unchanged: run `panel_detect.py` as described above and disposition `candidates` yourself.
+
 Read only the panel files for active panels. Core is always active. Do not read panel files for inactive panels.
 
-The Secondary panel (`${CLAUDE_PLUGIN_ROOT}/context/panels/secondary.md`) is loaded on demand only when the primary panels reach a genuine impasse that synthesis cannot resolve.
+The Secondary panel (`${CLAUDE_PLUGIN_ROOT}/context/panels/secondary.md`) is loaded on demand only when the primary panels reach a genuine impasse that synthesis cannot resolve. Reaching for it is an orchestrator-optional manual step and **never automatic**: a panel fan-out (`commands/problem.md` Phase 5) does not trigger Secondary activation, and a `Panels:`-scoped agent never loads it on its own — the orchestrator escalates, if at all, after reading the merged reports.
 
-Announce in your first line which panels are active.
+Announce the active panels in your **first line**, in this exact literal format:
+
+```
+Panels active: <Name>[, <Name>...]
+```
+
+Panel names are comma-separated, in the order they were resolved. The format is pinned for **every critic invocation** — `Panels:`-scoped or self-detected — because a fanned-out agent's report is verified by matching this line against the `Panels:` value it was assigned (`commands/problem.md` Phase 5). Like Step 4's finding-header line, downstream verification needs a fixed string, not free prose.
 
 ---
 
