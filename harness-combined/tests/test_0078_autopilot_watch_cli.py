@@ -21,9 +21,16 @@ import time
 from pathlib import Path
 
 import pytest
+from _watch_fixtures import (
+    approve,
+    base_fields,
+    head,
+    init_repo,
+    seed_claim,
+    seed_ticket_branch_and_worktree,
+)
 
 import autopilot_watch as watch
-from _watch_fixtures import approve, base_fields, head, init_repo, seed_claim, seed_ticket_branch_and_worktree
 
 _MODULE_PATH = str(Path(watch.__file__).resolve())
 _BIN_SHIM = Path(__file__).resolve().parent.parent / "bin" / "autopilot-watch"
