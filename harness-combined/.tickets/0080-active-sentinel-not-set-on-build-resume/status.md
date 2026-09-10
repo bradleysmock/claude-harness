@@ -1,4 +1,4 @@
-status: implementing
+status: review-ready
 ticket: 0080
 title: Set .tickets/.active on the normal /build resume path
 type: bug
