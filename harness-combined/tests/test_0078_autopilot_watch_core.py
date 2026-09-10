@@ -10,6 +10,7 @@ descendant of the SHA it records (see solution.md's Approach).
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -17,79 +18,14 @@ from pathlib import Path
 import pytest
 
 import autopilot_watch as watch
-import ticket
-
-
-def _init_repo(tmp_path: Path) -> Path:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "dev@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "Dev"], cwd=repo, check=True)
-    (repo / "README.md").write_text("seed\n", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
-    return repo
-
-
-def _seed_claim(repo: Path, number: int, slug: str) -> None:
-    ticket.ledger_append(
-        repo,
-        lambda recs, number=number, slug=slug: (
-            [{
-                "event": "claim", "number": number, "slug": slug,
-                "title": slug, "owner": "dev@example.com",
-                "branch": f"ticket/{number:04d}-{slug}", "ts": "t",
-            }],
-            None,
-        ),
-        push=False,
-    )
-
-
-def _seed_ticket_branch_and_worktree(
-    repo: Path, number: int, slug: str, status_fields: dict[str, str]
-) -> tuple[Path, Path]:
-    full = f"{number:04d}-{slug}"
-    branch = f"ticket/{full}"
-    subprocess.run(["git", "branch", branch], cwd=repo, check=True)
-    worktree = repo / ".worktrees" / full
-    subprocess.run(["git", "worktree", "add", "-q", str(worktree), branch], cwd=repo, check=True)
-    ticket_dir = worktree / ".tickets" / full
-    ticket_dir.mkdir(parents=True)
-    for name in ("problem.md", "requirements.md", "solution.md"):
-        (ticket_dir / name).write_text(f"{name} v1\n", encoding="utf-8")
-    lines = "\n".join(f"{key}: {value}" for key, value in status_fields.items())
-    (ticket_dir / "status.md").write_text(lines + "\n", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=worktree, check=True)
-    subprocess.run(["git", "commit", "-qm", "design"], cwd=worktree, check=True)
-    return worktree, ticket_dir
-
-
-def _head(worktree: Path) -> str:
-    return subprocess.run(
-        ["git", "-C", str(worktree), "rev-parse", "HEAD"],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-
-
-def _approve(worktree: Path, ticket_dir: Path, approved_commit: str) -> None:
-    text = (ticket_dir / "status.md").read_text(encoding="utf-8")
-    text = text.rstrip("\n") + f"\napproved-at: 2026-09-10\napproved-commit: {approved_commit}\n"
-    (ticket_dir / "status.md").write_text(text, encoding="utf-8")
-    subprocess.run(["git", "-C", str(worktree), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(worktree), "commit", "-qm", "chore: approve"], check=True)
-
-
-def _base_fields(number: int, slug: str) -> dict[str, str]:
-    full = f"{number:04d}-{slug}"
-    return {
-        "status": "solution", "ticket": f"{number:04d}", "title": slug,
-        "branch": f"ticket/{full}", "owner": "dev@example.com",
-        "source": "local", "external_id": "", "updated": "2026-09-10",
-        "approved-at": "", "approved-commit": "",
-    }
-
+from _watch_fixtures import (
+    approve,
+    base_fields,
+    head,
+    init_repo,
+    seed_claim,
+    seed_ticket_branch_and_worktree,
+)
 
 # ---------------------------------------------------------------------------
 # scan / discovery
@@ -97,15 +33,15 @@ def _base_fields(number: int, slug: str) -> dict[str, str]:
 
 
 def test_scan_ignores_unclaimed_directory(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     (repo / ".worktrees" / "not-a-ticket").mkdir(parents=True)
     assert watch.scan_worktree_tickets(repo) == []
 
 
 def test_scan_finds_claimed_ticket(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
     found = watch.scan_worktree_tickets(repo)
     assert [t.number for t in found] == ["0001"]
     assert found[0].status == "solution"
@@ -117,9 +53,9 @@ def test_scan_finds_claimed_ticket(tmp_path: Path) -> None:
 
 
 def test_excludes_ticket_with_blank_approved_commit(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
     assert watch.find_dispatchable(repo) == []
 
 
@@ -130,60 +66,75 @@ def test_dispatches_ticket_approved_at_current_head_real_sequence(tmp_path: Path
     here (approval-write is a descendant of design); the content-diff gate
     must still pass because neither commit touched the three design files
     after the SHA being recorded."""
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    worktree, ticket_dir = _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
-    design_sha = _head(worktree)
-    _approve(worktree, ticket_dir, design_sha)
-    assert design_sha != _head(worktree)  # sanity: approval-write really is a new commit
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    design_sha = head(worktree)
+    approve(worktree, ticket_dir, design_sha)
+    assert design_sha != head(worktree)  # sanity: approval-write really is a new commit
     result = watch.find_dispatchable(repo)
     assert [t.number for t in result] == ["0001"]
 
 
 def test_excludes_ticket_with_content_drift_after_approval(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    worktree, ticket_dir = _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
-    design_sha = _head(worktree)
-    _approve(worktree, ticket_dir, design_sha)
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    design_sha = head(worktree)
+    approve(worktree, ticket_dir, design_sha)
     (ticket_dir / "solution.md").write_text("solution.md v2 — unapproved edit\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(worktree), "commit", "-am", "edit after approval"], check=True)
     assert watch.find_dispatchable(repo) == []
 
 
+def test_content_drift_after_approval_is_logged(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    design_sha = head(worktree)
+    approve(worktree, ticket_dir, design_sha)
+    (ticket_dir / "solution.md").write_text("solution.md v2 — unapproved edit\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(worktree), "commit", "-am", "edit after approval"], check=True)
+    watch.find_dispatchable(repo)
+    rejections = (repo / ".harness" / "autopilot-watch" / "rejections.log").read_text(encoding="utf-8")
+    record = json.loads(rejections.strip().splitlines()[-1])
+    assert record["ticket"] == "0001"
+    assert "drift" in record["reason"]
+
+
 def test_excludes_approved_commit_not_ancestor_of_head(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    worktree, ticket_dir = _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
     fake_sha = "abc1234"
-    _approve(worktree, ticket_dir, fake_sha)
+    approve(worktree, ticket_dir, fake_sha)
     assert watch.find_dispatchable(repo) == []
 
 
 def test_reopen_same_day_reapproval_dispatches_with_new_sha(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    worktree, ticket_dir = _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
-    first_sha = _head(worktree)
-    _approve(worktree, ticket_dir, first_sha)
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    first_sha = head(worktree)
+    approve(worktree, ticket_dir, first_sha)
 
     dispatch_log = {("0001", first_sha)}  # already dispatched at the first approval
 
     (ticket_dir / "solution.md").write_text("solution.md v2 — reopened\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(worktree), "commit", "-am", "reopen revision"], check=True)
-    second_sha = _head(worktree)
-    _approve(worktree, ticket_dir, second_sha)
+    second_sha = head(worktree)
+    approve(worktree, ticket_dir, second_sha)
 
     result = watch.find_dispatchable(repo, dispatch_log)
     assert [(t.number, t.approved_commit) for t in result] == [("0001", second_sha)]
 
 
 def test_dispatch_log_excludes_already_dispatched_pair(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    worktree, ticket_dir = _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
-    sha = _head(worktree)
-    _approve(worktree, ticket_dir, sha)
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    sha = head(worktree)
+    approve(worktree, ticket_dir, sha)
     assert watch.find_dispatchable(repo, {("0001", sha)}) == []
 
 
@@ -206,17 +157,29 @@ def test_dispatch_log_roundtrip(tmp_path: Path) -> None:
 
 
 def test_run_tick_no_candidates_returns_none(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     result = watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda t: 0)
-    assert result == {"dispatched": None, "error": None}
+    assert result == {"dispatched": None, "error": None, "exit_code": None}
+
+
+def test_run_tick_surfaces_dispatch_exit_code(tmp_path: Path) -> None:
+    """A dispatch that "succeeds" (no exception) but exits non-zero — e.g. the
+    autopilot build itself failed — must not read the same as a clean run."""
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    sha = head(worktree)
+    approve(worktree, ticket_dir, sha)
+    result = watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda t: 1)
+    assert result == {"dispatched": "0001", "error": None, "exit_code": 1}
 
 
 def test_run_tick_records_dispatch_before_invoking(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    worktree, ticket_dir = _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
-    sha = _head(worktree)
-    _approve(worktree, ticket_dir, sha)
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    sha = head(worktree)
+    approve(worktree, ticket_dir, sha)
     log_path = tmp_path / "log.jsonl"
 
     seen_log_state = {}
@@ -237,11 +200,11 @@ def test_run_tick_propagates_non_os_error_from_dispatch(tmp_path: Path) -> None:
     run_tick — a genuine bug in the dispatch callable still propagates, so
     it isn't silently absorbed. The dispatch log entry survives regardless
     (it was already written before dispatch ran)."""
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    worktree, ticket_dir = _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
-    sha = _head(worktree)
-    _approve(worktree, ticket_dir, sha)
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    sha = head(worktree)
+    approve(worktree, ticket_dir, sha)
     log_path = tmp_path / "log.jsonl"
 
     def buggy_dispatch(t: watch.TicketInfo) -> int:
@@ -253,13 +216,18 @@ def test_run_tick_propagates_non_os_error_from_dispatch(tmp_path: Path) -> None:
 
 
 def test_run_tick_picks_lowest_ticket_number(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     for number in (2, 1):
-        _seed_claim(repo, number, f"t{number}")
-        worktree, ticket_dir = _seed_ticket_branch_and_worktree(repo, number, f"t{number}", _base_fields(number, f"t{number}"))
-        _approve(worktree, ticket_dir, _head(worktree))
+        seed_claim(repo, number, f"t{number}")
+        worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, number, f"t{number}", base_fields(number, f"t{number}"))
+        approve(worktree, ticket_dir, head(worktree))
     dispatched: list[str] = []
-    result = watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda t: dispatched.append(t.number))
+
+    def record_and_succeed(t: watch.TicketInfo) -> int:
+        dispatched.append(t.number)
+        return 0
+
+    result = watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=record_and_succeed)
     assert result["dispatched"] == "0001"
     assert dispatched == ["0001"]
 

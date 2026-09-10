@@ -87,51 +87,70 @@ def scan_worktree_tickets(repo: Path) -> list[TicketInfo]:
 # ---------------------------------------------------------------------------
 
 
-def is_approval_valid(ticket_info: TicketInfo) -> bool:
-    """True only if `approved_commit` is a real SHA, is an ancestor of the
-    ticket branch's current HEAD, and the three design files are unchanged
-    between that SHA and HEAD. Never raises — any git failure reads as
-    "not approved," matching the fail-closed contract."""
+def _approval_check(ticket_info: TicketInfo) -> str:
+    """Empty string if approved; otherwise the reason it was rejected, so
+    the caller can log *why* — never raises: any git failure reads as "not
+    approved," matching the fail-closed contract."""
     commit = ticket_info.approved_commit
     if not _SHA_RE.match(commit):
-        return False
+        return "approved-commit is not a valid SHA"
     worktree = ticket_info.worktree_dir
     ancestor = subprocess.run(
         ["git", "-C", str(worktree), "merge-base", "--is-ancestor", commit, "HEAD"],
         capture_output=True,
     )
     if ancestor.returncode != 0:
-        return False
+        return "approved-commit is not an ancestor of the branch's current HEAD"
     try:
         design_paths = [
             str((ticket_info.ticket_dir / name).relative_to(worktree))
             for name in ("problem.md", "requirements.md", "solution.md")
         ]
     except ValueError:
-        return False
+        return "ticket directory is not inside its own worktree"
     diff = subprocess.run(
         ["git", "-C", str(worktree), "diff", "--quiet", commit, "HEAD", "--", *design_paths],
         capture_output=True,
     )
-    return diff.returncode == 0
+    if diff.returncode != 0:
+        return "design files changed since approval (content drift)"
+    return ""
+
+
+def is_approval_valid(ticket_info: TicketInfo) -> bool:
+    return _approval_check(ticket_info) == ""
+
+
+def _log_rejection(repo: Path, number: str, reason: str) -> None:
+    log_dir = repo / ".harness" / "autopilot-watch"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    line = json.dumps({"ticket": number, "reason": reason, "ts": time.time()})
+    with (log_dir / "rejections.log").open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
 
 
 def find_dispatchable(
     repo: Path, dispatch_log: set[tuple[str, str]] | None = None
 ) -> list[TicketInfo]:
     dispatched = dispatch_log if dispatch_log is not None else set()
-    candidates = [
+    solution_with_commit = [
         candidate
         for candidate in scan_worktree_tickets(repo)
         if candidate.status == "solution" and candidate.approved_commit
     ]
-    candidates = [candidate for candidate in candidates if is_approval_valid(candidate)]
-    candidates = [
+    approved: list[TicketInfo] = []
+    for candidate in solution_with_commit:
+        reason = _approval_check(candidate)
+        if reason:
+            _log_rejection(repo, candidate.number, reason)
+            continue
+        approved.append(candidate)
+    approved = [
         candidate
-        for candidate in candidates
+        for candidate in approved
         if (candidate.number, candidate.approved_commit) not in dispatched
     ]
-    return sorted(candidates, key=lambda candidate: candidate.number)
+    return sorted(approved, key=lambda candidate: candidate.number)
 
 
 # ---------------------------------------------------------------------------
@@ -190,11 +209,13 @@ def default_dispatch(ticket_info: TicketInfo, repo: Path) -> int:
 def run_tick(
     repo: Path,
     log_path: Path,
-    dispatch: Callable[[TicketInfo], object] | None = None,
+    dispatch: Callable[[TicketInfo], int] | None = None,
 ) -> dict[str, object]:
     """At most one dispatch per call, lowest ticket number first. The log
     entry is written *before* `dispatch` runs (FR-6): a killed process still
-    leaves the log updated, so a restart never double-dispatches.
+    leaves the log updated, so a restart never double-dispatches. The
+    dispatch's exit code is always returned (never discarded) so `status`
+    can distinguish a failed autopilot build from a clean one.
 
     A dispatch call launches a subprocess; the specific, expected failure
     mode there is `OSError` (e.g. the `claude` binary is missing) — that is
@@ -206,14 +227,14 @@ def run_tick(
     dispatch_fn = dispatch if dispatch is not None else lambda t: default_dispatch(t, repo)
     candidates = find_dispatchable(repo, load_dispatch_log(log_path))
     if not candidates:
-        return {"dispatched": None, "error": None}
+        return {"dispatched": None, "error": None, "exit_code": None}
     target = candidates[0]
     record_dispatch(log_path, target.number, target.approved_commit)
     try:
-        dispatch_fn(target)
+        exit_code = dispatch_fn(target)
     except OSError as exc:
-        return {"dispatched": target.number, "error": str(exc)}
-    return {"dispatched": target.number, "error": None}
+        return {"dispatched": target.number, "error": str(exc), "exit_code": None}
+    return {"dispatched": target.number, "error": None, "exit_code": exit_code}
 
 
 # ---------------------------------------------------------------------------
@@ -301,21 +322,45 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def cli_tick(repo: Path) -> int:
-    """Run exactly one tick and record it. Any exception here is a genuine
-    bug and is left to propagate — the *shell* loop that repeatedly invokes
-    this as a fresh subprocess (see `cli_start`) proceeds to its next
-    iteration regardless of this process's exit code (FR-9)."""
-    _, log_path, status_path = _state_paths(repo)
-    result = run_tick(repo, log_path)
+class _Interrupted(Exception):
+    """Raised from the SIGTERM handler installed in `cli_tick` — never a
+    normal control-flow exception, so it is never mistaken for a dispatch
+    failure by `run_tick`'s own `except OSError`."""
+
+
+def _outcome_label(result: dict[str, object]) -> str:
     if result["dispatched"] is None:
-        outcome = "no-op"
-    elif result["error"]:
-        outcome = f"dispatched {result['dispatched']} (error: {result['error']})"
-    else:
-        outcome = f"dispatched {result['dispatched']}"
+        return "no-op"
+    if result["error"]:
+        return f"dispatched {result['dispatched']} (error: {result['error']})"
+    return f"dispatched {result['dispatched']} (exit {result['exit_code']})"
+
+
+def cli_tick(repo: Path) -> int:
+    """Run exactly one tick and record it. A SIGTERM received while blocked
+    on the dispatch subprocess (i.e. `stop` was called mid-dispatch) is
+    caught long enough to record "interrupted" before this process exits —
+    the *shell* loop that repeatedly invokes this as a fresh subprocess (see
+    `cli_start`) is otherwise what survives a tick that raises or is killed
+    outright (FR-9); this handler only covers the one case that needs a
+    recorded outcome rather than silence."""
+    _, log_path, status_path = _state_paths(repo)
+
+    def _on_terminate(signum: int, frame: object) -> None:
+        write_status_snapshot(
+            status_path, running=False, pid=os.getpid(), last_tick=_now_iso(), last_dispatch_outcome="interrupted"
+        )
+        raise _Interrupted()
+
+    previous_handler = signal.signal(signal.SIGTERM, _on_terminate)
+    try:
+        result = run_tick(repo, log_path)
+    except _Interrupted:
+        return 143
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
     write_status_snapshot(
-        status_path, running=True, pid=os.getpid(), last_tick=_now_iso(), last_dispatch_outcome=outcome
+        status_path, running=True, pid=os.getpid(), last_tick=_now_iso(), last_dispatch_outcome=_outcome_label(result)
     )
     return 0
 

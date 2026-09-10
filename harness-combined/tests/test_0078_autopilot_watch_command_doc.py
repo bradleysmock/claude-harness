@@ -44,3 +44,12 @@ def test_documents_single_ticket_and_local_worktree_scope() -> None:
     content = _content()
     assert "batch" in content.lower()
     assert "worktree" in content.lower()
+
+
+def test_documents_execution_directive() -> None:
+    """The doc must actually tell the agent what to run — a prose
+    description of what each subcommand does is not an instruction."""
+    content = _content()
+    assert "## Steps" in content
+    assert "bin/autopilot-watch" in content
+    assert "$ARGUMENTS" in content

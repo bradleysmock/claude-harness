@@ -2,6 +2,16 @@ Manage the standalone autopilot approval watcher: a background process that
 dispatches `/autopilot XXXX` automatically once a ticket clears Checkpoint 1
 approval, without needing a `/problem` or `/build` session to stay open.
 
+## Steps
+
+1. Parse `$ARGUMENTS` for the subcommand — `start`, `stop`, or `status` — and,
+   for `start` only, an optional `--interval N`.
+2. Run `bin/autopilot-watch <subcommand> . [--interval N]` (`.` is the
+   project root containing `.harness/` and `.worktrees/` — the directory this
+   command is invoked from) and show its stdout/stderr to the lead verbatim.
+3. Report the exit code as-is — a non-zero exit (e.g. `start` refusing a
+   second run) is the answer, not an error to retry or suppress.
+
 ## Subcommands
 
 `/autopilot-watch start [--interval N]` — refuses to start a second loop

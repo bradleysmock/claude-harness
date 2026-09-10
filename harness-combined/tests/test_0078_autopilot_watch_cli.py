@@ -6,7 +6,9 @@ own process group, no `set -e`) rather than looping inside a long-lived Python
 process — a tick that raises simply exits that one iteration's subprocess
 non-zero, and the shell loop proceeds regardless. That process boundary, not a
 broad Python `except`, is what keeps the watcher alive across a bad tick
-(the repo's code-gen rules block a bare/broad `except Exception`).
+(the repo's code-gen rules block a bare/broad `except Exception`). The one
+case that *does* need an explicit, recorded outcome — a SIGTERM arriving
+mid-dispatch — is handled by a narrow SIGTERM handler in `cli_tick` itself.
 """
 
 from __future__ import annotations
@@ -21,21 +23,10 @@ from pathlib import Path
 import pytest
 
 import autopilot_watch as watch
+from _watch_fixtures import approve, base_fields, head, init_repo, seed_claim, seed_ticket_branch_and_worktree
 
 _MODULE_PATH = str(Path(watch.__file__).resolve())
 _BIN_SHIM = Path(__file__).resolve().parent.parent / "bin" / "autopilot-watch"
-
-
-def _init_repo(tmp_path: Path) -> Path:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "dev@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "Dev"], cwd=repo, check=True)
-    (repo / "README.md").write_text("seed\n", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
-    return repo
 
 
 def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.05) -> bool:
@@ -70,12 +61,26 @@ def test_bin_shim_is_executable() -> None:
 
 
 def test_cli_tick_writes_status_snapshot_no_op(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     watch.cli_tick(repo)
     _, _, status_path = watch._state_paths(repo)
     snapshot = watch.read_status_snapshot(status_path)
     assert snapshot["last_tick"] is not None
     assert snapshot["last_dispatch_outcome"] == "no-op"
+
+
+def test_cli_tick_records_exit_code_in_outcome(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    approve(worktree, ticket_dir, head(worktree))
+    monkeypatch.setattr(watch, "default_dispatch", lambda ticket_info, repo: 1)
+
+    watch.cli_tick(repo)
+    _, _, status_path = watch._state_paths(repo)
+    outcome = watch.read_status_snapshot(status_path)["last_dispatch_outcome"]
+    assert "0001" in outcome
+    assert "exit 1" in outcome
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +89,7 @@ def test_cli_tick_writes_status_snapshot_no_op(tmp_path: Path) -> None:
 
 
 def test_start_refuses_second_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     pid_path, _, _ = watch._state_paths(repo)
     watch.write_pid_file(pid_path, os.getpid())  # this test process is definitely alive
 
@@ -101,14 +106,14 @@ def test_start_refuses_second_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_stop_when_not_running_is_noop(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     pid_path, _, _ = watch._state_paths(repo)
     assert watch.cli_stop(repo) == 0
     assert not pid_path.exists()
 
 
 def test_stop_removes_stale_pid_file(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     pid_path, _, _ = watch._state_paths(repo)
     proc = subprocess.Popen(["true"])
     proc.wait()
@@ -118,7 +123,7 @@ def test_stop_removes_stale_pid_file(tmp_path: Path) -> None:
 
 
 def test_status_reports_not_running_on_fresh_repo(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     output = watch.cli_status(repo)
     assert "running: False" in output
 
@@ -143,7 +148,7 @@ def test_start_then_stop_real_loop(tmp_path: Path) -> None:
     leave the loop a zombie forever, since pid_is_alive can't distinguish
     "zombie" from "alive" without being the reaping parent — an inherent
     POSIX limitation `ticket.py`'s own `_pid_alive` shares."""
-    repo = _init_repo(tmp_path)
+    repo = init_repo(tmp_path)
     pid_path, _, status_path = watch._state_paths(repo)
 
     start = _run_cli("start", str(repo), "--interval", "1")
@@ -169,21 +174,14 @@ def test_stop_mid_dispatch_terminates_child_and_keeps_log_entry(
 ) -> None:
     """A ticket is approved and dispatchable; the loop's tick shells out to a
     fake `claude` that blocks. `stop` must terminate that blocked child within
-    its grace period, and the dispatch-log entry (written before dispatch)
-    must survive — no rollback, no auto-retry, matching FR-7."""
-    from tests.test_0078_autopilot_watch_core import (  # local import: reuse fixtures
-        _approve,
-        _base_fields,
-        _head,
-        _seed_claim,
-        _seed_ticket_branch_and_worktree,
-    )
-
-    repo = _init_repo(tmp_path)
-    _seed_claim(repo, 1, "foo")
-    worktree, ticket_dir = _seed_ticket_branch_and_worktree(repo, 1, "foo", _base_fields(1, "foo"))
-    sha = _head(worktree)
-    _approve(worktree, ticket_dir, sha)
+    its grace period, the dispatch-log entry (written before dispatch) must
+    survive — no rollback, no auto-retry (FR-7) — and the status snapshot
+    must record "interrupted" (FR-9), not silently show the prior state."""
+    repo = init_repo(tmp_path)
+    seed_claim(repo, 1, "foo")
+    worktree, ticket_dir = seed_ticket_branch_and_worktree(repo, 1, "foo", base_fields(1, "foo"))
+    sha = head(worktree)
+    approve(worktree, ticket_dir, sha)
 
     fake_bin = tmp_path / "fakebin"
     fake_bin.mkdir()
@@ -198,7 +196,7 @@ def test_stop_mid_dispatch_terminates_child_and_keeps_log_entry(
     fake_claude.chmod(0o755)
     monkeypatch.setenv("PATH", f"{fake_bin}:{os.environ['PATH']}")
 
-    pid_path, log_path, _ = watch._state_paths(repo)
+    pid_path, log_path, status_path = watch._state_paths(repo)
     start = subprocess.run(
         [sys.executable, _MODULE_PATH, "start", str(repo), "--interval", "1"],
         capture_output=True, text=True, check=False, env=dict(os.environ),
@@ -218,3 +216,7 @@ def test_stop_mid_dispatch_terminates_child_and_keeps_log_entry(
 
     # the dispatch log entry is not rolled back by a terminated dispatch
     assert ("0001", sha) in watch.load_dispatch_log(log_path)
+    assert _wait_until(
+        lambda: watch.read_status_snapshot(status_path)["last_dispatch_outcome"] == "interrupted",
+        timeout=3.0,
+    ), watch.read_status_snapshot(status_path)
