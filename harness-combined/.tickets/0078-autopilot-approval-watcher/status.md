@@ -1,4 +1,4 @@
-status: implementing
+status: review-ready
 ticket: 0078
 title: Standalone autopilot watcher on lead approval
 type: feature
