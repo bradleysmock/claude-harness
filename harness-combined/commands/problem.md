@@ -355,31 +355,31 @@ The `Panels:` field is **not optional here**: every agent Phase 5 spawns, in eit
 
 These five are Core's own design lenses, not the specialist panels'. A specialist agent receives **no added evaluations** — its `Panels:` value names exactly one panel and its brief ends at the shared block above.
 
-### Branch A — `N` fewer than 2: one agent
+### Branch A — fewer than 2 non-Core panels: one agent
 
-Spawn exactly one critic agent, with `Panels:` set to every active panel, comma-joined (Core first). Since that list includes Core, the agent also gets the design-specific evaluations — so this branch is functionally what Phase 5 has always done, at the same total review depth. The only difference is that the agent receives the pre-resolved list instead of re-deriving it, which costs nothing in the common case.
+Spawn exactly one critic agent, with `Panels:` set to every active panel, comma-joined (Core first). Since that list includes Core, the agent also gets the design-specific evaluations, so this branch keeps the same total review depth as a single self-detecting agent. The only difference is that the agent receives the pre-resolved list instead of re-deriving it.
 
 Verification still applies — see **Verify every report before merging**, which is unconditional. Only the *merge* is Branch B's: one agent produces one report, so there is nothing to concatenate. Continue at **Revise and round 2** once the single report is verified.
 
-### Branch B — `N` 2 or more: one agent per panel, in parallel
+### Branch B — 2 or more non-Core panels: one agent per panel, in parallel
 
-Spawn one critic agent per active panel — Core included — as **multiple Agent tool calls in a single message**. Sequential calls defeat the entire point of the fan-out; the wall-clock win comes from the panels, which have no dependency on each other, being read and applied concurrently.
+Spawn one critic agent per active panel — Core included — as **multiple Agent tool calls in a single message**. Sequential calls defeat the point of the fan-out: the panels have no dependency on each other, so the wall-clock win comes from reading and applying them concurrently.
 
 Each agent's `Panels:` value names **exactly its own assigned panel** — `Panels: Core` for the Core agent, `Panels: <Name>` for each specialist. No panel is assigned to two agents, and none is left unassigned.
 
 ### Verify every report before merging
 
-These checks run on **every** agent Phase 5 spawns, in **both** branches — a single Branch A agent is still an agent whose report can arrive missing or overreaching, and FR-6 pins the announcement format for every invocation precisely so this check always has a fixed string to match:
+These checks run on **every** agent Phase 5 spawns, in **both** branches — a single Branch A agent is still an agent whose report can arrive missing or overreaching, and `critic-brief.md` Step 1 pins the announcement format for every invocation precisely so this check always has a fixed string to match:
 
 1. **Presence** — a report actually came back. A missing, errored, or timed-out agent fails this check; an empty response is a missing report, not a clean review.
 2. **Panel scope, announced** — the report's first line, in `critic-brief.md` Step 1's pinned `Panels active: <Name>[, <Name>...]` format, names **exactly** the panels that agent was assigned — no more and no fewer. A report naming a panel it was not assigned has broken the partition; one that omits its own panel has left a hole.
 3. **Panel scope, as evidenced by the findings** — the announcement line is self-declared, so check the artifact too. Every finding header carries a structural `<Panel>` token (`critic-brief.md` Step 4); the set of `<Panel>` values across an agent's findings must be a **subset** of its assigned `Panels:` value. An agent that announces `Panels active: Python` and then files a finding headed `**BLOCKER** · Core / Dimension 8 · …` fails here even though it passed check 2 — otherwise the out-of-partition finding is concatenated and parsed by `gates/critic_finding_parser.py` as a Core finding that no Core agent produced.
 
-Any failure on any of the three **halts the round**. Report the failing agent and which check it failed to the lead; a partial fan-out is never silently merged as if it were a complete review.
+Any failure on any of the three **halts the round**. Report to the lead the failing agent and the check it failed; a partial fan-out is never silently merged as if it were a complete review.
 
 A halted round is a **retry, not a spent pass**: re-spawning after a halt does not consume either of the two Checkpoint-1 revision passes, because no critique was delivered and nothing was revised.
 
-**The retry is bounded: one re-spawn per failing agent.** One retry distinguishes a transient failure from a systematic one; a second identical failure is a defect in the brief or the panel assignment, not bad luck, and re-spawning further would burn exactly the Checkpoint-1 latency this fan-out exists to reduce. If a re-spawned agent fails again, stop — do not re-spawn a third time and do not merge the partial set. Report to the lead which agent failed which check, both times, and hand over the decision (revise the brief, or fall back to a single Branch A agent carrying the full panel list). Phase 5 re-spawns the first retry on its own; the second failure is the lead's call, not Phase 5's.
+**The retry is bounded: one re-spawn per failing agent.** One retry distinguishes a transient failure from a systematic one; a second identical failure is a defect in the brief or the panel assignment, and re-spawning further would burn exactly the Checkpoint-1 latency this fan-out exists to reduce. If a re-spawned agent fails again, stop — do not re-spawn a third time and do not merge the partial set. Report to the lead which agent failed which check, both times, and hand over the decision (revise the brief, or fall back to a single Branch A agent carrying the full panel list). Phase 5 re-spawns the first retry on its own; the second failure is the lead's call.
 
 ### Merge the verified reports
 

@@ -103,7 +103,7 @@ def test_only_the_core_agent_carries_the_design_specific_evaluations() -> None:
     assert "Panels: Core" in phase_5
     lowered = phase_5.lower()
     assert "design-specific evaluations" in lowered
-    assert "no added evaluations" in lowered or "not appended" in lowered
+    assert "no added evaluations" in lowered
 
 
 # --- FR-7: per-agent verification before merging -----------------------------
@@ -153,7 +153,9 @@ def test_verification_failure_halts_the_round_rather_than_merging() -> None:
 
 
 def test_a_halted_round_does_not_consume_a_revision_pass() -> None:
-    lowered = _phase_5().lower()
+    phase_5 = _phase_5()
+    assert "retry, not a spent pass" in phase_5
+    lowered = phase_5.lower()
     assert "retry" in lowered
     assert "does not consume" in lowered or "spends no" in lowered
 
