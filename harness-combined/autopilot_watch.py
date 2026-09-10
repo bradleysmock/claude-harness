@@ -95,11 +95,11 @@ def _approval_check(ticket_info: TicketInfo) -> str:
     if not _SHA_RE.match(commit):
         return "approved-commit is not a valid SHA"
     worktree = ticket_info.worktree_dir
-    ancestor = subprocess.run(
+    ancestor_check = subprocess.run(
         ["git", "-C", str(worktree), "merge-base", "--is-ancestor", commit, "HEAD"],
         capture_output=True,
     )
-    if ancestor.returncode != 0:
+    if ancestor_check.returncode != 0:
         return "approved-commit is not an ancestor of the branch's current HEAD"
     try:
         design_paths = [
@@ -108,17 +108,13 @@ def _approval_check(ticket_info: TicketInfo) -> str:
         ]
     except ValueError:
         return "ticket directory is not inside its own worktree"
-    diff = subprocess.run(
+    diff_check = subprocess.run(
         ["git", "-C", str(worktree), "diff", "--quiet", commit, "HEAD", "--", *design_paths],
         capture_output=True,
     )
-    if diff.returncode != 0:
+    if diff_check.returncode != 0:
         return "design files changed since approval (content drift)"
     return ""
-
-
-def is_approval_valid(ticket_info: TicketInfo) -> bool:
-    return _approval_check(ticket_info) == ""
 
 
 def _log_rejection(repo: Path, number: str, reason: str) -> None:
@@ -365,6 +361,10 @@ def cli_tick(repo: Path) -> int:
     return 0
 
 
+# Positional args threaded through from cli_start's Popen call below:
+# $1=python executable, $2=this script's own path, $3=repo, $4=interval
+# (seconds). Keep these two definitions in lockstep — the shell has no way
+# to catch a mismatch, it just loops on the wrong argument.
 _LOOP_SCRIPT = 'while true; do "$1" "$2" tick "$3"; sleep "$4"; done'
 
 
