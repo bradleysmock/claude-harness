@@ -29,6 +29,11 @@ batch mode; this gap is single-ticket-build only.
   unenforceable for most deliveries, not fail-closed against a real
   measurement.
 
+Step 1's `changes-requested` resume skips Step 2 entirely on a repair
+re-run; that's a no-op for this fix, not a gap it needs to cover — the
+sentinel written by that ticket's earlier Step 2 run already names this
+same worktree and nothing clears it mid-repair-cycle.
+
 ## Success Criteria
 
 - `build-ticket.md` Step 2 writes `.tickets/.active` (inside the worktree)
