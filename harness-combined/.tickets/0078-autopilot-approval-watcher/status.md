@@ -1,4 +1,4 @@
-status: solution
+status: implementing
 ticket: 0078
 title: Standalone autopilot watcher on lead approval
 type: feature
