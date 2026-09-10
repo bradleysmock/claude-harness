@@ -406,4 +406,19 @@ Approve to begin implementation? (yes / no / feedback)
 
 Do not proceed until the lead approves.
 
-> **Session boundary**: After approval, the lead should `/clear` (or start a new Claude Code session) before running `/write-spec XXXX` then `/build XXXX`. This keeps the implementation phase context lean.
+**On "yes" only** — persist the approval before anything else, additively: `status` itself stays `solution` (unchanged, so `/build`, `/write-spec`, `/deliver`, and manual `/autopilot` need no change). Capture the worktree's current branch HEAD (the last design commit, i.e. *before* this write — see ticket 0078's solution.md for why raw equality against a later HEAD can never hold), then write, commit, and push into `.tickets/XXXX-<slug>/status.md`:
+
+```
+approved-at: YYYY-MM-DD
+approved-commit: <the branch HEAD captured above>
+```
+
+```
+git -C .worktrees/XXXX-<slug> add .tickets/XXXX-<slug>/status.md
+git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX approved"
+git -C .worktrees/XXXX-<slug> push
+```
+
+A "no" or "feedback" response leaves both fields blank.
+
+> **Session boundary**: After approval, the lead should `/clear` (or start a new Claude Code session) before running `/write-spec XXXX` then `/build XXXX` — this keeps the implementation phase context lean. If the autopilot watcher is running (`bin/autopilot-watch status`), no manual follow-up is needed: it dispatches `/autopilot XXXX` on its own once `approved-commit` clears the fail-closed content-diff gate in `autopilot_watch.py`.

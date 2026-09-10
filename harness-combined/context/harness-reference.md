@@ -119,6 +119,29 @@ transition in `/build` — and rejects the write before completing it. A
 
 > **Self-speccing:** `/write-spec` never changed `status`; the `solution → implementing` transition has always been driven by `/build` setup. As of the merged build flow, `/build` also *generates* the spec/task files inline when it starts from `status: solution` with no specs present. `/write-spec` is therefore an optional pre-step, not a required transition.
 
+> **Approval signal (ticket 0078):** two additional, optional `status.md`
+> fields — `approved-at` (display date) and `approved-commit` (a SHA) — are
+> written only by `/problem`'s Checkpoint 1 on the lead's "yes". They are
+> purely additive: `status` itself stays `solution` (unchanged), so every
+> row in the table above and every existing status check is unaffected.
+> `approved-commit` names the branch's HEAD *before* that write (the last
+> design commit) — never the write's own commit, which is necessarily a
+> descendant of the SHA it would otherwise try to record.
+
+### Autopilot watcher
+
+`bin/autopilot-watch start|stop|status` (backed by `autopilot_watch.py`,
+docs in `commands/autopilot-watch.md`) is a standalone background loop,
+independent of any Claude Code session, that dispatches `/autopilot XXXX`
+once a ticket is approved. It picks up a ticket only when `status: solution`
+**and** `approved-commit` is set **and** passes a fail-closed gate: the SHA
+is a valid, real commit that is an ancestor of the branch's current HEAD,
+and `problem.md`/`requirements.md`/`solution.md` are byte-identical between
+that commit and HEAD. Content drift since approval — a later commit
+touching the design files without a fresh approval — is treated as "not
+approved," never built. The watcher is local-worktree-only and strictly
+opt-in: manual `/autopilot XXXX` is unaffected whether or not it is running.
+
 ### Ticket resolution
 
 Every flow that reads a ticket's live status obeys one **worktree-first** rule. This is the single authoritative resolution rule; the resolver flows (`commands/autopilot.md`, `context/flows/build-ticket.md` Step 1, `context/flows/write-spec-ticket.md` Step 1, `commands/gate.md`, `context/flows/deliver-ticket.md` Step 1) cite it rather than re-deriving their own.
