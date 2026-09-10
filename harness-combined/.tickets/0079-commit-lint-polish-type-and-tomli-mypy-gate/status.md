@@ -1,4 +1,4 @@
-status: implementing
+status: review-ready
 ticket: 0079
 title: Commit-lint polish type + tomli/mypy gate fix
 type: bug
