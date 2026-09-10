@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,9 +13,15 @@ if TYPE_CHECKING:
     from gates.external import ExternalGateSpec
 from models import GateError, GateResult
 
-try:  # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport
+# tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport. A
+# `sys.version_info` guard (not `try/except ModuleNotFoundError`) is
+# required here: mypy statically narrows on this exact form and skips
+# checking the unreachable branch for the configured target version, so it
+# never tries to resolve `tomli` when it's correctly not installed (see
+# requirements.txt's `python_version < "3.11"` marker).
+if sys.version_info >= (3, 11):
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised only on Python < 3.11
+else:
     import tomli as tomllib  # type: ignore[no-redef]
 
 

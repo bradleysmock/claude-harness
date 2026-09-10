@@ -23,10 +23,13 @@ from dataclasses import dataclass
 
 from models import GateError, GateResult
 
-# The standard conventional-commit type set (FR-6).
+# The standard conventional-commit type set (FR-6), plus `polish` — the
+# type build-ticket.md's craft-polish step (7b.5) itself mandates for an
+# accepted round (`polish: craft round N`), so this gate validates the
+# harness's own convention rather than rejecting it.
 DEFAULT_ALLOWED_TYPES: tuple[str, ...] = (
     "feat", "fix", "docs", "style", "refactor",
-    "perf", "test", "chore", "build", "ci", "revert",
+    "perf", "test", "chore", "build", "ci", "revert", "polish",
 )
 
 # Allow-list for any git ref/branch name we pass on the command line. The leading
