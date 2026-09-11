@@ -150,3 +150,4 @@
 {"event":"claim","number":81,"slug":"parallel-panel-critic-design-review","title":"Parallelize multi-panel design-review critic rounds into per-panel sub-agents","owner":"bradleysmock@navapbc.com","branch":"ticket/0081-parallel-panel-critic-design-review","ts":"2026-09-10T17:51:07+00:00"}
 {"event":"claim","number":82,"slug":"autopilot-watch-attention-notifications","title":"Notify the lead when autopilot-watch dispatches need attention","owner":"bradleysmock@navapbc.com","branch":"ticket/0082-autopilot-watch-attention-notifications","ts":"2026-09-10T18:53:22+00:00"}
 {"event":"delivered","number":81,"sha":"f0c57881d97efe405edad18b10e87eb30a0a7fb8","ts":"2026-09-10T20:30:00+00:00"}
+{"event":"delivered","number":82,"sha":"0167c225380b501f5c2b741375860d1e6994c366","ts":"2026-09-11T18:38:28+00:00"}
