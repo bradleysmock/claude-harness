@@ -6,10 +6,21 @@ from gates.comment_deduplicator import critic_hash
 from gates.finding import Finding, finding_key
 
 
-def _f(**overrides: object) -> Finding:
-    base = dict(file="src/module.py", line=12, severity="BLOCKER", code="Security / Injection", message="body")
-    base.update(overrides)
-    return Finding(**base)
+def _f(
+    *,
+    file: str = "src/module.py",
+    line: int | None = 12,
+    severity: str = "BLOCKER",
+    code: str = "Security / Injection",
+    message: str = "body",
+) -> Finding:
+    """A ``Finding`` with the fields under test overridden by keyword.
+
+    One declared parameter per ``Finding`` field, rather than a ``**overrides``
+    catch-all: unpacking a ``dict[str, object]`` into the constructor erases
+    every field type, which is exactly what mypy reported here.
+    """
+    return Finding(file=file, line=line, severity=severity, code=code, message=message)
 
 
 def test_finding_key_returns_the_four_field_tuple() -> None:

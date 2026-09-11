@@ -16,7 +16,19 @@ explicit_package_bases = true
 # deliberately not `test_*` (e.g. `_watch_fixtures`), which pytest resolves via
 # rootdir insertion but mypy otherwise cannot see at all. Without this, every
 # such import reads as `import-not-found`.
-mypy_path = ".:tests"
+# `hooks/` is on the path for the identical reason: each hook does
+# `from _common import ...` after putting its own directory on `sys.path`, which
+# mypy cannot follow either.
+mypy_path = ".:tests:hooks"
+
+# `sarif` is the third-party `sarif-tools` package that tests/test_sarif.py
+# imports to cross-verify our emitted SARIF against the real ecosystem loader.
+# No stub package exists for it and it is not ours to write one for, so this is
+# the one place a suppression is the permanent fix rather than a workaround —
+# scoped to this single module, never a blanket `ignore_missing_imports`.
+[[tool.mypy.overrides]]
+module = ["sarif"]
+ignore_missing_imports = true
 
 [tool.bandit]
 # B102 (exec_used): server.py uses exec() to load harness-authored spec/task files

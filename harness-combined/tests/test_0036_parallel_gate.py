@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextvars
 import itertools
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,21 @@ from models import GateError, GateResult
 
 def _ok(name: str) -> GateResult:
     return GateResult(gate=name, passed=True, errors=[], duration_ms=1)
+
+
+def _passing_gate_fns(*names: str) -> dict[str, Callable[[str], GateResult]]:
+    """One passing gate callable per name, each closing over its own name.
+
+    A `{name: lambda directory, name=name: _ok(name) ...}` comprehension captured
+    the name correctly but read to mypy as a two-parameter callable, which is not
+    the one-parameter shape GateScheduler takes. Binding the name in an enclosing
+    function scope gets the same per-name capture from a genuine single-argument
+    closure.
+    """
+    def gate_fn(name: str) -> Callable[[str], GateResult]:
+        return lambda directory: _ok(name)
+
+    return {name: gate_fn(name) for name in names}
 
 
 def _fail(name: str) -> GateResult:
@@ -288,7 +304,7 @@ def test_log_write_failure_does_not_abort_run(tmp_path: Path):
 
 def test_results_ordered_by_declaration_not_completion(tmp_path: Path):
     # Solution invariant: results follow the gates list, not completion order.
-    fns = {g: (lambda d, g=g: _ok(g)) for g in ("lint", "type_check", "test", "security")}
+    fns = _passing_gate_fns("lint", "type_check", "test", "security")
     sched = GateScheduler(
         ["lint", "type_check", "test", "security"], {"test": ["type_check"]}, fns,
         max_workers=None,
@@ -301,7 +317,7 @@ def test_parallel_and_serial_agree_on_all_pass(tmp_path: Path):
     # FR-4 (structural equivalence): same gates, same directory, unlimited vs
     # serial produce identical result ordering and pass/fail.
     def build(max_workers):
-        fns = {g: (lambda d, g=g: _ok(g)) for g in ("lint", "type_check", "test", "security")}
+        fns = _passing_gate_fns("lint", "type_check", "test", "security")
         return GateScheduler(
             ["lint", "type_check", "test", "security"], {"test": ["type_check"]}, fns,
             max_workers=max_workers,
