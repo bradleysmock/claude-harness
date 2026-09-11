@@ -79,6 +79,11 @@ design (see FR-4), so it never resets. The prompt above therefore asks for a
 comparison against the previous check rather than for the raw number, which
 only holds within one `/loop` session's memory.
 
+If `/loop` is not available in your Claude Code version, nothing here breaks:
+the needs-attention log and the `status` summary are plain files and a plain
+command. Run `bin/autopilot-watch status` by hand, or
+`tail -f .harness/autopilot-watch/needs-attention.jsonl` for a live view.
+
 ## What it dispatches
 
 A ticket is picked up only when its `status.md` has `status: solution`

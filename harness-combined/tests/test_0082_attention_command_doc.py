@@ -1,11 +1,13 @@
 """Doc-wiring tests for the needs-attention half of commands/autopilot-watch.md
 (ticket 0082).
 
-The "watch via Claude" pattern is documentation-only by design: it composes the
-`/loop` skill the harness already ships rather than adding a second notification
-channel in code. These tests hold the doc to naming the pieces a lead actually
-needs — the skill, an interval, the command the loop runs, and the durable log
-that survives a missed desktop notification.
+The "watch via Claude" pattern is documentation-only by design: it composes
+`/loop`, a Claude Code built-in skill, rather than adding a second notification
+channel in code. (`/loop` ships with the CLI, not with this plugin — grepping
+`commands/` for it finds nothing, which is exactly why the doc has to say where
+it comes from.) These tests hold the doc to naming the pieces a lead actually
+needs — the skill and its provenance, an interval, the command the loop runs,
+and the durable log that survives a missed desktop notification.
 """
 
 from __future__ import annotations

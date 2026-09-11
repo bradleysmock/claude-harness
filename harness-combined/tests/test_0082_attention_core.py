@@ -1,11 +1,17 @@
 """Unit tests for autopilot_watch.py's needs-attention primitives (ticket 0082).
 
-Three independent pieces, none of which touch `run_tick` yet:
+Four pieces, exercised here in isolation; `tests/test_0082_attention_wiring.py`
+covers how `run_tick` and `cli_status` compose them:
 
+* `ClassifyResult` — the verdict record. Frozen, and its invariant (a reason is
+  present and non-blank exactly when `needs_attention` is True) is enforced at
+  construction, because the alerting path keys off both fields.
 * `_classify_outcome` — decides success vs. needs-attention from the target
   ticket's on-disk `status.md` alone, never from log or stdout text, and never
-  raises. An empty or unrecognized status string is ordinary control flow; only
-  a failed *read* takes the separate "unreadable" reason.
+  raises. This is the same function `run_tick` calls, so the status matrix below
+  covers the shipped path rather than a test-only one. An empty or unrecognized
+  status string is ordinary control flow; only a failed *read* takes the
+  separate "unreadable" reason.
 * `_append_needs_attention` / `_load_needs_attention` — a durable, greppable
   JSONL log. Pure append (never read-then-rewritten), so a plain `open(path,
   "a")` write is enough, matching `_log_rejection`; the reader skips a
@@ -163,7 +169,7 @@ def test_classify_clamps_a_hostile_status_in_the_reason(tmp_path: Path) -> None:
 
 
 def test_classify_result_is_frozen() -> None:
-    result = watch.ClassifyResult(needs_attention=True, reason="stalled")
+    result = watch.ClassifyResult(needs_attention=True, reason="stalled", status="implementing")
     with pytest.raises(dataclasses.FrozenInstanceError):
         result.needs_attention = False  # type: ignore[misc]  # asserting immutability
 
@@ -178,7 +184,29 @@ def test_classify_result_rejects_an_inconsistent_pair(
     reason would report an alert while logging and notifying nothing, so the
     invariant is enforced at construction rather than merely documented."""
     with pytest.raises(ValueError, match="exactly when needs_attention"):
-        watch.ClassifyResult(needs_attention=needs_attention, reason=reason)
+        watch.ClassifyResult(needs_attention=needs_attention, reason=reason, status=None)
+
+
+@pytest.mark.parametrize("reason", ["", "   ", "\t"])
+def test_classify_result_rejects_a_blank_reason(reason: str) -> None:
+    """`str(OSError())` is empty, so a blank reason is reachable. It satisfies
+    "not None" while saying nothing, and `_outcome_label`'s `if result["error"]`
+    would then read the alert as a clean run."""
+    with pytest.raises(ValueError, match="non-blank"):
+        watch.ClassifyResult(needs_attention=True, reason=reason, status=None)
+
+
+def test_alert_reason_returns_the_reason_for_an_attention_result() -> None:
+    result = watch.ClassifyResult(needs_attention=True, reason="stalled", status="implementing")
+    assert result.alert_reason == "stalled"
+
+
+def test_alert_reason_raises_on_a_success_result() -> None:
+    """The alerting path never runs for a success, so reading it there is a bug
+    worth surfacing loudly rather than papering over with a placeholder."""
+    result = watch.ClassifyResult(needs_attention=False, reason=None, status="done")
+    with pytest.raises(ValueError, match="non-attention result"):
+        result.alert_reason
 
 
 # ---------------------------------------------------------------------------

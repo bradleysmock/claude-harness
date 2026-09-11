@@ -62,12 +62,14 @@ class ClassifyResult:
     status to observe: a launch that never ran, or a `status.md` that could not
     be read. That makes the two distinguishable in the log by shape rather than
     by prose — "the build ran and left the ticket at `solution`" and "the build
-    never started" are different events.
+    never started" are different events. It has no default: `None` is a
+    load-bearing signal, so producing it by omission would be the same
+    fail-open shape the `reason` check below exists to close.
     """
 
     needs_attention: bool
     reason: str | None
-    status: str | None = None
+    status: str | None
 
     def __post_init__(self) -> None:
         if self.needs_attention == (self.reason is None):
@@ -75,6 +77,24 @@ class ClassifyResult:
                 "ClassifyResult.reason must be set exactly when needs_attention is True; "
                 f"got needs_attention={self.needs_attention!r}, reason={self.reason!r}"
             )
+        # A blank reason satisfies "not None" but says nothing, and downstream
+        # truthiness checks (`_outcome_label`'s `if result["error"]`) would then
+        # read the alert as a clean run. `str(OSError())` is `""`, so this is
+        # reachable, not theoretical.
+        if self.needs_attention and not (self.reason or "").strip():
+            raise ValueError("ClassifyResult.reason must be non-blank when needs_attention is True")
+
+    @property
+    def alert_reason(self) -> str:
+        """The reason, for the alerting path that only runs when there is one.
+
+        Raises rather than substituting a placeholder: `__post_init__`
+        guarantees this, so reaching the error means the invariant broke and a
+        loud failure beats logging an entry with an empty reason.
+        """
+        if self.reason is None:
+            raise ValueError("ClassifyResult.alert_reason read on a non-attention result")
+        return self.reason
 
 
 # ---------------------------------------------------------------------------
@@ -291,16 +311,19 @@ def _read_status_field(ticket_dir: Path) -> tuple[str | None, str | None]:
     `scan_worktree_tickets`'s `fields.get("status", "")` — an absent field is
     ordinary data, not a read failure.
 
-    Catches `ValueError` as well as `OSError`: `ticket.parse_status` reaches
-    `Path.read_text(encoding="utf-8")`, which raises `UnicodeDecodeError` — a
-    `ValueError` — on a `status.md` containing invalid UTF-8. That would
-    otherwise escape `run_tick` *after* `record_dispatch` had already claimed
-    the ticket, leaving it permanently undispatchable with nothing logged and
-    nothing notified: precisely the silent failure this module exists to close.
+    Catches `UnicodeDecodeError` as well as `OSError`: `ticket.parse_status`
+    reaches `Path.read_text(encoding="utf-8")`, which raises it on a `status.md`
+    containing invalid UTF-8. That would otherwise escape `run_tick` *after*
+    `record_dispatch` had already claimed the ticket, leaving it permanently
+    undispatchable with nothing logged and nothing notified: precisely the
+    silent failure this module exists to close. Named specifically rather than
+    as its `ValueError` base, so a future validation error raised inside
+    `parse_status` surfaces as the bug it is instead of being reported to the
+    lead as an unreadable ticket.
     """
     try:
         fields = ticket.parse_status(ticket_dir / "status.md")
-    except (OSError, ValueError) as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return None, f"{type(exc).__name__}: {exc}"
     return fields.get("status", ""), None
 
@@ -499,9 +522,12 @@ def run_tick(
         # state to observe and the launch error itself is the reason. The
         # `status=None` is the discriminator — a log reader can tell "never
         # started" from "ran and stalled at <status>" without parsing prose.
+        # `str(OSError())` is empty, so fall back to the type name rather than
+        # constructing a blank reason the invariant would reject.
+        detail = _one_printable_line(str(exc)).strip() or type(exc).__name__
         launch_failure = ClassifyResult(
             needs_attention=True,
-            reason=_one_printable_line(str(exc)),
+            reason=detail,
             status=None,
         )
         return _record_and_notify(repo, target, launch_failure, error=launch_failure.reason)
@@ -523,12 +549,13 @@ def _record_and_notify(
     log and pushed to the desktop. The append comes first so a failed notifier
     can never cost the record — the notification is best-effort, the log is not.
 
-    `ClassifyResult.__post_init__` guarantees `reason` is set whenever
-    `needs_attention` is True, so this branch cannot fall through to logging
-    nothing while reporting an alert.
+    `ClassifyResult.__post_init__` guarantees `reason` is set and non-blank
+    whenever `needs_attention` is True, and `alert_reason` raises rather than
+    substituting a placeholder, so this branch cannot fall through to logging
+    an alert with nothing in it.
     """
     if outcome.needs_attention:
-        reason = outcome.reason or ""
+        reason = outcome.alert_reason
         _append_needs_attention(repo, target.number, reason, outcome.status)
         _notify_desktop(target.number, reason)
     return {
