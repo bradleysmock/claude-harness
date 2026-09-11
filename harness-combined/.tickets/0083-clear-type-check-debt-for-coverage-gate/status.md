@@ -1,4 +1,4 @@
-status: implementing
+status: review-ready
 ticket: 0083
 title: Clear repo-wide type_check debt so the coverage gate can run
 type: bug
