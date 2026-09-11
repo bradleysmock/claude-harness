@@ -71,17 +71,17 @@ def test_tool_skipped_is_distinct_from_tool_error() -> None:
 
 # ── FR-1: the two silent-skip gate sites ────────────────────────────────────
 
-def test_go_staticcheck_absent_yields_tool_skipped(monkeypatch) -> None:
+def test_go_staticcheck_absent_yields_tool_skipped(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(shutil, "which", _absent("staticcheck"))
-    r = go._staticcheck_gate("/tmp")
+    r = go._staticcheck_gate(str(tmp_path))
     assert r.passed is True  # no change to pass/fail semantics (NFR-2)
     assert [e.code for e in r.errors] == ["TOOL_SKIPPED"]
     assert "staticcheck" in r.errors[0].message
 
 
-def test_rust_cargo_audit_absent_yields_tool_skipped(monkeypatch) -> None:
+def test_rust_cargo_audit_absent_yields_tool_skipped(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(shutil, "which", _absent("cargo-audit"))
-    r = rust._audit_gate("/tmp")
+    r = rust._audit_gate(str(tmp_path))
     assert r.passed is True
     assert [e.code for e in r.errors] == ["TOOL_SKIPPED"]
     assert "cargo-audit" in r.errors[0].message
@@ -168,25 +168,25 @@ def _clean_result(name: str) -> GateResult:
     return GateResult(gate=name, passed=True, errors=[], duration_ms=5)
 
 
-def test_renderer_emits_skipped_tools_section() -> None:
+def test_renderer_emits_skipped_tools_section(tmp_path: Path) -> None:
     lr = LanguageResult(language=StackName.GO, results=[_clean_result("build"), _skipped_result()])
-    body = server._format_polyglot_findings([lr], "/tmp")
+    body = server._format_polyglot_findings([lr], str(tmp_path))
     assert "## Skipped Tools" in body
     assert "staticcheck" in body
     assert "0022" in body  # doctor remediation path referenced
 
 
-def test_renderer_skipped_gate_section_reads_clean() -> None:
+def test_renderer_skipped_gate_section_reads_clean(tmp_path: Path) -> None:
     # The TOOL_SKIPPED warning is NOT repeated as a per-gate finding.
     lr = LanguageResult(language=StackName.GO, results=[_skipped_result()])
-    body = server._format_polyglot_findings([lr], "/tmp")
+    body = server._format_polyglot_findings([lr], str(tmp_path))
     assert "clean" in body
     assert "[`TOOL_SKIPPED`]" not in body  # not listed as a per-gate error line
 
 
-def test_renderer_no_section_without_skips() -> None:
+def test_renderer_no_section_without_skips(tmp_path: Path) -> None:
     lr = LanguageResult(language=StackName.PYTHON, results=[_clean_result("lint")])
-    body = server._format_polyglot_findings([lr], "/tmp")
+    body = server._format_polyglot_findings([lr], str(tmp_path))
     assert "Skipped Tools" not in body
 
 
@@ -218,41 +218,41 @@ def _failing_result() -> GateResult:
     )
 
 
-def test_gate_run_surfaces_skipped_tools_on_pass(monkeypatch) -> None:
+def test_gate_run_surfaces_skipped_tools_on_pass(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         server, "run_suite_for",
         lambda *a, **k: [_clean_result("build"), _skipped_result()],
     )
-    out = json.loads(server.gate_run("impl", "tests", "go", "/tmp"))
+    out = json.loads(server.gate_run("impl", "tests", "go", str(tmp_path)))
     assert out["passed"] is True
     assert any("staticcheck" in m for m in out["skipped_tools"])
 
 
-def test_gate_run_surfaces_skipped_tools_on_failure(monkeypatch) -> None:
+def test_gate_run_surfaces_skipped_tools_on_failure(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         server, "run_suite_for",
         lambda *a, **k: [_skipped_result(), _failing_result()],
     )
-    out = json.loads(server.gate_run("impl", "tests", "go", "/tmp"))
+    out = json.loads(server.gate_run("impl", "tests", "go", str(tmp_path)))
     assert out["passed"] is False
     assert any("staticcheck" in m for m in out["skipped_tools"])
 
 
-def test_gate_run_no_skip_omits_key(monkeypatch) -> None:
+def test_gate_run_no_skip_omits_key(tmp_path: Path, monkeypatch) -> None:
     # No skip => byte-for-byte-unchanged all-pass response shape.
     monkeypatch.setattr(server, "run_suite_for", lambda *a, **k: [_clean_result("build")])
-    out = json.loads(server.gate_run("impl", "tests", "go", "/tmp"))
+    out = json.loads(server.gate_run("impl", "tests", "go", str(tmp_path)))
     assert out == {"passed": True, "duration_ms": 5}
 
 
-def test_gate_run_on_dir_renders_skipped_tools_section(monkeypatch) -> None:
+def test_gate_run_on_dir_renders_skipped_tools_section(tmp_path: Path, monkeypatch) -> None:
     # Directory mode: a TOOL_SKIPPED warning on an all-pass single-language run must
     # still emit findings_md carrying the ## Skipped Tools section (m1).
     monkeypatch.setattr(
         server, "run_suite_on_dir",
         lambda *a, **k: [_clean_result("build"), _skipped_result()],
     )
-    out = json.loads(server.gate_run_on_dir("/tmp", "go", "/tmp"))
+    out = json.loads(server.gate_run_on_dir(str(tmp_path), "go", str(tmp_path)))
     assert out["passed"] is True
     assert "## Skipped Tools" in out["findings_md"]
     assert "staticcheck" in out["findings_md"]

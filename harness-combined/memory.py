@@ -241,7 +241,7 @@ class SQLiteFailureMemory:
             # Only `?` placeholders are interpolated into the SQL text; every value
             # (outcome, gate names) is bound. `LIMIT 500` bounds the working set.
             rows: list[Any] = conn.execute(
-                "SELECT id, spec_id, gate, errors_text, tokens_json, target_file, "
+                "SELECT id, spec_id, gate, errors_text, tokens_json, target_file, "  # nosec B608 - only `?` placeholders are interpolated; every value is bound below
                 "resolution FROM failure_records "
                 f"WHERE outcome = ? AND gate IN ({placeholders}) "
                 "ORDER BY timestamp DESC LIMIT 500",

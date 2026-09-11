@@ -94,16 +94,16 @@ def test_rg_absent_yields_empty_pack(tmp_path: Path, monkeypatch):
     assert gather_context("resolve ticket", str(tmp_path)) == []
 
 
-def test_describe_environment_reports_missing_tools(monkeypatch):
+def test_describe_environment_reports_missing_tools(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(context_rank.shutil, "which", lambda name: None)
-    message = describe_environment("/tmp")
+    message = describe_environment(str(tmp_path))
     assert message is not None
     assert "rg" in message
 
 
-def test_describe_environment_none_when_everything_present(monkeypatch):
+def test_describe_environment_none_when_everything_present(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(context_rank.shutil, "which", lambda name: "/usr/bin/" + name)
-    assert describe_environment("/tmp") is None
+    assert describe_environment(str(tmp_path)) is None
 
 
 def test_gather_context_never_raises_on_missing_project_root():
