@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, Iterator
 
 import ticket
 
@@ -72,7 +72,8 @@ class ClassifyResult:
     status: str | None
 
     def __post_init__(self) -> None:
-        if self.needs_attention == (self.reason is None):
+        has_reason = self.reason is not None
+        if self.needs_attention != has_reason:
             raise ValueError(
                 "ClassifyResult.reason must be set exactly when needs_attention is True; "
                 f"got needs_attention={self.needs_attention!r}, reason={self.reason!r}"
@@ -221,18 +222,36 @@ def find_dispatchable(
 # ---------------------------------------------------------------------------
 
 
-def load_dispatch_log(log_path: Path) -> set[tuple[str, str]]:
+def _iter_json_log_records(log_path: Path) -> Iterator[Any]:
+    """Every parsable JSON line of a JSONL log, in file order.
+
+    Shared by both readers of the watcher's logs — `load_dispatch_log` and
+    `_load_needs_attention` — so the malformed-line tolerance is one
+    implementation rather than two kept in agreement by docstring prose. A
+    writer can be appending while a reader runs, so a half-written trailing
+    line is expected and skipped rather than raised. An absent file yields
+    nothing, exactly as an empty one does: neither is an error.
+
+    Yields whatever each line parsed to, without narrowing it to a mapping.
+    Callers decide what a non-object line means for them; narrowing here would
+    silently change what `load_dispatch_log` does with one.
+    """
     if not log_path.is_file():
-        return set()
-    entries: set[tuple[str, str]] = set()
+        return
     for line in log_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
+        stripped = line.strip()
+        if not stripped:
             continue
         try:
-            record = json.loads(line)
+            record = json.loads(stripped)
         except json.JSONDecodeError:
             continue
+        yield record
+
+
+def load_dispatch_log(log_path: Path) -> set[tuple[str, str]]:
+    entries: set[tuple[str, str]] = set()
+    for record in _iter_json_log_records(log_path):
         number, commit = record.get("ticket"), record.get("approved_commit")
         if number and commit:
             entries.add((number, commit))
@@ -282,7 +301,7 @@ _NOTIFY_APPLESCRIPT = (
 )
 
 
-def _one_printable_line(value: str, limit: int = _MAX_REASON_FIELD_CHARS) -> str:
+def _one_printable_line(value: str) -> str:
     """Bound and flatten a value before it goes into a reason string.
 
     The reason reaches three line-oriented consumers — the JSONL record,
@@ -294,7 +313,7 @@ def _one_printable_line(value: str, limit: int = _MAX_REASON_FIELD_CHARS) -> str
     becomes prose.
     """
     printable = "".join(char if char.isprintable() else " " for char in value)
-    return printable[:limit]
+    return printable[:_MAX_REASON_FIELD_CHARS]
 
 
 def _read_status_field(ticket_dir: Path) -> tuple[str | None, str | None]:
@@ -339,10 +358,7 @@ def _classify_status(status: str | None, read_error: str | None) -> ClassifyResu
     if read_error is not None:
         return ClassifyResult(
             needs_attention=True,
-            reason=(
-                "ticket state unreadable after dispatch: "
-                f"{_one_printable_line(read_error)}"
-            ),
+            reason=f"ticket state unreadable after dispatch: {_one_printable_line(read_error)}",
             status=None,
         )
     observed = status or ""
@@ -399,24 +415,13 @@ def _append_needs_attention(
 def _load_needs_attention(log_path: Path) -> list[dict[str, object]]:
     """Every well-formed entry, in append order.
 
-    Skips a line that fails to parse instead of raising — `cli_tick` can be
-    appending while `cli_status` reads, so a half-written trailing line is
-    expected, exactly as `load_dispatch_log` already assumes.
+    A line that fails to parse is skipped rather than raised — see
+    `_iter_json_log_records`, which `load_dispatch_log` reads through too, so
+    both logs tolerate a mid-write trailing line the same way. A line that
+    parses to something other than a JSON object is not an entry at all and is
+    dropped here, so a caller never has to key into one.
     """
-    if not log_path.is_file():
-        return []
-    entries: list[dict[str, object]] = []
-    for line in log_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(record, dict):
-            entries.append(record)
-    return entries
+    return [record for record in _iter_json_log_records(log_path) if isinstance(record, dict)]
 
 
 def _notify_desktop(number: str, reason: str) -> None:
@@ -502,7 +507,11 @@ def run_tick(
     `needs_attention` and `reason`, and a needs-attention outcome has the
     side effect of appending to the needs-attention log and firing a
     best-effort desktop notification — see `_record_and_notify`."""
-    dispatch_fn = dispatch if dispatch is not None else lambda t: default_dispatch(t, repo)
+    dispatch_fn = (
+        dispatch
+        if dispatch is not None
+        else lambda ticket_info: default_dispatch(ticket_info, repo)
+    )
     candidates = find_dispatchable(repo, load_dispatch_log(log_path))
     if not candidates:
         return {
