@@ -49,6 +49,37 @@ class TicketInfo:
     approved_commit: str
 
 
+@dataclass(frozen=True)
+class ClassifyResult:
+    """How a finished dispatch read: success, or needs the lead's attention.
+
+    `reason` is None exactly when `needs_attention` is False — a needs-attention
+    outcome always carries the text that goes in the log and the notification.
+    """
+
+    needs_attention: bool
+    reason: str | None
+
+
+# ---------------------------------------------------------------------------
+# State paths
+# ---------------------------------------------------------------------------
+
+
+def _state_dir(repo: Path) -> Path:
+    """The one directory every piece of watcher state lives in.
+
+    Derived in one place so the rejection log, the per-ticket dispatch logs,
+    the pid/dispatch-log/status trio, and the needs-attention log cannot drift
+    apart — `cli_status` has to read the same file `run_tick` appends to.
+    """
+    return repo / ".harness" / "autopilot-watch"
+
+
+def _needs_attention_path(repo: Path) -> Path:
+    return _state_dir(repo) / "needs-attention.jsonl"
+
+
 # ---------------------------------------------------------------------------
 # Discovery
 # ---------------------------------------------------------------------------
@@ -118,7 +149,7 @@ def _approval_check(ticket_info: TicketInfo) -> str:
 
 
 def _log_rejection(repo: Path, number: str, reason: str) -> None:
-    log_dir = repo / ".harness" / "autopilot-watch"
+    log_dir = _state_dir(repo)
     log_dir.mkdir(parents=True, exist_ok=True)
     line = json.dumps({"ticket": number, "reason": reason, "ts": time.time()})
     with (log_dir / "rejections.log").open("a", encoding="utf-8") as handle:
@@ -184,12 +215,176 @@ def record_dispatch(log_path: Path, number: str, approved_commit: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Needs-attention classification, log, and notification
+# ---------------------------------------------------------------------------
+
+#: The only post-dispatch status that means the ticket is finished and needs
+#: nothing from the lead. Everything else — `changes-requested`, an unmoved
+#: `solution`, a build stuck at `implementing`/`review-ready` — is an outcome
+#: someone has to look at.
+_SUCCESS_STATUS = "done"
+
+#: The reason text reaches `osascript` through the environment, so these names
+#: are the only thing the AppleScript source below has to name. Read inside the
+#: script with `system attribute`, which is why the reason is never a CLI token
+#: and never AppleScript syntax.
+_NOTIFY_TITLE_ENV = "HARNESS_WATCH_NOTIFY_TITLE"
+_NOTIFY_BODY_ENV = "HARNESS_WATCH_NOTIFY_BODY"
+
+#: A notifier that hangs must not hold the tick open; the shell loop's next
+#: iteration is cheap, a wedged `osascript` is not.
+_NOTIFY_TIMEOUT_SECONDS = 10
+
+_NOTIFY_APPLESCRIPT = (
+    f'display notification (system attribute "{_NOTIFY_BODY_ENV}") '
+    f'with title (system attribute "{_NOTIFY_TITLE_ENV}")'
+)
+
+
+def _read_status_field(ticket_dir: Path) -> tuple[str, str | None]:
+    """The ticket's current `status:` value, and why it could not be read.
+
+    The read is split out from the classification below so the file is touched
+    exactly once per dispatch: `run_tick` needs both the verdict *and* the
+    observed status (for the log entry), and reading twice would let the two
+    disagree if the status moved in between.
+
+    Returns `(status, None)` on a successful read — where `status` is `""` for a
+    `status.md` carrying no `status:` field, matching `scan_worktree_tickets`'s
+    `fields.get("status", "")`. Returns `("", detail)` when the read raised.
+    """
+    try:
+        fields = ticket.parse_status(ticket_dir / "status.md")
+    except OSError as exc:
+        return "", str(exc)
+    return fields.get("status", ""), None
+
+
+def _classify_status(status: str, read_error: str | None) -> ClassifyResult:
+    """Pure verdict over an already-read status — no I/O, no clock, no repo.
+
+    An empty status is ordinary control flow and takes the unrecognized-status
+    reason; only a failed *read* takes the separate "unreadable" reason. Silence
+    is the one outcome that would defeat an unattended watcher, so everything
+    that is not `done` lands on needs-attention.
+    """
+    if read_error is not None:
+        return ClassifyResult(
+            needs_attention=True,
+            reason=f"ticket state unreadable after dispatch: {read_error}",
+        )
+    if status == _SUCCESS_STATUS:
+        return ClassifyResult(needs_attention=False, reason=None)
+    return ClassifyResult(
+        needs_attention=True, reason=f"unrecognized post-dispatch status: '{status}'"
+    )
+
+
+def _classify_outcome(ticket_info: TicketInfo) -> ClassifyResult:
+    """Re-read the ticket's `status.md` and decide whether the lead is needed.
+
+    Deliberately re-reads from disk rather than trusting `ticket_info.status`:
+    that field is the pre-dispatch snapshot, and since `find_dispatchable` only
+    ever yields tickets at `solution`, trusting it would report every dispatch
+    as stuck. Classification uses only that file — never the per-ticket log or
+    the dispatch's stdout — so the signal stays structural instead of depending
+    on prose the autopilot flow is free to reword.
+
+    Never raises: the read failure is captured as a value, not an exception. A
+    ticket removed mid-build by a concurrent `/cancel`, `/abandon`, or
+    `/deliver` therefore surfaces as an alert rather than a crash.
+    """
+    status, read_error = _read_status_field(ticket_info.ticket_dir)
+    return _classify_status(status, read_error)
+
+
+def _append_needs_attention(repo: Path, number: str, reason: str, status: str) -> None:
+    """Append one durable JSON line about an outcome the lead has to look at.
+
+    A plain `open(..., "a")` write, matching `_log_rejection` rather than
+    `record_dispatch`'s temp-file replace: this log is pure append — nothing
+    ever reads it to decide what to write next — so a single small write is
+    atomic under POSIX and the read-modify-write dance would buy nothing.
+    """
+    log_path = _needs_attention_path(repo)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(
+        {"ticket": number, "reason": reason, "status": status, "ts": time.time()}
+    )
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+
+
+def _load_needs_attention(log_path: Path) -> list[dict[str, object]]:
+    """Every well-formed entry, in append order.
+
+    Skips a line that fails to parse instead of raising — `cli_tick` can be
+    appending while `cli_status` reads, so a half-written trailing line is
+    expected, exactly as `load_dispatch_log` already assumes.
+    """
+    if not log_path.is_file():
+        return []
+    entries: list[dict[str, object]] = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict):
+            entries.append(record)
+    return entries
+
+
+def _notify_desktop(number: str, reason: str) -> None:
+    """Best-effort desktop notification: `osascript`, then `notify-send`.
+
+    Returns None in every case and never raises — a missing notifier, a
+    non-zero exit, or a hang must degrade to log-only, never take down the
+    tick. The first notifier that runs to completion wins: `osascript`
+    resolving means this is macOS, so a failure there is a failed attempt
+    rather than a cue to try the Linux tool.
+
+    The reason travels in the environment, never in `osascript`'s argv. `-e`
+    parses its argument as AppleScript *source*, so an embedded quote could
+    close the string early and append further AppleScript — `do shell script`
+    included. Passing it positionally (`on run argv`) only relocates the
+    hazard, because `osascript` documents no `--` end-of-options guarantee and
+    a reason beginning with `-` could be taken for another option. An
+    environment variable is neither source text nor a CLI token, closing both
+    paths at once. `notify-send` has no env-var equivalent for its body, but it
+    parses options with GLib's `GOptionContext`, which *does* document `--` as
+    ending option parsing — hence the explicit separator there.
+    """
+    title = f"autopilot-watch: {number} needs attention"
+    notify_env = {**os.environ, _NOTIFY_TITLE_ENV: title, _NOTIFY_BODY_ENV: reason}
+    attempts = (
+        ["osascript", "-e", _NOTIFY_APPLESCRIPT],
+        ["notify-send", "--", title, reason],
+    )
+    for args in attempts:
+        try:
+            subprocess.run(
+                args,
+                env=notify_env,
+                capture_output=True,
+                timeout=_NOTIFY_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        return
+
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
 
 def default_dispatch(ticket_info: TicketInfo, repo: Path) -> int:
-    log_dir = repo / ".harness" / "autopilot-watch"
+    log_dir = _state_dir(repo)
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"{ticket_info.number}.log"
     with log_file.open("a", encoding="utf-8") as handle:
@@ -223,14 +418,59 @@ def run_tick(
     dispatch_fn = dispatch if dispatch is not None else lambda t: default_dispatch(t, repo)
     candidates = find_dispatchable(repo, load_dispatch_log(log_path))
     if not candidates:
-        return {"dispatched": None, "error": None, "exit_code": None}
+        return {
+            "dispatched": None,
+            "error": None,
+            "exit_code": None,
+            "needs_attention": False,
+            "reason": None,
+        }
     target = candidates[0]
     record_dispatch(log_path, target.number, target.approved_commit)
     try:
         exit_code = dispatch_fn(target)
     except OSError as exc:
-        return {"dispatched": target.number, "error": str(exc), "exit_code": None}
-    return {"dispatched": target.number, "error": None, "exit_code": exit_code}
+        # A launch failure, distinct from the post-dispatch re-read failure
+        # `_classify_status` reports: nothing ran, so there is no new ticket
+        # state to read and the launch error itself is the reason. The status
+        # logged is the pre-dispatch snapshot, which is still what's on disk.
+        return _report(
+            repo,
+            target,
+            ClassifyResult(needs_attention=True, reason=str(exc)),
+            target.status,
+            error=str(exc),
+        )
+    status, read_error = _read_status_field(target.ticket_dir)
+    return _report(
+        repo, target, _classify_status(status, read_error), status, exit_code=exit_code
+    )
+
+
+def _report(
+    repo: Path,
+    target: TicketInfo,
+    outcome: ClassifyResult,
+    status: str,
+    *,
+    error: str | None = None,
+    exit_code: int | None = None,
+) -> dict[str, object]:
+    """Record a resolved dispatch and build `run_tick`'s return value.
+
+    The log append comes before the notification so a failed notifier can never
+    cost the durable record — the notification is best-effort, the log is not.
+    """
+    if outcome.needs_attention and outcome.reason is not None:
+        _append_needs_attention(repo, target.number, outcome.reason, status)
+        _notify_desktop(target.number, outcome.reason)
+    return {
+        "dispatched": target.number,
+        "error": error,
+        "exit_code": exit_code,
+        "needs_attention": outcome.needs_attention,
+        "reason": outcome.reason,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +550,7 @@ def write_status_snapshot(
 
 
 def _state_paths(repo: Path) -> tuple[Path, Path, Path]:
-    state_dir = repo / ".harness" / "autopilot-watch"
+    state_dir = _state_dir(repo)
     return (state_dir / "watch.pid", state_dir / "dispatch-log.jsonl", state_dir / "status.json")
 
 
@@ -411,17 +651,35 @@ def cli_stop(repo: Path, grace_seconds: float = 10.0) -> int:
     return 0
 
 
+def _format_latest_attention(entries: list[dict[str, object]]) -> str:
+    """The newest entry as one line, or `None` when there is nothing to report.
+
+    Pure formatting over already-loaded entries — the count line beside it in
+    `cli_status` is what says how many there were in total.
+    """
+    if not entries:
+        return "None"
+    latest = entries[-1]
+    return f"{latest.get('ticket')} — {latest.get('reason')}"
+
+
 def cli_status(repo: Path) -> str:
     pid_path, _, status_path = _state_paths(repo)
     pid = read_pid_file(pid_path)
     running = pid is not None and pid_is_alive(pid)
     snapshot = read_status_snapshot(status_path)
+    # Read through `_load_needs_attention` so a line caught mid-write by a
+    # concurrent `cli_tick` append is skipped rather than crashing `status` —
+    # the one command a lead runs precisely when something has gone wrong.
+    attention = _load_needs_attention(_needs_attention_path(repo))
     return "\n".join(
         [
             f"running: {running}",
             f"pid: {pid if running else None}",
             f"last_tick: {snapshot['last_tick']}",
             f"last_dispatch_outcome: {snapshot['last_dispatch_outcome']}",
+            f"needs_attention: {len(attention)}",
+            f"latest_attention: {_format_latest_attention(attention)}",
         ]
     )
 
