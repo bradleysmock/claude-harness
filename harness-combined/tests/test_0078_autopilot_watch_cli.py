@@ -112,6 +112,29 @@ def test_start_refuses_second_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert called["popen"] is False
 
 
+def test_start_closes_stdin_on_loop_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The loop shell must not inherit the launching process's stdin fd: if
+    that fd is later closed (the launcher exiting, a terminal session ending),
+    every subsequent `tick` subprocess crashes at Python interpreter startup
+    (`init_sys_streams: can't initialize sys standard streams`) before it ever
+    reaches run_tick, silently killing the watcher while pid_is_alive still
+    reports it as running."""
+    repo = init_repo(tmp_path)
+    captured: dict[str, object] = {}
+
+    class _FakeProc:
+        pid = 12345
+
+    def _capture_popen(*args: object, **kwargs: object) -> _FakeProc:
+        captured.update(kwargs)
+        return _FakeProc()
+
+    monkeypatch.setattr(watch.subprocess, "Popen", _capture_popen)
+    result = watch.cli_start(repo, interval=30)
+    assert result == 0
+    assert captured["stdin"] == watch.subprocess.DEVNULL
+
+
 def test_stop_when_not_running_is_noop(tmp_path: Path) -> None:
     repo = init_repo(tmp_path)
     pid_path, _, _ = watch._state_paths(repo)

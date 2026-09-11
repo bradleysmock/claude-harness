@@ -721,6 +721,7 @@ def cli_start(repo: Path, interval: int = 30) -> int:
     loop_log = (pid_path.parent / "loop.log").open("a", encoding="utf-8")
     proc = subprocess.Popen(
         ["/bin/sh", "-c", _LOOP_SCRIPT, "sh", sys.executable, str(Path(__file__).resolve()), str(repo), str(interval)],
+        stdin=subprocess.DEVNULL,
         stdout=loop_log,
         stderr=subprocess.STDOUT,
         start_new_session=True,
