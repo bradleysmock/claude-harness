@@ -65,11 +65,14 @@ permanent suppression, scoped to that one module.
 
 ## Risks
 
-- `hooks` on `mypy_path` could theoretically introduce a "Duplicate
-  module named" collision (the same class of issue `explicit_package_bases`
-  already exists for) if `hooks/` and elsewhere both defined an
-  identically-named module — checked during implementation, not expected
-  given `hooks/`'s current file set.
+- `hooks` on `mypy_path` could theoretically introduce mypy's "Source file
+  found twice under different module names" diagnostic for a file
+  reachable via two roots at once — not the "Duplicate module named" class
+  `explicit_package_bases` handles (that requires two *different* files
+  claiming one name; this would be one file, two paths to it). No code
+  imports `hooks.*` today and `hooks/` has no `__init__.py`, so this isn't
+  expected to fire — the Implementation Order's `mypy .` re-run (step 4)
+  is the actual verification, not this description.
 
 ## Implementation Order
 

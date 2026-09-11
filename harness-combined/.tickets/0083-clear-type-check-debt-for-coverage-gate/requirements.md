@@ -33,8 +33,10 @@
    `compute_fn` signature.
 6. `tests/test_0078_autopilot_watch_cli.py`'s `outcome = ...["last_dispatch_outcome"]`
    (typed `object` from `read_status_snapshot`'s return type) must be
-   narrowed (e.g. `isinstance` assertion or explicit `str(...)`) before the
-   two `in` containment checks against it.
+   narrowed with an `isinstance(outcome, str)` assertion before the two
+   `in` containment checks against it — not `str(...)`, which would
+   silently coerce a genuine type-shape violation (e.g. a stray `None`)
+   into a passing string instead of failing the test on it.
 7. `tests/test_0031_pr_comments.py` must narrow `fetch_existing_hashes`'s
    `set[str] | DeduplicationFailed` return value (an `isinstance` check or
    equivalent) before the two `in` containment checks against it; and
