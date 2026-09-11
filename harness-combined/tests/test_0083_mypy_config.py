@@ -27,27 +27,27 @@ _REQUIREMENTS = _REPO_ROOT / "requirements.txt"
 def _mypy_config() -> dict[str, object]:
     with _PYPROJECT.open("rb") as handle:
         data = tomllib.load(handle)
-    tool = data["tool"]
-    assert isinstance(tool, dict)
-    mypy = tool["mypy"]
-    assert isinstance(mypy, dict)
-    return mypy
+    tool_tables = data["tool"]
+    assert isinstance(tool_tables, dict)
+    mypy_settings = tool_tables["mypy"]
+    assert isinstance(mypy_settings, dict)
+    return mypy_settings
 
 
 def test_mypy_path_includes_hooks() -> None:
     # FR-1: both hooks import a `_common` sibling that mypy cannot see at all
     # unless `hooks` is a search root — the same root cause as the `tests` entry.
-    path = _mypy_config()["mypy_path"]
-    assert isinstance(path, str)
-    assert "hooks" in path.split(":")
+    mypy_search_path = _mypy_config()["mypy_path"]
+    assert isinstance(mypy_search_path, str)
+    assert "hooks" in mypy_search_path.split(":")
 
 
 def test_mypy_path_keeps_its_existing_roots() -> None:
     # The `hooks` entry is appended, not a rewrite: `.` and `tests` still resolve.
-    path = _mypy_config()["mypy_path"]
-    assert isinstance(path, str)
-    entries = path.split(":")
-    assert entries[:2] == [".", "tests"]
+    mypy_search_path = _mypy_config()["mypy_path"]
+    assert isinstance(mypy_search_path, str)
+    roots = mypy_search_path.split(":")
+    assert roots[:2] == [".", "tests"]
 
 
 def test_sarif_is_the_only_mypy_override() -> None:
@@ -56,10 +56,10 @@ def test_sarif_is_the_only_mypy_override() -> None:
     overrides = _mypy_config()["overrides"]
     assert isinstance(overrides, list)
     assert len(overrides) == 1
-    entry = overrides[0]
-    assert isinstance(entry, dict)
-    assert entry["module"] == ["sarif"]
-    assert entry["ignore_missing_imports"] is True
+    sarif_override = overrides[0]
+    assert isinstance(sarif_override, dict)
+    assert sarif_override["module"] == ["sarif"]
+    assert sarif_override["ignore_missing_imports"] is True
 
 
 def test_no_blanket_ignore_missing_imports() -> None:
@@ -71,18 +71,22 @@ def test_no_blanket_ignore_missing_imports() -> None:
 def test_types_pyyaml_is_a_declared_requirement() -> None:
     # FR-2: a real stub package exists for PyYAML, so it is installed rather
     # than suppressed.
-    lines = _REQUIREMENTS.read_text(encoding="utf-8").splitlines()
-    declared = [ln for ln in lines if ln.strip().lower().startswith("types-pyyaml")]
-    assert len(declared) == 1
+    requirement_lines = _REQUIREMENTS.read_text(encoding="utf-8").splitlines()
+    types_pyyaml_declarations = [
+        requirement_line
+        for requirement_line in requirement_lines
+        if requirement_line.strip().lower().startswith("types-pyyaml")
+    ]
+    assert len(types_pyyaml_declarations) == 1
 
 
 def test_hooks_and_coverage_gate_carry_no_type_suppressions() -> None:
     # AC-4 / NFR-1: the config fix resolves these imports, so none of the three
     # files the errors pointed at needed a suppression of its own.
-    for relative in (
+    for relative_path in (
         "hooks/pre_write_guard.py",
         "hooks/pre_ticket_diff.py",
         "gates/coverage.py",
     ):
-        source = (_REPO_ROOT / relative).read_text(encoding="utf-8")
-        assert "type: ignore" not in source, relative
+        source = (_REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        assert "type: ignore" not in source, relative_path

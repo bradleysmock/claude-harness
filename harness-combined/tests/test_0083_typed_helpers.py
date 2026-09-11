@@ -10,7 +10,9 @@ edit cannot regress to the erasing form and quietly reintroduce the gate debt.
 from __future__ import annotations
 
 import inspect
+from dataclasses import fields
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 import test_0031_pr_comments as pr_comment_tests
@@ -21,7 +23,13 @@ import test_0067_incremental_scope as incremental_scope_tests
 from gates import pr_commenter
 from gates.finding import Finding
 
-_FINDING_FIELDS = ("file", "line", "severity", "code", "message")
+# Read off the dataclass rather than copied from it: the builders exist to mirror
+# `Finding`'s fields, so a sixth field should change what this expects, not fail it.
+_FINDING_FIELDS = tuple(finding_field.name for finding_field in fields(Finding))
+
+# The defaults, by contrast, are written out deliberately: they are the pre-fix
+# `base = dict(...)` values the typed builders must keep producing, so deriving
+# them from either builder would pin nothing.
 _FINDING_DEFAULTS = Finding(
     file="src/module.py",
     line=12,
@@ -34,21 +42,26 @@ _FINDING_DEFAULTS = Finding(
 @pytest.mark.parametrize(
     "module", [finding_key_tests, incremental_scope_tests], ids=["0062", "0067"]
 )
-def test_finding_builder_is_keyword_only_with_one_parameter_per_field(module: object) -> None:
+def test_finding_builder_is_keyword_only_with_one_parameter_per_field(
+    module: ModuleType,
+) -> None:
     # FR-4: the point of the replacement is that each field is a declared,
     # individually-typed parameter — a `**overrides` catch-all erases them all.
-    parameters = inspect.signature(getattr(module, "_f")).parameters
+    parameters = inspect.signature(module._f).parameters
     assert tuple(parameters) == _FINDING_FIELDS
-    assert all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert all(
+        parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        for parameter in parameters.values()
+    )
 
 
 @pytest.mark.parametrize(
     "module", [finding_key_tests, incremental_scope_tests], ids=["0062", "0067"]
 )
-def test_finding_builder_defaults_match_the_pre_fix_base_dict(module: object) -> None:
+def test_finding_builder_defaults_match_the_pre_fix_base_dict(module: ModuleType) -> None:
     # Behaviour preservation: the no-argument call must produce exactly what the
     # old `base = dict(...)` produced.
-    assert getattr(module, "_f")() == _FINDING_DEFAULTS
+    assert module._f() == _FINDING_DEFAULTS
 
 
 @pytest.mark.parametrize(
@@ -66,15 +79,15 @@ def test_finding_builder_defaults_match_the_pre_fix_base_dict(module: object) ->
     ],
 )
 def test_finding_builder_applies_overrides_field_by_field(
-    module: object, overrides: dict[str, object]
+    module: ModuleType, overrides: dict[str, object]
 ) -> None:
     # Every override the existing call sites use must land on its own field and
     # leave the other four at their defaults — the `base.update(overrides)`
     # semantics, now expressed as typed parameters.
-    built = getattr(module, "_f")(**overrides)
-    for field in _FINDING_FIELDS:
-        expected = overrides.get(field, getattr(_FINDING_DEFAULTS, field))
-        assert getattr(built, field) == expected
+    built = module._f(**overrides)
+    for field_name in _FINDING_FIELDS:
+        expected = overrides.get(field_name, getattr(_FINDING_DEFAULTS, field_name))
+        assert getattr(built, field_name) == expected
 
 
 def test_capture_comments_returns_the_captured_review_comment_list(
@@ -84,6 +97,8 @@ def test_capture_comments_returns_the_captured_review_comment_list(
     # It must return the very list the review payload carried, not a copy.
     capture = pr_comment_tests._Capture(monkeypatch)
     comments = [{"path": "a.py", "line": 1, "body": "one"}]
+    # `_Capture` has monkeypatched `_submit_review`, so this records the payload
+    # rather than calling `gh`; the second argument is the stub's unused `cwd`.
     pr_commenter._submit_review({"comments": comments}, None)
     assert capture.comments() is capture.review["comments"]
     assert capture.comments() == comments
@@ -111,4 +126,6 @@ def test_gate_fn_factory_binds_each_name_to_its_own_single_argument_callable(
 
     assert tuple(gate_fns) == names
     assert [gate_fns[name](str(tmp_path)).gate for name in names] == list(names)
-    assert all(len(inspect.signature(fn).parameters) == 1 for fn in gate_fns.values())
+    assert all(
+        len(inspect.signature(gate_fn).parameters) == 1 for gate_fn in gate_fns.values()
+    )
