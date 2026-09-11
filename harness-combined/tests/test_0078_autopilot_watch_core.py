@@ -185,9 +185,17 @@ def test_default_dispatch_uses_fully_qualified_command(
 
 
 def test_run_tick_no_candidates_returns_none(tmp_path: Path) -> None:
+    """Ticket 0082 widened this return shape with `needs_attention`/`reason`;
+    a quiet tick reports False/None, since there is nothing to look at."""
     repo = init_repo(tmp_path)
     result = watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda t: 0)
-    assert result == {"dispatched": None, "error": None, "exit_code": None}
+    assert result == {
+        "dispatched": None,
+        "error": None,
+        "exit_code": None,
+        "needs_attention": False,
+        "reason": None,
+    }
 
 
 def test_run_tick_surfaces_dispatch_exit_code(tmp_path: Path) -> None:
@@ -199,7 +207,16 @@ def test_run_tick_surfaces_dispatch_exit_code(tmp_path: Path) -> None:
     sha = head(worktree)
     approve(worktree, ticket_dir, sha)
     result = watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda t: 1)
-    assert result == {"dispatched": "0001", "error": None, "exit_code": 1}
+    assert result == {
+        "dispatched": "0001",
+        "error": None,
+        "exit_code": 1,
+        # The dispatch left the ticket at `solution` (this stub never touched
+        # status.md), which ticket 0082 classifies as stuck — a non-zero exit
+        # and an unmoved status are the same event seen two ways.
+        "needs_attention": True,
+        "reason": "unrecognized post-dispatch status: 'solution'",
+    }
 
 
 def test_run_tick_records_dispatch_before_invoking(tmp_path: Path) -> None:
@@ -218,7 +235,7 @@ def test_run_tick_records_dispatch_before_invoking(tmp_path: Path) -> None:
 
     result = watch.run_tick(repo, log_path, dispatch=failing_dispatch)
     assert result["dispatched"] == "0001"
-    assert "claude" in result["error"]
+    assert "claude" in str(result["error"])
     assert ("0001", sha) in seen_log_state["logged_before_dispatch"]
     assert ("0001", sha) in watch.load_dispatch_log(log_path)
 

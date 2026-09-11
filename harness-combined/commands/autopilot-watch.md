@@ -24,8 +24,65 @@ in-flight dispatch is terminated within a grace period. A no-op (not an
 error) if nothing is running. The interrupted ticket's dispatch-log entry is
 not rolled back — rerun `/autopilot XXXX` manually if the build didn't finish.
 
-`/autopilot-watch status` — reports running/not, PID, last tick time, and
-the last dispatch's outcome (including an interrupted or errored dispatch).
+`/autopilot-watch status` — reports running/not, PID, last tick time, the
+last dispatch's outcome (including an interrupted or errored dispatch), and a
+needs-attention summary: how many dispatches have ended in a state that wants
+the lead, plus the most recent one's ticket and reason.
+
+## When a dispatch needs attention
+
+After each dispatch returns, the watcher re-reads the target ticket's
+`status.md` and classifies the outcome from that file alone — never from log
+or stdout text. `status: done` is success. Anything else needs attention:
+`changes-requested` (repair exhausted), an unmoved `solution` (a score-spec
+bail), a build stuck at `implementing` or `review-ready`, a `status.md` that
+became unreadable mid-build (a concurrent `/cancel`, `/abandon`, or
+`/deliver`), or a dispatch that failed to launch at all.
+
+Every needs-attention outcome goes two places:
+
+- **A durable log** — one JSON line per outcome appended to
+  `.harness/autopilot-watch/needs-attention.jsonl`, carrying the ticket,
+  the reason, the observed status, and a timestamp. This is the record of
+  last resort: append-only, never overwritten, greppable.
+- **A desktop notification** — `osascript` on macOS, `notify-send` on Linux.
+  This is **best-effort** by design: if neither tool is present, or the
+  notification fails, the tick carries on and the log still has the entry.
+  Never rely on the notification alone.
+
+## Watching via Claude (`/loop`)
+
+For a conversational channel instead of an OS notification, run `/loop` in an
+interactive Claude Code session alongside the watcher. `/loop` is a **Claude
+Code built-in skill, not a harness command** — it ships with the CLI, so there
+is nothing to install and no new code here. It takes an interval and a prompt:
+
+```
+/loop 20m Run `bin/autopilot-watch status` in the project root. If the
+needs-attention count is higher than when you last checked, tell me which
+ticket and why in one line, and suggest the next step. Otherwise say
+"no change" in one line and stop.
+```
+
+The loop reads the same `needs-attention.jsonl` that `status` summarizes, so
+it reports the same facts the desktop notification would have — but in a
+session where the lead can immediately ask a follow-up or hand the ticket
+straight to `/review XXXX` or `/build XXXX`.
+
+Pick an interval longer than a typical build so one ticket isn't reported as
+"still going" on every tick; 20–30 minutes suits most builds. Omitting the
+interval entirely (`/loop <prompt>`) lets the model pace itself, which is
+worth preferring once you have a feel for how long your builds actually run.
+
+Note that the count `status` reports is cumulative — the log is append-only by
+design (see FR-4), so it never resets. The prompt above therefore asks for a
+comparison against the previous check rather than for the raw number, which
+only holds within one `/loop` session's memory.
+
+If `/loop` is not available in your Claude Code version, nothing here breaks:
+the needs-attention log and the `status` summary are plain files and a plain
+command. Run `bin/autopilot-watch status` by hand, or
+`tail -f .harness/autopilot-watch/needs-attention.jsonl` for a live view.
 
 ## What it dispatches
 

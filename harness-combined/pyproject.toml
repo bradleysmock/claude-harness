@@ -12,7 +12,11 @@ requires-python = ">=3.10"
 # ticket — this repo predates mypy needing this since ticket 0035 added the
 # second same-named file).
 explicit_package_bases = true
-mypy_path = "."
+# `tests/` is on the path because test modules import sibling helpers that are
+# deliberately not `test_*` (e.g. `_watch_fixtures`), which pytest resolves via
+# rootdir insertion but mypy otherwise cannot see at all. Without this, every
+# such import reads as `import-not-found`.
+mypy_path = ".:tests"
 
 [tool.bandit]
 # B102 (exec_used): server.py uses exec() to load harness-authored spec/task files
