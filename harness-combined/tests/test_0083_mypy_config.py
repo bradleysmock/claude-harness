@@ -34,20 +34,27 @@ def _mypy_config() -> dict[str, object]:
     return mypy_settings
 
 
+def _mypy_path_roots() -> list[str]:
+    """The `mypy_path` search roots, in declared order.
+
+    The `isinstance` narrowing lives here rather than at each assertion site:
+    `_mypy_config` returns `dict[str, object]`, so every `mypy_path` test would
+    otherwise repeat the same assert just to reach `.split(":")`.
+    """
+    mypy_search_path = _mypy_config()["mypy_path"]
+    assert isinstance(mypy_search_path, str)
+    return mypy_search_path.split(":")
+
+
 def test_mypy_path_includes_hooks() -> None:
     # FR-1: both hooks import a `_common` sibling that mypy cannot see at all
     # unless `hooks` is a search root — the same root cause as the `tests` entry.
-    mypy_search_path = _mypy_config()["mypy_path"]
-    assert isinstance(mypy_search_path, str)
-    assert "hooks" in mypy_search_path.split(":")
+    assert "hooks" in _mypy_path_roots()
 
 
 def test_mypy_path_keeps_its_existing_roots() -> None:
     # The `hooks` entry is appended, not a rewrite: `.` and `tests` still resolve.
-    mypy_search_path = _mypy_config()["mypy_path"]
-    assert isinstance(mypy_search_path, str)
-    roots = mypy_search_path.split(":")
-    assert roots[:2] == [".", "tests"]
+    assert _mypy_path_roots()[:2] == [".", "tests"]
 
 
 def test_sarif_is_the_only_mypy_override() -> None:

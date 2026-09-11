@@ -38,16 +38,22 @@ _FINDING_DEFAULTS = Finding(
     message="body",
 )
 
-
-@pytest.mark.parametrize(
-    "module", [finding_key_tests, incremental_scope_tests], ids=["0062", "0067"]
+# The two modules FR-4 retyped, shared by every builder test below. The ids name
+# the ticket each module belongs to, so a failure says which file regressed.
+_for_each_builder_module = pytest.mark.parametrize(
+    "builder_module",
+    [finding_key_tests, incremental_scope_tests],
+    ids=["0062", "0067"],
 )
+
+
+@_for_each_builder_module
 def test_finding_builder_is_keyword_only_with_one_parameter_per_field(
-    module: ModuleType,
+    builder_module: ModuleType,
 ) -> None:
     # FR-4: the point of the replacement is that each field is a declared,
     # individually-typed parameter — a `**overrides` catch-all erases them all.
-    parameters = inspect.signature(module._f).parameters
+    parameters = inspect.signature(builder_module._f).parameters
     assert tuple(parameters) == _FINDING_FIELDS
     assert all(
         parameter.kind is inspect.Parameter.KEYWORD_ONLY
@@ -55,18 +61,16 @@ def test_finding_builder_is_keyword_only_with_one_parameter_per_field(
     )
 
 
-@pytest.mark.parametrize(
-    "module", [finding_key_tests, incremental_scope_tests], ids=["0062", "0067"]
-)
-def test_finding_builder_defaults_match_the_pre_fix_base_dict(module: ModuleType) -> None:
+@_for_each_builder_module
+def test_finding_builder_defaults_match_the_pre_fix_base_dict(
+    builder_module: ModuleType,
+) -> None:
     # Behaviour preservation: the no-argument call must produce exactly what the
     # old `base = dict(...)` produced.
-    assert module._f() == _FINDING_DEFAULTS
+    assert builder_module._f() == _FINDING_DEFAULTS
 
 
-@pytest.mark.parametrize(
-    "module", [finding_key_tests, incremental_scope_tests], ids=["0062", "0067"]
-)
+@_for_each_builder_module
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -79,12 +83,12 @@ def test_finding_builder_defaults_match_the_pre_fix_base_dict(module: ModuleType
     ],
 )
 def test_finding_builder_applies_overrides_field_by_field(
-    module: ModuleType, overrides: dict[str, object]
+    builder_module: ModuleType, overrides: dict[str, object]
 ) -> None:
     # Every override the existing call sites use must land on its own field and
-    # leave the other four at their defaults — the `base.update(overrides)`
+    # leave every other field at its default — the `base.update(overrides)`
     # semantics, now expressed as typed parameters.
-    built = module._f(**overrides)
+    built = builder_module._f(**overrides)
     for field_name in _FINDING_FIELDS:
         expected = overrides.get(field_name, getattr(_FINDING_DEFAULTS, field_name))
         assert getattr(built, field_name) == expected
