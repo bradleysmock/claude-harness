@@ -152,3 +152,4 @@
 {"event":"delivered","number":81,"sha":"f0c57881d97efe405edad18b10e87eb30a0a7fb8","ts":"2026-09-10T20:30:00+00:00"}
 {"event":"delivered","number":82,"sha":"0167c225380b501f5c2b741375860d1e6994c366","ts":"2026-09-11T18:38:28+00:00"}
 {"event":"claim","number":83,"slug":"clear-type-check-debt-for-coverage-gate","title":"Clear repo-wide type_check debt so the coverage gate can run","owner":"bradleysmock@navapbc.com","branch":"ticket/0083-clear-type-check-debt-for-coverage-gate","ts":"2026-09-11T18:43:44+00:00"}
+{"event":"delivered","number":83,"sha":"9e0ab1910754037669b0f61d152377c3bb21f8ec","ts":"2026-09-11T21:09:05+00:00"}
