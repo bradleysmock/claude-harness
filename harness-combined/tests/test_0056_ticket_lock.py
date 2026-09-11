@@ -20,8 +20,8 @@ _REPO_ROOT = Path(__file__).parent.parent
 _GUARD_SPEC = importlib.util.spec_from_file_location(
     "ticket_commit_guard", _REPO_ROOT / "hooks" / "ticket_commit_guard.py"
 )
-guard = importlib.util.module_from_spec(_GUARD_SPEC)
 assert _GUARD_SPEC and _GUARD_SPEC.loader
+guard = importlib.util.module_from_spec(_GUARD_SPEC)
 _GUARD_SPEC.loader.exec_module(guard)
 
 # ── fixtures ────────────────────────────────────────────────────────────────

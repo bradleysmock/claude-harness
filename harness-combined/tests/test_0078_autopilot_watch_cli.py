@@ -86,6 +86,10 @@ def test_cli_tick_records_exit_code_in_outcome(tmp_path: Path, monkeypatch: pyte
     watch.cli_tick(repo)
     _, _, status_path = watch._state_paths(repo)
     outcome = watch.read_status_snapshot(status_path)["last_dispatch_outcome"]
+    # The snapshot is a `dict[str, object]`, so assert the shape before reading
+    # it as text. `str(outcome)` would pass here even if the field came back as
+    # None — the very shape violation this test should fail on.
+    assert isinstance(outcome, str)
     assert "0001" in outcome
     assert "exit 1" in outcome
 

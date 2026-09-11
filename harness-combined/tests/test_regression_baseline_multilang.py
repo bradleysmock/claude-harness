@@ -205,16 +205,24 @@ def test_load_baseline_cache_miss_computes_then_reads(monkeypatch, tmp_path: Pat
     _git_present(monkeypatch)
     calls = {"n": 0}
 
-    def compute(root, sha, timeout):
+    def compute(root: Path, sha: str, timeout: int) -> set[str] | None:
         calls["n"] += 1
         return {"x.py::a", "y.py::b"}
 
-    kw = dict(
-        merge_base_fn=lambda r, b: "deadbeef", compute_fn=compute,
+    # Both calls pass the same `compute`, so the call-once assertion below still
+    # measures the cache. Spelling the keywords out at each site keeps each
+    # callable's signature checkable — a shared `**kw` dict collapses four
+    # differently-shaped callables into one `dict[str, function]` value type.
+    first = bl.load_baseline(
+        tmp_path, "main", 180,
+        merge_base_fn=lambda root, base: "deadbeef", compute_fn=compute,
         read_cache=bl.read_failing_cache, write_cache=bl.write_failing_cache,
     )
-    first = bl.load_baseline(tmp_path, "main", 180, **kw)
-    second = bl.load_baseline(tmp_path, "main", 180, **kw)
+    second = bl.load_baseline(
+        tmp_path, "main", 180,
+        merge_base_fn=lambda root, base: "deadbeef", compute_fn=compute,
+        read_cache=bl.read_failing_cache, write_cache=bl.write_failing_cache,
+    )
     assert first == {"x.py::a", "y.py::b"}
     assert second == first
     assert calls["n"] == 1  # second call hit the cache
