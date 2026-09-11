@@ -79,7 +79,7 @@ def captured_notifications(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, s
 
 def test_run_tick_no_candidates_carries_the_widened_shape(tmp_path: Path) -> None:
     repo = init_repo(tmp_path)
-    result = watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda t: 0)
+    result = watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda ticket_info: 0)
     assert result == {
         "dispatched": None,
         "error": None,
@@ -93,7 +93,7 @@ def test_run_tick_no_candidates_logs_nothing(tmp_path: Path) -> None:
     """A quiet tick is not an attention event — nothing to look at, nothing
     logged, nothing notified."""
     repo = init_repo(tmp_path)
-    watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda t: 0)
+    watch.run_tick(repo, tmp_path / "log.jsonl", dispatch=lambda ticket_info: 0)
     assert attention_entries(repo) == []
 
 
