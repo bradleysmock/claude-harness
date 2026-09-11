@@ -52,15 +52,16 @@ Every needs-attention outcome goes two places:
 
 ## Watching via Claude (`/loop`)
 
-For a conversational channel instead of an OS notification, run the `/loop`
-skill in an interactive Claude Code session alongside the watcher. No extra
-code or configuration — `/loop` takes an interval and a prompt:
+For a conversational channel instead of an OS notification, run `/loop` in an
+interactive Claude Code session alongside the watcher. `/loop` is a **Claude
+Code built-in skill, not a harness command** — it ships with the CLI, so there
+is nothing to install and no new code here. It takes an interval and a prompt:
 
 ```
-/loop 10m Run `bin/autopilot-watch status` in the project root. If the
-needs-attention count went up since your last check, tell me which ticket
-and why in one line, and suggest the next step. If nothing changed, say so
-in one line and stop.
+/loop 20m Run `bin/autopilot-watch status` in the project root. If the
+needs-attention count is higher than when you last checked, tell me which
+ticket and why in one line, and suggest the next step. Otherwise say
+"no change" in one line and stop.
 ```
 
 The loop reads the same `needs-attention.jsonl` that `status` summarizes, so
@@ -68,9 +69,15 @@ it reports the same facts the desktop notification would have — but in a
 session where the lead can immediately ask a follow-up or hand the ticket
 straight to `/review XXXX` or `/build XXXX`.
 
-Pick an interval longer than a typical build so a single ticket isn't
-reported as "still going" on every tick. `/loop` with no interval lets the
-model pace itself, which is usually the better default here.
+Pick an interval longer than a typical build so one ticket isn't reported as
+"still going" on every tick; 20–30 minutes suits most builds. Omitting the
+interval entirely (`/loop <prompt>`) lets the model pace itself, which is
+worth preferring once you have a feel for how long your builds actually run.
+
+Note that the count `status` reports is cumulative — the log is append-only by
+design (see FR-4), so it never resets. The prompt above therefore asks for a
+comparison against the previous check rather than for the raw number, which
+only holds within one `/loop` session's memory.
 
 ## What it dispatches
 

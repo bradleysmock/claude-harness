@@ -73,7 +73,7 @@ def make_ticket_info(tmp_path: Path, status_text: str | None) -> watch.TicketInf
 def test_classify_done_is_success(tmp_path: Path) -> None:
     ticket_info = make_ticket_info(tmp_path, "status: done\nticket: 0001\n")
     assert watch._classify_outcome(ticket_info) == watch.ClassifyResult(
-        needs_attention=False, reason=None
+        needs_attention=False, reason=None, status="done"
     )
 
 
@@ -120,10 +120,65 @@ def test_classify_unreadable_status_md_does_not_raise(tmp_path: Path) -> None:
     assert result.reason.startswith("ticket state unreadable after dispatch:")
 
 
+def test_classify_invalid_utf8_status_md_is_unreadable_not_raised(tmp_path: Path) -> None:
+    """`Path.read_text(encoding="utf-8")` raises `UnicodeDecodeError` — a
+    `ValueError`, not an `OSError`. Guarding only `OSError` would let it escape
+    `run_tick` *after* `record_dispatch` had claimed the ticket, leaving it
+    undispatchable with nothing logged and nothing notified."""
+    ticket_info = make_ticket_info(tmp_path, None)
+    (ticket_info.ticket_dir / "status.md").write_bytes(b"status: \xff\xfe done\n")
+
+    result = watch._classify_outcome(ticket_info)
+
+    assert result.needs_attention is True
+    assert result.reason is not None
+    assert result.reason.startswith("ticket state unreadable after dispatch:")
+    assert result.status is None
+
+
+def test_classify_carries_the_observed_status(tmp_path: Path) -> None:
+    """The verdict and the status that gets logged come from one read, so a
+    log entry can never name a status the verdict didn't see."""
+    ticket_info = make_ticket_info(tmp_path, "status: implementing\n")
+    assert watch._classify_outcome(ticket_info).status == "implementing"
+
+
+def test_classify_clamps_a_hostile_status_in_the_reason(tmp_path: Path) -> None:
+    """`ticket._parse_status_lines` returns everything after the first colon,
+    so `status:` is effectively free text. The reason lands in a notification
+    body and in `cli_status`'s line-oriented output, so control characters must
+    not survive into it and its length must be bounded."""
+    hostile = "x" * 500 + "\x1b[31mred\x1b[0m\nsecond line"
+    ticket_info = make_ticket_info(tmp_path, f"status: {hostile}\n")
+
+    result = watch._classify_outcome(ticket_info)
+
+    assert result.reason is not None
+    assert "\x1b" not in result.reason
+    assert "\n" not in result.reason
+    assert len(result.reason) < 200
+    # The raw value is still preserved verbatim in the structured field.
+    assert result.status is not None
+    assert result.status.startswith("x" * 500)
+
+
 def test_classify_result_is_frozen() -> None:
     result = watch.ClassifyResult(needs_attention=True, reason="stalled")
     with pytest.raises(dataclasses.FrozenInstanceError):
         result.needs_attention = False  # type: ignore[misc]  # asserting immutability
+
+
+@pytest.mark.parametrize(
+    ("needs_attention", "reason"), [(True, None), (False, "a reason with no alert")]
+)
+def test_classify_result_rejects_an_inconsistent_pair(
+    needs_attention: bool, reason: str | None
+) -> None:
+    """The alerting path keys off both fields. A `needs_attention=True` with no
+    reason would report an alert while logging and notifying nothing, so the
+    invariant is enforced at construction rather than merely documented."""
+    with pytest.raises(ValueError, match="exactly when needs_attention"):
+        watch.ClassifyResult(needs_attention=needs_attention, reason=reason)
 
 
 # ---------------------------------------------------------------------------

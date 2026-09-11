@@ -53,12 +53,28 @@ class TicketInfo:
 class ClassifyResult:
     """How a finished dispatch read: success, or needs the lead's attention.
 
-    `reason` is None exactly when `needs_attention` is False — a needs-attention
-    outcome always carries the text that goes in the log and the notification.
+    `reason` is set exactly when `needs_attention` is True, enforced below
+    rather than merely documented: the alerting path keys off both, so a
+    violation would return "attention needed" while silently logging and
+    notifying nothing — the one outcome this whole module exists to prevent.
+
+    `status` is the status actually observed on disk, or None when there was no
+    status to observe: a launch that never ran, or a `status.md` that could not
+    be read. That makes the two distinguishable in the log by shape rather than
+    by prose — "the build ran and left the ticket at `solution`" and "the build
+    never started" are different events.
     """
 
     needs_attention: bool
     reason: str | None
+    status: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.needs_attention == (self.reason is None):
+            raise ValueError(
+                "ClassifyResult.reason must be set exactly when needs_attention is True; "
+                f"got needs_attention={self.needs_attention!r}, reason={self.reason!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -235,32 +251,61 @@ _NOTIFY_BODY_ENV = "HARNESS_WATCH_NOTIFY_BODY"
 #: iteration is cheap, a wedged `osascript` is not.
 _NOTIFY_TIMEOUT_SECONDS = 10
 
+#: Upper bound on any single value interpolated into a reason string. Keeps the
+#: promise that a reason is a short, factual one-liner — see
+#: `_one_printable_line` for why that has to be enforced, not just intended.
+_MAX_REASON_FIELD_CHARS = 120
+
 _NOTIFY_APPLESCRIPT = (
     f'display notification (system attribute "{_NOTIFY_BODY_ENV}") '
     f'with title (system attribute "{_NOTIFY_TITLE_ENV}")'
 )
 
 
-def _read_status_field(ticket_dir: Path) -> tuple[str, str | None]:
-    """The ticket's current `status:` value, and why it could not be read.
+def _one_printable_line(value: str, limit: int = _MAX_REASON_FIELD_CHARS) -> str:
+    """Bound and flatten a value before it goes into a reason string.
 
-    The read is split out from the classification below so the file is touched
-    exactly once per dispatch: `run_tick` needs both the verdict *and* the
-    observed status (for the log entry), and reading twice would let the two
-    disagree if the status moved in between.
+    The reason reaches three line-oriented consumers — the JSONL record,
+    the desktop-notification body, and `cli_status`'s output — and `status:`
+    is free text after the first colon as far as `ticket._parse_status_lines`
+    is concerned. An embedded newline or ANSI escape would corrupt the one
+    command a lead runs when something has already gone wrong, so the value is
+    clamped and stripped of non-printables here, at the single point where it
+    becomes prose.
+    """
+    printable = "".join(char if char.isprintable() else " " for char in value)
+    return printable[:limit]
 
-    Returns `(status, None)` on a successful read — where `status` is `""` for a
-    `status.md` carrying no `status:` field, matching `scan_worktree_tickets`'s
-    `fields.get("status", "")`. Returns `("", detail)` when the read raised.
+
+def _read_status_field(ticket_dir: Path) -> tuple[str | None, str | None]:
+    """The ticket's current `status:` value, or why it could not be read.
+
+    Exactly one element is None: `(status, None)` on a successful read,
+    `(None, detail)` when it failed. The read is split out from the pure
+    classification below so the file is touched exactly once per dispatch —
+    `run_tick` needs both the verdict *and* the observed status for the log
+    entry, and reading twice would let the two disagree if the status moved in
+    between.
+
+    `status` is `""` for a `status.md` carrying no `status:` field, matching
+    `scan_worktree_tickets`'s `fields.get("status", "")` — an absent field is
+    ordinary data, not a read failure.
+
+    Catches `ValueError` as well as `OSError`: `ticket.parse_status` reaches
+    `Path.read_text(encoding="utf-8")`, which raises `UnicodeDecodeError` — a
+    `ValueError` — on a `status.md` containing invalid UTF-8. That would
+    otherwise escape `run_tick` *after* `record_dispatch` had already claimed
+    the ticket, leaving it permanently undispatchable with nothing logged and
+    nothing notified: precisely the silent failure this module exists to close.
     """
     try:
         fields = ticket.parse_status(ticket_dir / "status.md")
-    except OSError as exc:
-        return "", str(exc)
+    except (OSError, ValueError) as exc:
+        return None, f"{type(exc).__name__}: {exc}"
     return fields.get("status", ""), None
 
 
-def _classify_status(status: str, read_error: str | None) -> ClassifyResult:
+def _classify_status(status: str | None, read_error: str | None) -> ClassifyResult:
     """Pure verdict over an already-read status — no I/O, no clock, no repo.
 
     An empty status is ordinary control flow and takes the unrecognized-status
@@ -271,17 +316,28 @@ def _classify_status(status: str, read_error: str | None) -> ClassifyResult:
     if read_error is not None:
         return ClassifyResult(
             needs_attention=True,
-            reason=f"ticket state unreadable after dispatch: {read_error}",
+            reason=(
+                "ticket state unreadable after dispatch: "
+                f"{_one_printable_line(read_error)}"
+            ),
+            status=None,
         )
-    if status == _SUCCESS_STATUS:
-        return ClassifyResult(needs_attention=False, reason=None)
+    observed = status or ""
+    if observed == _SUCCESS_STATUS:
+        return ClassifyResult(needs_attention=False, reason=None, status=observed)
     return ClassifyResult(
-        needs_attention=True, reason=f"unrecognized post-dispatch status: '{status}'"
+        needs_attention=True,
+        reason=f"unrecognized post-dispatch status: '{_one_printable_line(observed)}'",
+        status=observed,
     )
 
 
 def _classify_outcome(ticket_info: TicketInfo) -> ClassifyResult:
     """Re-read the ticket's `status.md` and decide whether the lead is needed.
+
+    This is the production classification path — `run_tick` calls it, and the
+    `status` it carries back is what the log entry records, so the verdict and
+    the logged status always come from the same single read.
 
     Deliberately re-reads from disk rather than trusting `ticket_info.status`:
     that field is the pre-dispatch snapshot, and since `find_dispatchable` only
@@ -298,7 +354,9 @@ def _classify_outcome(ticket_info: TicketInfo) -> ClassifyResult:
     return _classify_status(status, read_error)
 
 
-def _append_needs_attention(repo: Path, number: str, reason: str, status: str) -> None:
+def _append_needs_attention(
+    repo: Path, number: str, reason: str, status: str | None
+) -> None:
     """Append one durable JSON line about an outcome the lead has to look at.
 
     A plain `open(..., "a")` write, matching `_log_rejection` rather than
@@ -414,7 +472,13 @@ def run_tick(
     CLI `tick` entrypoint then exits non-zero, which the *shell* loop
     (`bin/autopilot-watch start`'s `while true; do tick; sleep N; done`,
     no `set -e`) simply proceeds past — the process boundary, not a broad
-    Python catch, is what keeps the watcher's outer loop alive (FR-9)."""
+    Python catch, is what keeps the watcher's outer loop alive (FR-9).
+
+    Once the dispatch resolves, the outcome is classified from the ticket's
+    on-disk `status.md` (ticket 0082). The returned dict therefore also carries
+    `needs_attention` and `reason`, and a needs-attention outcome has the
+    side effect of appending to the needs-attention log and firing a
+    best-effort desktop notification — see `_record_and_notify`."""
     dispatch_fn = dispatch if dispatch is not None else lambda t: default_dispatch(t, repo)
     candidates = find_dispatchable(repo, load_dispatch_log(log_path))
     if not candidates:
@@ -432,38 +496,41 @@ def run_tick(
     except OSError as exc:
         # A launch failure, distinct from the post-dispatch re-read failure
         # `_classify_status` reports: nothing ran, so there is no new ticket
-        # state to read and the launch error itself is the reason. The status
-        # logged is the pre-dispatch snapshot, which is still what's on disk.
-        return _report(
-            repo,
-            target,
-            ClassifyResult(needs_attention=True, reason=str(exc)),
-            target.status,
-            error=str(exc),
+        # state to observe and the launch error itself is the reason. The
+        # `status=None` is the discriminator — a log reader can tell "never
+        # started" from "ran and stalled at <status>" without parsing prose.
+        launch_failure = ClassifyResult(
+            needs_attention=True,
+            reason=_one_printable_line(str(exc)),
+            status=None,
         )
-    status, read_error = _read_status_field(target.ticket_dir)
-    return _report(
-        repo, target, _classify_status(status, read_error), status, exit_code=exit_code
-    )
+        return _record_and_notify(repo, target, launch_failure, error=launch_failure.reason)
+    return _record_and_notify(repo, target, _classify_outcome(target), exit_code=exit_code)
 
 
-def _report(
+def _record_and_notify(
     repo: Path,
     target: TicketInfo,
     outcome: ClassifyResult,
-    status: str,
     *,
     error: str | None = None,
     exit_code: int | None = None,
 ) -> dict[str, object]:
-    """Record a resolved dispatch and build `run_tick`'s return value.
+    """Act on a needs-attention outcome, then build `run_tick`'s return value.
 
-    The log append comes before the notification so a failed notifier can never
-    cost the durable record — the notification is best-effort, the log is not.
+    Named for the side effects rather than the return value, because the side
+    effects are the point: a needs-attention outcome is appended to the durable
+    log and pushed to the desktop. The append comes first so a failed notifier
+    can never cost the record — the notification is best-effort, the log is not.
+
+    `ClassifyResult.__post_init__` guarantees `reason` is set whenever
+    `needs_attention` is True, so this branch cannot fall through to logging
+    nothing while reporting an alert.
     """
-    if outcome.needs_attention and outcome.reason is not None:
-        _append_needs_attention(repo, target.number, outcome.reason, status)
-        _notify_desktop(target.number, outcome.reason)
+    if outcome.needs_attention:
+        reason = outcome.reason or ""
+        _append_needs_attention(repo, target.number, reason, outcome.status)
+        _notify_desktop(target.number, reason)
     return {
         "dispatched": target.number,
         "error": error,

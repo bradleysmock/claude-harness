@@ -185,7 +185,38 @@ def test_run_tick_dispatch_launch_failure_is_needs_attention(
     entries = attention_entries(repo)
     assert len(entries) == 1
     assert entries[0]["reason"] == result["reason"]
+    # `status: None` is the structural discriminator between "never launched"
+    # and "ran and stalled at <status>"; without it the two events would differ
+    # only in prose inside `reason`.
+    assert entries[0]["status"] is None
     assert captured_notifications == [("0001", result["reason"])]
+
+
+def test_run_tick_distinguishes_launch_failure_from_a_stalled_build(
+    tmp_path: Path, captured_notifications: list[tuple[str, str]]
+) -> None:
+    """Both are needs-attention, but a log reader must be able to tell them
+    apart without parsing the reason text."""
+    stalled_base = tmp_path / "stalled"
+    stalled_base.mkdir()
+    stalled_repo, ticket_dir = seed_dispatchable(stalled_base)
+    watch.run_tick(
+        stalled_repo,
+        tmp_path / "stalled-log.jsonl",
+        dispatch=leaving_status(ticket_dir, "changes-requested"),
+    )
+
+    launch_base = tmp_path / "launch"
+    launch_base.mkdir()
+    launch_repo, _ = seed_dispatchable(launch_base)
+
+    def failing_dispatch(ticket_info: watch.TicketInfo) -> int:
+        raise FileNotFoundError("claude: command not found")
+
+    watch.run_tick(launch_repo, tmp_path / "launch-log.jsonl", dispatch=failing_dispatch)
+
+    assert attention_entries(stalled_repo)[0]["status"] == "changes-requested"
+    assert attention_entries(launch_repo)[0]["status"] is None
 
 
 def test_run_tick_still_propagates_a_non_os_error(
