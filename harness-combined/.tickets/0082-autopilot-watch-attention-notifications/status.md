@@ -1,4 +1,4 @@
-status: implementing
+status: review-ready
 ticket: 0082
 title: Notify the lead when autopilot-watch dispatches need attention
 type: feature
