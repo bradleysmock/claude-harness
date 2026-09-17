@@ -155,3 +155,4 @@
 {"event":"delivered","number":83,"sha":"9e0ab1910754037669b0f61d152377c3bb21f8ec","ts":"2026-09-11T21:09:05+00:00"}
 {"event":"claim","number":84,"slug":"mcp-dependency-unpinned-major-break","title":"Pin mcp dependency below 2.0 to prevent server crash on fresh venv install","owner":"bradleysmock@navapbc.com","branch":"ticket/0084-mcp-dependency-unpinned-major-break","ts":"2026-09-17T17:04:06+00:00"}
 {"event":"delivered","number":84,"sha":"bc35166fa05b11c3423c387d4d8d18e2b7127d02","ts":"2026-09-17T19:46:43+00:00"}
+{"event":"claim","number":85,"slug":"reorganize-root-python-modules","title":"Reorganize harness-combined's flat root Python modules into a subpackage","owner":"bradleysmock@navapbc.com","branch":"ticket/0085-reorganize-root-python-modules","ts":"2026-09-17T21:19:38+00:00"}
