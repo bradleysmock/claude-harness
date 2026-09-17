@@ -1,4 +1,4 @@
-status: solution
+status: implementing
 ticket: 0084
 title: Pin mcp dependency below 2.0 to prevent server crash on fresh venv install
 type: bug
