@@ -26,9 +26,13 @@ BOOTSTRAP_PY="${HARNESS_PYTHON:-python3}"
 
 log() { printf 'harness-server: %s\n' "$1" >&2; }
 
-# (Re)bootstrap when the venv interpreter is missing or `mcp` won't import
-# (e.g. a half-built venv, or requirements changed since last run).
-if [ ! -x "$PY" ] || ! "$PY" -c 'import mcp' >/dev/null 2>&1; then
+# (Re)bootstrap when the venv interpreter is missing or the import server.py
+# needs won't resolve (e.g. a half-built venv, requirements changed since last
+# run, or a venv left on mcp 2.x, which renamed FastMCP and dropped this
+# submodule). The probe deliberately mirrors server.py's own import line — that
+# line is the source of truth, so change both together. A bare `import mcp`
+# still succeeds under 2.x, which is why it never triggered the repair.
+if [ ! -x "$PY" ] || ! "$PY" -c 'from mcp.server.fastmcp import FastMCP' >/dev/null 2>&1; then
   log "bootstrapping virtualenv at $VENV (first launch may take ~30s)"
   if ! command -v "$BOOTSTRAP_PY" >/dev/null 2>&1; then
     log "ERROR: '$BOOTSTRAP_PY' not found on PATH; set HARNESS_PYTHON to a python3"
