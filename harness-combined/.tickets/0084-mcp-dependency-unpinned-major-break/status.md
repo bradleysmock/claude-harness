@@ -1,6 +1,9 @@
-status: claimed
+status: solution
 ticket: 0084
 title: Pin mcp dependency below 2.0 to prevent server crash on fresh venv install
+type: bug
+effort: small
+milestone:
 branch: ticket/0084-mcp-dependency-unpinned-major-break
 owner: bradleysmock@navapbc.com
 source: local
