@@ -9,3 +9,5 @@ owner: bradleysmock@navapbc.com
 source: local
 external_id:
 updated: 2026-09-17
+approved-at: 2026-09-17
+approved-commit: 4952652a77ab8814034f523ca56d689291f95c68
