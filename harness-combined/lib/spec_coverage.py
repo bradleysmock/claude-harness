@@ -1,4 +1,4 @@
-# harness-combined/spec_coverage.py
+# harness-combined/lib/spec_coverage.py
 """Spec coverage map: match a ticket's requirements to the specs that cover them.
 
 Parses ``requirements.md`` (FRs + ACs) and the ticket's spec ``.py`` files, matches

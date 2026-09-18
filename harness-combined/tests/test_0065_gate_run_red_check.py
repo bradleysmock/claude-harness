@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("mcp")
 
-import server  # noqa: E402 - after importorskip guard
+from lib import server  # noqa: E402 - after importorskip guard
 
 
 def test_proceeds_on_red(tmp_path: Path) -> None:

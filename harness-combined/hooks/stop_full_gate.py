@@ -54,7 +54,7 @@ def _load_repair_integrity() -> ModuleType | None:
     """Load gates/repair_integrity.py by file path (FR-4).
 
     Loading by path deliberately bypasses ``gates/__init__.py`` (which imports
-    the ``models`` package) so the Stop hook never drags in the full gate suite.
+    ``lib.models``) so the Stop hook never drags in the full gate suite.
     Returns None if the module cannot be found — the suppression section is then
     simply omitted rather than crashing the hook.
     """
@@ -273,7 +273,7 @@ def gates_python(worktree_dir: Path) -> StackReport:
 
     # Remap paths to be relative to python_root; skip files outside it.
     # changed_files() returns paths relative to worktree_dir (git root), e.g.
-    # "harness-combined/server.py". When python_root is a subdirectory we strip
+    # "harness-combined/lib/server.py". When python_root is a subdirectory we strip
     # the prefix so tools run correctly from python_root.
     if python_root != worktree_dir:
         rel_prefix = python_root.relative_to(worktree_dir)

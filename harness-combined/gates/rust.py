@@ -19,7 +19,7 @@ from gates import (
     tool_skipped,
 )
 from gates._scope import GateSpec, has_scope_match
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 try:  # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport
     import tomllib

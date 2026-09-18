@@ -75,7 +75,7 @@ internally, so both call sites share one tested implementation instead of two pr
 copies:
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" sanitize "<errors text>"
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/learnings.py" sanitize "<errors text>"
 ```
 
 Its procedure, in order: 1. strip lines beginning with `##`, 2. strip `<...>`

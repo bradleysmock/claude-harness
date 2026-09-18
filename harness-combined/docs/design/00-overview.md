@@ -105,11 +105,13 @@ No worktree, no critic, no checkpoint — the gate engine and failure memory are
 
 ```
 harness-combined/
-├── server.py, models.py, memory.py, dag.py     ← MCP server core (see 03-mcp-server.md)
-├── ticket.py, ticket_deps.py, ticket_templates.py  ← ticket state machine, dependency graph, templates
-├── audit.py, health.py, flaky_detect.py, learnings.py, panel_detect.py,
-│   context_rank.py, dry_run.py, sarif_output.py, spec_coverage.py, mode_branch.py
-│                                                ← supporting Python modules (see 03-mcp-server.md)
+├── lib/                                         ← every implementation module (see 03-mcp-server.md)
+│   ├── server.py, models.py, memory.py, dag.py          ← MCP server core
+│   ├── ticket.py, ticket_deps.py, ticket_templates.py   ← ticket state machine, dependency graph, templates
+│   ├── audit.py, health.py, flaky_detect.py, learnings.py, panel_detect.py,
+│   │   context_rank.py, dry_run.py, sarif_output.py, spec_coverage.py,
+│   │   mode_branch.py, autopilot_watch.py               ← supporting modules
+├── conftest.py                                  ← the only .py file at the root (pytest sys.path setup)
 ├── gates/                                       ← every gate implementation (see 01-gates-and-hooks.md)
 ├── hooks/                                       ← the five registered hooks (see 01-gates-and-hooks.md)
 ├── commands/                                    ← 30 slash commands (see 02-commands-and-skills.md)

@@ -27,7 +27,9 @@ def test_target_files_exist():
 
 
 def test_panel_detect_script_exists():
-    assert (ROOT / "panel_detect.py").is_file(), "panel_detect.py must exist at repo root"
+    assert (ROOT / "lib" / "panel_detect.py").is_file(), (
+        "panel_detect.py must exist in the lib/ package"
+    )
 
 
 # --- FR-10: SKILL.md table removed, script invocation mandated ---

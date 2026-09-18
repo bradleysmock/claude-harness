@@ -37,7 +37,7 @@ from pathlib import Path
 
 from gates._scope import _compile_pattern
 from gates.external import ExternalGateSpec
-from models import StackName
+from lib.models import StackName
 
 #: Upper bound on argv length for a single override (defense-in-depth).
 _MAX_ARGS = 32

@@ -36,7 +36,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 # ── Error / status codes ──────────────────────────────────────────────────────
 COVERAGE_BELOW_THRESHOLD = "COVERAGE_BELOW_THRESHOLD"

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import gates
 from gates import python as pymod
 from gates.python import run_python_suite_on_dir
-from models import GateResult
+from lib.models import GateResult
 
 
 def test_override_argv_is_run_without_shell(monkeypatch, tmp_path: Path) -> None:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from mode_branch import is_autopilot_mode
+from lib.mode_branch import is_autopilot_mode
 
 
 @pytest.mark.parametrize(

@@ -39,7 +39,7 @@ Enumerate from the ledger, which already joins the worktree's fine
 `status`/`effort`/`depends_on` and `main`'s `completed/`:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" list-json
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" list-json
 ```
 
 Its rows carry exactly the fields `compute.py` needs (`number`, `title`,

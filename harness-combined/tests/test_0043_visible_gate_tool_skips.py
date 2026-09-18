@@ -20,9 +20,9 @@ from pathlib import Path
 
 import gates.go as go
 import gates.rust as rust
-import server
 from gates import tool_skipped
-from models import GateError, GateResult, LanguageResult, StackName
+from lib import server
+from lib.models import GateError, GateResult, LanguageResult, StackName
 
 ROOT = Path(__file__).parent.parent
 HOOKS = ROOT / "hooks"

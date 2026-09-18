@@ -162,7 +162,8 @@ def _build_fake_plugin_root(root: Path, *, venv_has_fastmcp: bool) -> Path:
     (root / "bin").mkdir(parents=True)
     shutil.copy2(LAUNCHER, root / "bin" / "harness-server")
     (root / "requirements.txt").write_text("mcp>=1.0,<2.0\n", encoding="utf-8")
-    (root / "server.py").write_text(
+    (root / "lib").mkdir()
+    (root / "lib" / "server.py").write_text(
         f"{REQUIRED_IMPORT}\n\nprint({SERVER_STARTED_MARKER!r})\n", encoding="utf-8"
     )
 

@@ -30,7 +30,7 @@ from _watch_fixtures import (
     seed_ticket_branch_and_worktree,
 )
 
-import autopilot_watch as watch
+from lib import autopilot_watch as watch
 
 _MODULE_PATH = str(Path(watch.__file__).resolve())
 _BIN_SHIM = Path(__file__).resolve().parent.parent / "bin" / "autopilot-watch"

@@ -180,7 +180,7 @@ The **claim** appends a `claim` line to the `harness-tickets` ledger (pushed fir
 After finalizing a transition, commit **only that ticket's metadata** — a scoped add, so unrelated working-tree changes are never swept in. On the branch, use the helper so the commit and the branch push are atomic:
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX <status> --push
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" set-status XXXX <status> --push
 ```
 
 which is equivalent to a scoped `git add .tickets/XXXX-<slug>/` + `git commit` + a push of the current branch (setting upstream on first push).
@@ -188,13 +188,13 @@ which is equivalent to a scoped `git add .tickets/XXXX-<slug>/` + `git commit` +
 `/deliver` folds the terminal `→ done` and the `completed/<slug>/` archive into the single squash commit (see **Squash delivery**) and appends a `delivered` ledger event. `/cancel` and `/abandon` are **main-free**: the helper appends a `cancelled`/`abandoned` ledger event, archives the ticket docs onto `harness-tickets`, and deletes the branch + worktree — no terminal commit on `main`:
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" cancel XXXX --push    # or: abandon
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" cancel XXXX --push    # or: abandon
 ```
 
 For `/reopen`, a fresh branch is forked from `main` HEAD and the dir is restored from its archive (`main`'s `completed/` for a delivered ticket via `git rm -r --cached` + `git add`, or `harness-tickets` for a cancelled one), committed **on the fresh branch** (not `main`) at `status: solution`, plus a `reopened` ledger event:
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" reopen XXXX --push
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" reopen XXXX --push
 ```
 
 Rules:

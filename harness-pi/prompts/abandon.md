@@ -21,7 +21,7 @@ If a ticket number is provided, scan `.tickets/<arg>*/` then `.tickets/completed
 
 6. **Set status to abandoned** with the helper (atomic edit + scoped commit + push):
 
-   `python3 "/Users/bradley/workspaces/claude-harness/harness-combined/ticket.py" set-status XXXX abandoned --push`
+   `python3 "/Users/bradley/workspaces/claude-harness/harness-combined/lib/ticket.py" set-status XXXX abandoned --push`
 
 7. **Archive the ticket directory** to `.tickets/completed/` using the same mv + `git rm -r --cached` + `git add -- .tickets/completed/XXXX-<slug>/` + commit pattern as `/cancel` Step 8, then `git push`. Apply the same **Idempotency** and **Partial-move guard** rules. This is always a separate commit.
 

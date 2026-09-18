@@ -82,7 +82,7 @@ marker's contents (the `/refine` audit trail), then stop and ask the lead to
 confirm before delivering — do **not** skip the confirmation. Deliver only on
 explicit approval.
 
-**Audit (0075)**: on approval, `audit.record("confirm-scope-drift", "XXXX", "approved delivery despite refine-touched scope", root=project_root)`.
+**Audit (0075)**: on approval, `lib.audit.record("confirm-scope-drift", "XXXX", "approved delivery despite refine-touched scope", root=project_root)`.
 
 Otherwise (a clean build, or Step S cleared the BLOCK with mechanical fixes only —
 `succeeded(autonomous=True)` — or Step S was never entered), read

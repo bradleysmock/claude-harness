@@ -62,7 +62,7 @@ delegating to `ticket_deps.py` — do **not** re-implement graph logic in prose:
 
 ```python
 from pathlib import Path
-from ticket_deps import parse_deps, mermaid_diagram, topo_layers
+from lib.ticket_deps import parse_deps, mermaid_diagram, topo_layers
 
 graph = parse_deps(Path(".tickets"))            # scans .tickets/ and .tickets/completed/
 diagram = mermaid_diagram(graph)                # Mermaid `graph TD`, labels sanitized

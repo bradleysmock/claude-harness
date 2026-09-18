@@ -71,11 +71,11 @@ Both directions read the same opaque trail; neither ever writes to the lead-cura
 
 ---
 
-## Supporting root modules
+## Supporting modules in `lib/`
 
-These aren't MCP tools — they're imported directly by flow procedures, hooks, or `ticket.py`'s CLI entry point.
+These aren't MCP tools — they're imported directly by flow procedures, hooks, or `lib/ticket.py`'s CLI entry point. All of them, `server.py` included, live in the `lib/` package at the plugin root (ticket 0085); only `conftest.py` sits flat beside it.
 
-- **`ticket.py`** — the ticket state machine's Python backbone, and a de facto CLI (`python3 ticket.py set-status ...`, invoked directly from flow docs). Key functions: `claim()` (ledger-coordinated, push-first-wins number assignment with file-lock + retry), `deliver_commit` / `deliver_publish` / `deliver_squash` / `deliver_squash_batch` (squash-merge, archive, ledger event), `cancel` / `abandon` / `reopen` / `migrate`, plus a private atomic ticket-lock implementation (`O_CREAT|O_EXCL`, staleness detection via PID liveness).
+- **`ticket.py`** — the ticket state machine's Python backbone, and a de facto CLI (`python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" set-status ...`, invoked directly from flow docs). Key functions: `claim()` (ledger-coordinated, push-first-wins number assignment with file-lock + retry), `deliver_commit` / `deliver_publish` / `deliver_squash` / `deliver_squash_batch` (squash-merge, archive, ledger event), `cancel` / `abandon` / `reopen` / `migrate`, plus a private atomic ticket-lock implementation (`O_CREAT|O_EXCL`, staleness detection via PID liveness).
 - **`ticket_deps.py`** — the `depends-on:` graph layer: `build_graph`, `check_cycle`/`assert_acyclic`, `topo_layers` (Kahn), `mermaid_diagram`, and `assert_acyclic_with_proposed` (overlays an about-to-be-written ticket onto the loaded graph before checking, so a cycle introduced by the edge being authored is caught before it's persisted).
 - **`ticket_templates.py`** — pure library backing `/problem`'s templating: `infer_category` (keyword heuristic), `load_template` (per-category templates), `load_custom_sections`/`merge_sections` (lead-defined sections from `_standards.md`), `enforce_line_limit`.
 - **`audit.py`** — `record(action, ticket, detail, root)` appends one JSON line to `.harness/audit.log` via a single atomic `os.write()` on an append-only fd. Identity resolution falls back `git config user.name` → `$USER` → `getpass.getuser()` → `"unknown"`, fail-open by design — a logging failure must never look like the real operation failed.

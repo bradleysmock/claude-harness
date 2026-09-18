@@ -21,7 +21,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 # The standard conventional-commit type set (FR-6), plus `polish` — the
 # type build-ticket.md's craft-polish step (7b.5) itself mandates for an

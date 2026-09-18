@@ -14,10 +14,10 @@ If a ticket number is provided, resolve it from the `harness-tickets` ledger's `
 
 4. **Abandon via the helper** — one main-free transaction (ledger `abandoned` event pushed first-wins, docs archived onto `harness-tickets`, worktree + branch removed local and origin):
 
-   `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" abandon XXXX --push`
+   `python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" abandon XXXX --push`
 
    Idempotent by `(event, number)` — a second run appends nothing and only finishes cleanup.
 
-5. **Audit record (ticket 0075).** `audit.record("abandon", "XXXX", "lead-confirmed abandon", root=project_root)`.
+5. **Audit record (ticket 0075).** `lib.audit.record("abandon", "XXXX", "lead-confirmed abandon", root=project_root)`.
 
 6. **Report completion.** Note that **no `main` commit was made**, the docs are archived on `harness-tickets`, and that `/reopen XXXX` restores the ticket onto a fresh branch.

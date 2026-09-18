@@ -5,8 +5,9 @@ import sys
 
 import pytest
 
-# The gate runner's modules (`gates`, `server`, `models`) are top-level at the
-# plugin root. Put that root on sys.path so the test suite can import them.
+# The gate runner's code lives in two packages at the plugin root: `gates` and
+# `lib` (which holds `lib.server`, `lib.models`, and the rest). Put that root on
+# sys.path so the test suite can import both by their qualified names.
 sys.path.insert(0, os.path.dirname(__file__))
 
 
@@ -20,6 +21,6 @@ def _silence_desktop_notifications(monkeypatch: pytest.MonkeyPatch) -> None:
     Tests that exercise the notifier itself hold a module-level reference to the
     real function captured at import time and call that instead.
     """
-    import autopilot_watch
+    from lib import autopilot_watch
 
     monkeypatch.setattr(autopilot_watch, "_notify_desktop", lambda number, reason: None)

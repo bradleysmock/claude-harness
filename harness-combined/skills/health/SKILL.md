@@ -13,14 +13,14 @@ indicator per gate. It writes nothing — it only reads `gate-findings.md` files
 
 ## Step 1 — Run the dashboard
 
-Run `health.py` from the project root (where `.tickets/` lives). The module does all
-data collection, computation, and formatting; the skill stays thin.
+Run it with the project root (where `.tickets/` lives) as its argument. The module
+does all data collection, computation, and formatting; the skill stays thin.
 
 ```bash
-python3 health.py .
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/health.py" .
 ```
 
-`health.py` exposes two functions the CLI wires together:
+`lib/health.py` exposes two functions the CLI wires together:
 
 - `health_report(project_root)` — validates `project_root` (raises `ValueError` if it
   is not an existing directory), discovers up to 10 most-recent `gate-findings.md`

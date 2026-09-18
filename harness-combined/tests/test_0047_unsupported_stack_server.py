@@ -14,8 +14,8 @@ import pytest
 
 pytest.importorskip("mcp")
 
-import server  # noqa: E402 - after importorskip guard
-from models import GateResult, StackName  # noqa: E402
+from lib import server  # noqa: E402 - after importorskip guard
+from lib.models import GateResult, StackName  # noqa: E402
 
 
 def test_java_only_dir_returns_unsupported_error(tmp_path: Path) -> None:

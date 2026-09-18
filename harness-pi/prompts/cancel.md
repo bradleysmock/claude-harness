@@ -44,10 +44,10 @@ If a ticket number is provided as an argument, scan `.tickets/<arg>*/` first, th
 
 7. **Update ticket status** via the helper (atomic edit + scoped commit + push — `cancelled` is a terminal `main` state). The worktree was removed in Step 3, so this runs against `main`:
    ```
-   python3 "/Users/bradley/workspaces/claude-harness/harness-combined/ticket.py" set-status XXXX cancelled --push
+   python3 "/Users/bradley/workspaces/claude-harness/harness-combined/lib/ticket.py" set-status XXXX cancelled --push
    ```
 
-   Under `--abandon`, set `abandoned` instead: `python3 "/Users/bradley/workspaces/claude-harness/harness-combined/ticket.py" set-status XXXX abandoned --push`.
+   Under `--abandon`, set `abandoned` instead: `python3 "/Users/bradley/workspaces/claude-harness/harness-combined/lib/ticket.py" set-status XXXX abandoned --push`.
 
 8. **Archive the ticket directory.**
    Move the ticket out of the active root into the completed subfolder:

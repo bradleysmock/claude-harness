@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-import flaky_detect
-from flaky_detect import (
+from lib import flaky_detect
+from lib.flaky_detect import (
     FlakyReport,
     FlakyTest,
     annotate_failures,

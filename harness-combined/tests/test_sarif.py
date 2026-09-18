@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from models import GateError, GateResult
-from sarif_output import build_sarif, sarif_optin_enabled, write_sarif
+from lib.models import GateError, GateResult
+from lib.sarif_output import build_sarif, sarif_optin_enabled, write_sarif
 
 
 def _err(
@@ -153,7 +153,7 @@ def test_write_sarif_atomic_via_tempfile(tmp_path: Path, monkeypatch: pytest.Mon
         seen["dir"] = str(kwargs.get("dir"))
         return real_mkstemp(*args, **kwargs)
 
-    monkeypatch.setattr("sarif_output.tempfile.mkstemp", spy)
+    monkeypatch.setattr("lib.sarif_output.tempfile.mkstemp", spy)
     doc = build_sarif([GateResult("ruff", False, [_err()], 1)], "/repo")
     assert write_sarif(doc, out) is True
     assert seen["dir"] == str(out.parent)
@@ -167,7 +167,7 @@ def test_write_sarif_returns_false_on_exdev(tmp_path: Path, monkeypatch: pytest.
     def boom(src: object, dst: object) -> None:
         raise OSError(errno.EXDEV, "cross-device")
 
-    monkeypatch.setattr("sarif_output.os.replace", boom)
+    monkeypatch.setattr("lib.sarif_output.os.replace", boom)
     doc = build_sarif([GateResult("ruff", False, [_err()], 1)], "/repo")
     assert write_sarif(doc, out) is False
     assert not out.exists()
@@ -186,7 +186,7 @@ def test_write_sarif_creates_missing_parent(tmp_path: Path) -> None:
 # ── integration: gate_run_on_dir emit_sarif wiring ───────────────────────────
 
 pytest.importorskip("mcp")
-import server  # noqa: E402 - after importorskip guard
+from lib import server  # noqa: E402 - after importorskip guard
 
 
 def _fake_suite_with_findings(stack: object, directory: str, **kwargs: object) -> list[GateResult]:
@@ -217,7 +217,7 @@ def test_emit_sarif_true_writes_valid_file(tmp_path: Path, monkeypatch: pytest.M
 def test_emit_sarif_write_failure_is_non_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # FR-10 fail: a write failure surfaces sarif_write_failed and never crashes.
     monkeypatch.setattr(server, "run_suite_on_dir", _fake_suite_with_findings)
-    monkeypatch.setattr("sarif_output.write_sarif", lambda doc, path: False)
+    monkeypatch.setattr("lib.sarif_output.write_sarif", lambda doc, path: False)
     out = json.loads(
         server.gate_run_on_dir(str(tmp_path), "python", str(tmp_path), fail_fast=False, emit_sarif=True)
     )

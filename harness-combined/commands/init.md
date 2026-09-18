@@ -65,10 +65,10 @@ Ensure each of these entries is present in `.gitignore` (append any that are mis
 Ticket-number allocation and the coarse lifecycle log live on a dedicated orphan `harness-tickets` branch (an append-only `ledger.jsonl`; the design names it `.harness-tickets`, but a git ref may not begin with a dot). Ensure it exists — a no-op when it already does, and it never disturbs the working tree or `main`:
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" ensure-branch --push
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" ensure-branch --push
 ```
 
-This creates the orphan branch with an empty ledger and pushes it to `origin` (when a remote exists). If you are adopting the harness on a repo that already has `.tickets/*` and `.tickets/completed/*` from the pre-ledger model, seed the ledger once with `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" migrate --push` (idempotent — it emits a `claim` per existing ticket and a terminal event per completed one, then continues numbering without collision).
+This creates the orphan branch with an empty ledger and pushes it to `origin` (when a remote exists). If you are adopting the harness on a repo that already has `.tickets/*` and `.tickets/completed/*` from the pre-ledger model, seed the ledger once with `python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" migrate --push` (idempotent — it emits a `claim` per existing ticket and a terminal event per completed one, then continues numbering without collision).
 
 ### 5 — Write lead-curated stub files
 
@@ -136,7 +136,7 @@ Uncomment to have `/deliver` run a smoke test against `main` after the squash-me
 Create this by calling `learnings.py` rather than hand-authoring the header text, so this stub and the one `append_learnings()` writes when `_learnings.md` is unexpectedly absent at delivery time can never diverge — both source the same `STUB_HEADER` constant:
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" stub .tickets/_learnings.md
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/learnings.py" stub .tickets/_learnings.md
 ```
 
 This is idempotent and skip-safe: it writes the stub only if the file does not already exist, matching "skip whichever file already exists. Do not overwrite." above. The written header documents the lead-curated, append-only contract (`/deliver` and `/harvest-learnings` append only after the lead accepts each candidate, via a template-field-only write path — never raw extracted text) and the `<date> | <gate> | <ticket> | <pattern>` format, with worked examples the lead deletes once real entries accumulate.

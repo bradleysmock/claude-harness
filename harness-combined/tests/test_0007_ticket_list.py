@@ -333,14 +333,15 @@ def test_valid_stages_is_canonical():
 
 
 def write_ledger_stub(plugin_dir: Path, rows: list[dict]) -> None:
-    """Create a stub `ticket.py` whose `list-json` subcommand prints ``rows`` — the
-    shape the real `ticket.py list-json` emits from the ledger
+    """Create a stub `lib/ticket.py` whose `list-json` subcommand prints ``rows`` —
+    the shape the real `lib/ticket.py list-json` emits from the ledger
     (``{number, slug, title, status, effort, depends_on, branch, completed, ...}``).
     ``rows`` is written to a sidecar JSON file the stub loads, so no test data is
     baked into the generated script body."""
-    plugin_dir.mkdir(parents=True, exist_ok=True)
-    (plugin_dir / "ledger_rows.json").write_text(json.dumps(rows), encoding="utf-8")
-    (plugin_dir / "ticket.py").write_text(
+    lib_dir = plugin_dir / "lib"
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    (lib_dir / "ledger_rows.json").write_text(json.dumps(rows), encoding="utf-8")
+    (lib_dir / "ticket.py").write_text(
         "import sys\n"
         "from pathlib import Path\n"
         "if sys.argv[1:2] == ['list-json']:\n"
@@ -352,10 +353,11 @@ def write_ledger_stub(plugin_dir: Path, rows: list[dict]) -> None:
 
 
 def write_failing_stub(plugin_dir: Path) -> None:
-    """A stub `ticket.py` whose `list-json` exits non-zero — models an unreachable
+    """A stub `lib/ticket.py` whose `list-json` exits non-zero — models an unreachable
     or erroring engine, which must degrade to the `.tickets/*` legacy scan."""
-    plugin_dir.mkdir(parents=True, exist_ok=True)
-    (plugin_dir / "ticket.py").write_text(
+    lib_dir = plugin_dir / "lib"
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    (lib_dir / "ticket.py").write_text(
         "import sys\nsys.exit(1)\n", encoding="utf-8"
     )
 

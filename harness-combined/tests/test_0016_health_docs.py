@@ -31,7 +31,10 @@ def test_skill_frontmatter_names_health():
 
 def test_skill_wires_module_entry_points():
     text = SKILL.read_text(encoding="utf-8")
-    assert "health.py" in text
+    # The full plugin-root path, not a bare `health.py`: a bare substring reads
+    # the same whether the module sits at the plugin root or under `lib/`, so it
+    # cannot catch a relocation (ticket 0085).
+    assert "${CLAUDE_PLUGIN_ROOT}/lib/health.py" in text
     assert "health_report" in text
     assert "format_report" in text
     assert "stdout" in text

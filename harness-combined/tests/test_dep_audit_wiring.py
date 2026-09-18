@@ -14,7 +14,7 @@ import pytest
 from gates import run_suite_on_dir
 from gates.dep_audit import GateError as DepError
 from gates.dep_audit import GateResult as DepResult
-from models import GateResult as ModelResult
+from lib.models import GateResult as ModelResult
 
 
 def _lang_ok() -> list[ModelResult]:

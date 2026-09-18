@@ -18,8 +18,8 @@ A test is flaky when, across the runs, it has **at least one PASS and at least o
 ## Steps
 
 1. **Resolve the directory** to run tests in (default: the project root). Resolve it with `Path.resolve()` and verify it is **contained within** the project root before anything else — a directory that escapes the project root raises `ValueError` and aborts (no subprocess is launched).
-2. **Run detection**: call `flaky_detect.run_detection(directory, runs, threshold, project_root)`. It invokes pytest (`--tb=no -v`) `runs` times in sequence, parses per-test PASSED/FAILED results, and aggregates pass/fail counts per test. The suite is re-run in full each time (not only the run-1 failures) so tests that pass on the first run but fail later are still caught. Project state is not mutated between runs.
-3. **Write the reports**: call `flaky_detect.write_reports(report, harness_dir)` to write `.harness/flaky-report.json` and `.harness/flaky-report.md`. The report is ranked by fail rate descending; each row shows the pass count as `X/N passed`.
+2. **Run detection**: call `lib.flaky_detect.run_detection(directory, runs, threshold, project_root)`. It invokes pytest (`--tb=no -v`) `runs` times in sequence, parses per-test PASSED/FAILED results, and aggregates pass/fail counts per test. The suite is re-run in full each time (not only the run-1 failures) so tests that pass on the first run but fail later are still caught. Project state is not mutated between runs.
+3. **Write the reports**: call `lib.flaky_detect.write_reports(report, harness_dir)` to write `.harness/flaky-report.json` and `.harness/flaky-report.md`. The report is ranked by fail rate descending; each row shows the pass count as `X/N passed`.
 4. **Print a summary line** naming how many flaky tests were found and the two artifact paths.
 
 ## Notes

@@ -163,7 +163,7 @@ def test_reference_documents_critic_findings_convention():
 # --- FR-3: memory round-trip for gate "critic" / outcome "escalated" ---
 
 def test_memory_records_escalated_critic_outcome_and_retrieves():
-    from memory import SQLiteFailureMemory
+    from lib.memory import SQLiteFailureMemory
 
     with tempfile.TemporaryDirectory() as d:
         mem = SQLiteFailureMemory(os.path.join(d, "memory.db"))
@@ -189,7 +189,7 @@ def test_memory_records_escalated_critic_outcome_and_retrieves():
 
 
 def test_memory_critic_gate_partitions_from_other_gates():
-    from memory import SQLiteFailureMemory
+    from lib.memory import SQLiteFailureMemory
 
     with tempfile.TemporaryDirectory() as d:
         mem = SQLiteFailureMemory(os.path.join(d, "memory.db"))

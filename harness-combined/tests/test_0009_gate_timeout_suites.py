@@ -18,7 +18,7 @@ import gates.python as python
 import gates.rust as rust
 import gates.typescript as typescript
 from gates import GateTimeoutConfig
-from models import GateResult
+from lib.models import GateResult
 
 
 def _raise_timeout(cmd, *args, **kwargs):

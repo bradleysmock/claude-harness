@@ -43,7 +43,7 @@ normalized `pattern` is already present (FR-7). If `_learnings.md` does not exis
 nothing is dropped.
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" dedupe "$learnings_path" <candidates.json>
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/learnings.py" dedupe "$learnings_path" <candidates.json>
 ```
 
 If every candidate was a duplicate (the call returns `[]`), treat as the empty case
@@ -76,7 +76,7 @@ Otherwise, call `learnings.py append` with `learnings_path` and the accepted
 candidates, in the order the lead listed them (or presentation order):
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" append "$learnings_path" <accepted.json>
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/learnings.py" append "$learnings_path" <accepted.json>
 ```
 
 This wraps `append_learnings(learnings_path, accepted)`:

@@ -7,8 +7,8 @@ import pytest
 
 pytest.importorskip("mcp")
 
-from models import StackName  # noqa: E402 - after importorskip guard
-from server import _detect_stacks  # noqa: E402 - after importorskip guard
+from lib.models import StackName  # noqa: E402 - after importorskip guard
+from lib.server import _detect_stacks  # noqa: E402 - after importorskip guard
 
 
 def test_root_manifests_detected_in_canonical_order(tmp_path: Path) -> None:

@@ -16,7 +16,7 @@ import pytest
 
 import gates
 from gates import secrets
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 # Assembled from fragments so the AWS-key literal never appears in source.
 _AKIA = "AKIA"

@@ -32,7 +32,7 @@ from gates.coverage import (
     load_thresholds,
     run_coverage_gate,
 )
-from models import GateResult
+from lib.models import GateResult
 
 
 def _proc(stdout: str = "", stderr: str = "", returncode: int = 0) -> SimpleNamespace:
@@ -408,7 +408,7 @@ def test_server_forwards_standards_path_from_gated_dir(monkeypatch, tmp_path):
     # B1 regression: standards_path (and thus the sidecar location) must resolve
     # against the *directory being gated* (the worktree), not project_root.
     pytest.importorskip("mcp")
-    import server
+    from lib import server
     gated_dir = tmp_path / "worktree"
     gated_dir.mkdir()
     project_root = tmp_path / "mainrepo"

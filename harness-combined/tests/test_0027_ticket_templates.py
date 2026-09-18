@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import ticket_templates as tt
+from lib import ticket_templates as tt
 
 # --- validate_type: allow-list + traversal rejection (FR-2a / FR-2b) ----------
 

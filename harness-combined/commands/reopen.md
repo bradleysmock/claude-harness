@@ -32,11 +32,11 @@ If a ticket number is provided as an argument, resolve it from the `harness-tick
 
 4. **Reopen via the helper** — one transaction. It forks `ticket/XXXX-<slug>` from `main` HEAD into a worktree, restores the ticket dir from its archive (`main`'s `completed/` for a delivered ticket via `git rm -r --cached` + `git add`, else the `harness-tickets` archive), sets `status: solution` on the branch, pushes it, and appends a `reopened` ledger event:
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" reopen XXXX --push
+   python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" reopen XXXX --push
    ```
    `main` keeps the delivered `completed/XXXX-<slug>/` archive until the next `/deliver` squash; reopening never touches `main`.
 
-5. **Audit record (ticket 0075).** `audit.record("reopen", "XXXX", "lead-confirmed reopen", root=project_root)`.
+5. **Audit record (ticket 0075).** `lib.audit.record("reopen", "XXXX", "lead-confirmed reopen", root=project_root)`.
 
 6. **Report completion.**
    Confirm the ticket dir is restored at `.worktrees/XXXX-<slug>/.tickets/XXXX-<slug>/` with `status: solution` on the fresh branch. Remind the lead:

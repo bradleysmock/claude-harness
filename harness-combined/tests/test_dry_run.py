@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from dry_run import (
+from lib.dry_run import (
     CRITIC_COVERAGE_LABEL,
     DRY_RUN_HEADER,
     GATE_COVERAGE_LABEL,
@@ -38,7 +38,7 @@ from dry_run import (
     validate_dry_run_mode,
     would_write_plan,
 )
-from models import GateError, GateResult, Spec
+from lib.models import GateError, GateResult, Spec
 
 ROOT = Path(__file__).parent.parent
 

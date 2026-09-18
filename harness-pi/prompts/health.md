@@ -3,7 +3,8 @@ description: Render the harness health dashboard — a read-only, cross-ticket v
 ---
 Render the harness health dashboard — a read-only, cross-ticket view of build quality.
 
-Invoke the `health` skill. It runs `health.py` from the project root, which reads
+Invoke the `health` skill. It runs `${CLAUDE_PLUGIN_ROOT}/lib/health.py` against the
+project root, which reads
 `gate-findings.md` files from active and completed tickets and queries
 `.harness/memory.db`, then prints a structured CLI report to stdout covering:
 
@@ -15,6 +16,6 @@ Invoke the `health` skill. It runs `health.py` from the project root, which read
 - **Tickets with the most gate failures**.
 - **Trend indicators** per gate — improving / declining / stable.
 
-Run it from the project root (where `.tickets/` lives). It is **strictly read-only** —
+Pass it the project root (where `.tickets/` lives). It is **strictly read-only** —
 no file or database is written. It exits non-zero if the `.tickets/` directory cannot
 be read.

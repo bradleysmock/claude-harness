@@ -61,7 +61,7 @@ def test_has_source_file_prunes_vendored_dirs(tmp_path: Path) -> None:
 
 def test_scan_skip_matches_server() -> None:
     pytest.importorskip("mcp")
-    import server  # noqa: E402 - after importorskip guard
+    from lib import server  # noqa: E402 - after importorskip guard
 
     assert gate._SCAN_SKIP == server._SCAN_SKIP
 

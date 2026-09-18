@@ -445,7 +445,10 @@ class Detector:
 
 
 def _default_triggers_path() -> Path:
-    return Path(__file__).resolve().parent / "context" / "panels" / "triggers.md"
+    # `context/` is a sibling of this module's `lib/` package at the plugin root,
+    # so resolve up two levels — not one, as it was when this module sat flat at
+    # the root (ticket 0085).
+    return Path(__file__).resolve().parent.parent / "context" / "panels" / "triggers.md"
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-import health
+from lib import health
 
 # The 8-column failure_records schema mirrors memory.py (id, spec_id, gate,
 # errors_text, tokens_json, outcome, attempt, timestamp).

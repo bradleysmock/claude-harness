@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-import spec_coverage
-from spec_coverage import (
+from lib import spec_coverage
+from lib.spec_coverage import (
     CoverageReport,
     Requirement,
     SpecParseError,

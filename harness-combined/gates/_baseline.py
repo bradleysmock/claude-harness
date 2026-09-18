@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, TypeVar
 
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 #: Where per-SHA baseline caches live, relative to the gate's config root.
 BASELINE_SUBDIR = Path(".harness") / "test-baselines"

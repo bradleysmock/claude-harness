@@ -12,10 +12,10 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "panel_detect.py"
+SCRIPT = ROOT / "lib" / "panel_detect.py"
 
 sys.path.insert(0, str(ROOT))
-import panel_detect  # noqa: E402
+from lib import panel_detect  # noqa: E402
 
 
 def run_cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:

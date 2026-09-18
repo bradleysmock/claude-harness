@@ -18,7 +18,7 @@ Read each ticket's status via the **Ticket resolution** rule in `${CLAUDE_PLUGIN
    ```
    This runs all gates (no fail-fast) for **every** detected language stack and returns the complete picture including passed gates. When `changed_files` is a non-empty list, a gate whose file-scope patterns do not overlap it is **skipped** (a passing result with `skipped: true` and `skip_reason: "no relevant changes"`) rather than run; the outer response then carries `"any_skipped": true`. On a polyglot repo (e.g. Python backend + TypeScript frontend) the response carries a `languages` list and a pre-rendered `findings_md` body.
 
-4. **Annotate known-flaky failures (in-memory, before writing)**: when the gate run produced any failures, load `.harness/flaky-report.json` and call `flaky_detect.annotate_failures(failures, report_path)`. Matching failures (a failure whose test matches a flaky test in the report) are labelled `known flaky (X/N)` **in-memory**, before `gate-findings.md` is written, so the whole file is a single atomic write (no TOCTOU window between reading the report and writing findings).
+4. **Annotate known-flaky failures (in-memory, before writing)**: when the gate run produced any failures, load `.harness/flaky-report.json` and call `lib.flaky_detect.annotate_failures(failures, report_path)`. Matching failures (a failure whose test matches a flaky test in the report) are labelled `known flaky (X/N)` **in-memory**, before `gate-findings.md` is written, so the whole file is a single atomic write (no TOCTOU window between reading the report and writing findings).
 
    **Fail closed**: if `.harness/flaky-report.json` is absent, unreadable, or unparseable, `annotate_failures` returns every failure unchanged — all failures remain hard blockers — and the error is logged. A missing or malformed flaky report never downgrades a failure. (When the run used the pre-rendered `findings_md` body, apply the annotation to that body's failure lines before writing it verbatim.)
 
@@ -67,7 +67,7 @@ SARIF (Static Analysis Results Interchange Format) 2.1.0 is the machine-readable
 
 6. **Emit SARIF (opt-in only)**: after `gate-findings.md` is written, emit a SARIF file when *either* trigger is set:
    - The `--sarif` flag was passed to this command, **or**
-   - `.tickets/_standards.md` (in the harness project root) contains a line matching the regex `^\s*sarif_output\s*:\s*true\s*$`. The value is matched **case-sensitively**: only the exact lowercase `sarif_output: true` enables emission. Python-capitalized `True` / `yes` / `on` / `1` are **intentionally not matched** (no accidental enable from a differently-spelled truthy token). This opt-in is enforced in code by `sarif_output.sarif_optin_enabled(project_root)`, which reads only the harness-root file.
+   - `.tickets/_standards.md` (in the harness project root) contains a line matching the regex `^\s*sarif_output\s*:\s*true\s*$`. The value is matched **case-sensitively**: only the exact lowercase `sarif_output: true` enables emission. Python-capitalized `True` / `yes` / `on` / `1` are **intentionally not matched** (no accidental enable from a differently-spelled truthy token). This opt-in is enforced in code by `lib.sarif_output.sarif_optin_enabled(project_root)`, which reads only the harness-root file.
 
    **Scope of authority**: only `.tickets/_standards.md` in the *harness project root* enables emission. A `_standards.md` inside the scanned worktree has **no authority** to turn SARIF output on — the project under analysis cannot enable emission of its own findings.
 

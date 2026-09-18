@@ -13,7 +13,7 @@ import types
 from pathlib import Path
 
 from gates import secrets
-from models import GateResult
+from lib.models import GateResult
 
 # Assembled from fragments so the literal never appears in source (the pre-write
 # guard flags a hardcoded AWS key even inside a test fixture string).

@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from memory import SQLiteFailureMemory, _tokenise  # noqa: E402  (path set above)
+from lib.memory import SQLiteFailureMemory, _tokenise  # noqa: E402  (path set above)
 
 ERRORS = "server.py:12: error: Missing return type annotation [no-untyped-def]"
 
@@ -98,7 +98,7 @@ def test_repeat_init_is_noop(tmp_path):
 
 
 def test_mcp_memory_tool_forwards_resolution(tmp_path):
-    import server
+    from lib import server
 
     fn = getattr(server.memory, "fn", server.memory)
     out = fn(action="record", project_root=str(tmp_path), spec_id="s1", gate="lint",

@@ -1,4 +1,4 @@
-# harness-combined/learnings.py
+# harness-combined/lib/learnings.py
 """Candidate-learnings mechanics: parse gate/critic findings into normalized
 records, sanitize attacker-influenceable text, dedupe against `_learnings.md`,
 and append accepted entries.

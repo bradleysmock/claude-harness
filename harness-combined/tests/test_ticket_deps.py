@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ticket_deps import (
+from lib.ticket_deps import (
     MERMAID_UNSAFE_CHARS,
     TicketCyclicDependencyError,
     TicketGraph,

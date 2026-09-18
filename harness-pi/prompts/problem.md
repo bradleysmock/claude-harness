@@ -44,7 +44,7 @@ Ticket number assignment must be atomic across developers. A claim is a small co
 
 2. Claim the number with the `ticket.py claim` helper (it scans both `.tickets/*` and `.tickets/completed/*` for the next number, writes the stub `status.md` with `status: claimed`, `title`, `branch`, and `owner:` from `git config user.email`, commits `chore(ticket): XXXX claim`, and — when an `origin` exists — pushes; on a rejected push it rebases, re-numbers, and retries up to 5 times). **Only after the winning push** does it create the branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` — so a renumber-on-reject leaves no orphaned branch or worktree (create-after-push):
 
-   `python3 "/Users/bradley/workspaces/claude-harness/harness-combined/ticket.py" claim <slug> "<title>" --push`
+   `python3 "/Users/bradley/workspaces/claude-harness/harness-combined/lib/ticket.py" claim <slug> "<title>" --push`
 
    The command prints the claimed `XXXX-<slug>`. Record XXXX. If it exits non-zero after retries, stop and report the conflict to the lead.
 
@@ -66,18 +66,18 @@ orchestrates it.
 
 **1. Resolve the category.**
 - If the invocation passed `--type <category>`, validate it with
-  `ticket_templates.validate_type(raw)`. Only `bug`, `feature`, and `refactor`
+  `lib.ticket_templates.validate_type(raw)`. Only `bug`, `feature`, and `refactor`
   are accepted (case-insensitive); `chore` and `docs` are reserved extension
   points, not active here. An invalid or out-of-allow-list value (including any
   path-traversal attempt such as `../../escape`) is **rejected** — fall back to
   the generic scaffold with a warning and load no template. No filesystem path is
   ever constructed from an unvalidated `--type` value.
 - If `--type` is absent, infer the category from the request description with
-  `ticket_templates.infer_category(description)`. A low-confidence or ambiguous
+  `lib.ticket_templates.infer_category(description)`. A low-confidence or ambiguous
   result applies **no** template (generic scaffold).
 
 **2. Load the per-category template.** When a category resolved, call
-`ticket_templates.load_template(category, ".tickets/_templates")`. It reads
+`lib.ticket_templates.load_template(category, ".tickets/_templates")`. It reads
 `.tickets/_templates/<category>.md`, re-validates the category internally
 (defense in depth), and returns its `## <Section>` stubs — or an empty list when
 the file is missing, empty, or unparseable (a warning is logged and the ticket is
@@ -85,7 +85,7 @@ still created with the generic scaffold, never crashing). Template sections are
 injected into `problem.md` only.
 
 **3. Load custom sections.** Call
-`ticket_templates.load_custom_sections(".tickets/_standards.md")`. It parses the
+`lib.ticket_templates.load_custom_sections(".tickets/_standards.md")`. It parses the
 **first** `## Custom Sections` block (later occurrences ignored) and returns the
 accepted `### <Stub>` sections. A stub is dropped (with a warning) when its
 heading collides with a reserved scaffold heading, when its body exceeds 10
@@ -95,14 +95,14 @@ injected into **all three** artifacts — `problem.md`, `requirements.md`, and
 
 **4. Inject additively and enforce limits.** For each artifact, append the
 resolved sections after the last standard scaffold section with
-`ticket_templates.merge_sections(scaffold, sections)` — injection is **additive**
+`lib.ticket_templates.merge_sections(scaffold, sections)` — injection is **additive**
 and never reorders or overwrites the reserved scaffold headings. Then enforce the
-per-artifact line limit with `ticket_templates.enforce_line_limit(document,
+per-artifact line limit with `lib.ticket_templates.enforce_line_limit(document,
 limit)` using `problem.md` = 40, `requirements.md` = 60, `solution.md` = 80. When
 a section is truncated, surface the returned truncated-section names to the lead.
 
 **5. Record the category.** The `type:` field in `status.md` (see the Phase 2
-block below) is produced by `ticket_templates.format_type_field(category,
+block below) is produced by `lib.ticket_templates.format_type_field(category,
 inferred)`: `type: <category>` when supplied via `--type`,
 `type: <category> (inferred)` when inferred from the description, and
 `type: generic` when no category applies.
@@ -289,7 +289,7 @@ this so the about-to-be-written edge is included in the cycle / unknown-ref chec
 
 ```python
 from pathlib import Path
-from ticket_deps import TicketInfo, assert_acyclic_with_proposed
+from lib.ticket_deps import TicketInfo, assert_acyclic_with_proposed
 
 proposed = TicketInfo(
     number="XXXX",              # this ticket's number

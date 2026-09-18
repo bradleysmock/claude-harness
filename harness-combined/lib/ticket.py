@@ -1,4 +1,4 @@
-# harness-combined/ticket.py
+# harness-combined/lib/ticket.py
 """Ticket state operations: number claiming, status transitions, owner.
 
 Centralizes the git-backed ticket bookkeeping the markdown commands used to

@@ -10,7 +10,7 @@ from gates.policy import (
     evaluate_promotion,
     load_policy,
 )
-from models import GateError, GateResult, LanguageResult, StackName
+from lib.models import GateError, GateResult, LanguageResult, StackName
 
 
 def _result(gate: str, passed: bool, skipped: bool = False) -> GateResult:

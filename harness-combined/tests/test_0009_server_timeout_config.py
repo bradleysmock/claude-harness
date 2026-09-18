@@ -4,9 +4,9 @@ GateTimeoutConfig (or None when absent) to the suite runner.
 """
 from __future__ import annotations
 
-import server
 from gates import GateTimeoutConfig
-from models import GateResult
+from lib import server
+from lib.models import GateResult
 
 
 def _passing():

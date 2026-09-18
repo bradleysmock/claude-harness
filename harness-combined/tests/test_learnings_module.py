@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-import learnings as L
+from lib import learnings as L
 
 GATE_TEXT = """## lint
 

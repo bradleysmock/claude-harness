@@ -7,7 +7,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import audit
+from lib import audit
 
 
 def test_record_writes_one_well_formed_line(tmp_path: Path) -> None:

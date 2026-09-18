@@ -5,8 +5,8 @@ import pytest
 
 pytest.importorskip("mcp")
 
-from models import GateError, GateResult, LanguageResult, StackName  # noqa: E402
-from server import _format_polyglot_findings  # noqa: E402
+from lib.models import GateError, GateResult, LanguageResult, StackName  # noqa: E402
+from lib.server import _format_polyglot_findings  # noqa: E402
 
 
 def _pass(gate: str) -> GateResult:
