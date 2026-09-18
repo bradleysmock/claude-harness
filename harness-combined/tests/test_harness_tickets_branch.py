@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-import ticket
+from lib import ticket
 
 GUARD_PATH = Path(__file__).parent.parent / "hooks" / "ticket_commit_guard.py"
 _spec = importlib.util.spec_from_file_location("ticket_commit_guard", GUARD_PATH)

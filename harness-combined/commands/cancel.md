@@ -31,9 +31,9 @@ If a ticket number is provided as an argument, resolve it from the `harness-tick
 
 5. **Cancel via the helper** — one main-free transaction. It appends the `cancelled` ledger event (pushed first-wins, honoring the §1a push invariant), snapshots the ticket docs onto `harness-tickets` (so `/reopen` can restore them), and removes the worktree + branch (local and `origin`). Under `--abandon`, use `abandon`:
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" cancel XXXX --push
+   python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" cancel XXXX --push
    # or, for the abandoned path:
-   python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" abandon XXXX --push
+   python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" abandon XXXX --push
    ```
 
    **Idempotency:** the helper is idempotent by `(event, number)` — if the ledger already carries a `cancelled` (or `abandoned`) event for this number it appends nothing and simply completes the branch/worktree cleanup.

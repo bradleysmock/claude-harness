@@ -26,7 +26,7 @@ from dataclasses import dataclass, replace
 from typing import Literal
 
 from gates.config import extract_policy_block
-from models import GateResult, LanguageResult, StackName
+from lib.models import GateResult, LanguageResult, StackName
 
 #: Every gate a `run_suite_on_dir` call can append per language: the
 #: overridable ones (mirroring `gates/config.py`'s `_VALID_GATES`) plus the

@@ -16,13 +16,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-# Ensure this directory is on the path so local modules resolve.
-sys.path.insert(0, str(Path(__file__).parent))
+# Ensure the plugin root — this package's parent — is on the path, so both
+# `lib.*` and its sibling `gates` package resolve when this file is exec'd
+# as a script by `bin/harness-server` (where sys.path[0] is `lib/` itself).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from mcp.server.fastmcp import FastMCP
 
-import sarif_output
-from dag import DAGResolver
 from gates import GateTimeoutConfig, run_suite_for, run_suite_on_dir
 from gates.commit_lint import CommitLintConfig
 from gates.commit_lint import run as run_commit_lint
@@ -34,8 +34,10 @@ from gates.config import (
 )
 from gates.doctor import DoctorError, format_report, run_doctor
 from gates.red_gate import RedGateError, check_red, next_action
-from memory import SQLiteFailureMemory
-from models import (
+from lib import sarif_output
+from lib.dag import DAGResolver
+from lib.memory import SQLiteFailureMemory
+from lib.models import (
     GateError,
     GateResult,
     LanguageResult,

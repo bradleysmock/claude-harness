@@ -13,7 +13,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import gates
-import server
 from gates import go as gomod
 from gates import python as pymod
 from gates import rust as rustmod
@@ -23,7 +22,8 @@ from gates.go import run_go_suite_on_dir
 from gates.python import run_python_suite_on_dir
 from gates.rust import run_rust_suite_on_dir
 from gates.typescript import run_typescript_suite_on_dir
-from models import GateResult
+from lib import server
+from lib.models import GateResult
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -287,7 +287,7 @@ def test_server_all_skipped_sets_any_skipped(monkeypatch, tmp_path: Path) -> Non
 # ── FR-8 : findings body renders skipped gates as SKIP (not PASS) ─────────────
 
 def test_findings_md_renders_skip_status_and_reason() -> None:
-    from models import LanguageResult, StackName
+    from lib.models import LanguageResult, StackName
     lr = LanguageResult(StackName.PYTHON, [
         GateResult("lint", True, [], 0, skipped=True, skip_reason="no relevant changes"),
         GateResult("type_check", True, [], 12),  # ran + clean, for contrast
@@ -302,7 +302,7 @@ def test_findings_md_renders_skip_status_and_reason() -> None:
 
 
 def test_findings_md_polyglot_skip_labels_language() -> None:
-    from models import LanguageResult, StackName
+    from lib.models import LanguageResult, StackName
     results = [
         LanguageResult(StackName.PYTHON, [
             GateResult("lint", True, [], 0, skipped=True, skip_reason="no relevant changes"),

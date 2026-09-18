@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import server
+from lib import server
 
 BUILD_FLOW = Path(__file__).parent.parent / "context" / "flows" / "build-ticket.md"
 DELIVER_FLOW = Path(__file__).parent.parent / "context" / "flows" / "deliver-ticket.md"

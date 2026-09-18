@@ -75,7 +75,7 @@ Unlike `critique`, do **not** write the report to `CRITIQUE.md` — the interact
   when this review started (Step 0's resolution), this approval resolves that
   pause — record it:
   ```python
-  import audit
+  from lib import audit
   audit.record("resolve-pause", "XXXX", "approved via /review", root=project_root)
   ```
 - Tell the lead the ticket is approved and they can run `/deliver XXXX`.

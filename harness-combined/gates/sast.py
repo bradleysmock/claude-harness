@@ -19,7 +19,7 @@ from pathlib import Path
 from gates.sast_bandit import run_bandit
 from gates.sast_models import Finding, ScanResult, Severity
 from gates.sast_semgrep import run_semgrep
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 logger = logging.getLogger(__name__)
 

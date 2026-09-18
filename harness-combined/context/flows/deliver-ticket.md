@@ -40,7 +40,7 @@ The tool runs `git log main..<branch>` and validates each subject against `type(
 
 ```python
 from gates.policy import load_policy, evaluate_promotion
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 raw = json.loads(commit_lint(branch, project_root))  # or with require_scope=True
 result = GateResult(
@@ -322,7 +322,7 @@ leaves the branch and worktree present and unpushed — the gate invariant Step
 invoked as one call instead of five inline git commands:
 
 ```
-result=$(python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" deliver-commit <branch> XXXX-<slug> "<title>")
+result=$(python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" deliver-commit <branch> XXXX-<slug> "<title>")
 pre_merge_sha=$(echo "$result" | jq -r '.pre_merge_sha')
 merge_commit_sha=$(echo "$result" | jq -r '.merge_commit_sha')
 ```
@@ -367,14 +367,14 @@ Runs after the Step 4 commit (both SHAs captured) and **before Step 4c publish/c
 Reached when Step 4b passed, was skipped (no smoke test configured), or ran in `warn-only` mode. It is **not** run on an `auto-revert` failure (branch + worktree stay intact for rework). Run the `deliver-publish` CLI subcommand — encapsulated and unit-tested as `ticket.py::deliver_publish()`: it publishes first, and only on a successful push removes the worktree and deletes the branch (`-D`, not `-d`: a squash leaves the branch without merge ancestry). On a rejected push it raises and leaves both intact — stop and tell the lead to retry after rebasing.
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" deliver-publish XXXX-<slug> <branch>
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" deliver-publish XXXX-<slug> <branch>
 ```
 
 **Audit record (ticket 0075).** Only after `deliver-publish` returns successfully (never
 before — a rejected push means the merge did not complete), record the decision:
 
 ```python
-import audit
+from lib import audit
 audit.record("deliver", "XXXX", "merged to main", root=project_root)
 ```
 
@@ -397,7 +397,7 @@ and the worktree removed, so `gate-findings.md` and `critic-findings.md` now liv
    today)` and returns a normalized, sanitized candidate list (≤ 5, BLOCKER/MAJOR
    prioritized) as JSON:
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" candidates gate XXXX <today> .tickets/completed/XXXX-<slug>/gate-findings.md
+   python3 "${CLAUDE_PLUGIN_ROOT}/lib/learnings.py" candidates gate XXXX <today> .tickets/completed/XXXX-<slug>/gate-findings.md
    ```
 
    **Also scan `critic-findings.md`** — the persisted per-round critic reports and
@@ -408,7 +408,7 @@ and the worktree removed, so `gate-findings.md` and `critic-findings.md` now liv
    `critic-findings.md` has no `**Status**: FAIL` sections. Its records come back tagged
    `gate="critic"`:
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/learnings.py" candidates critic XXXX <today> .tickets/completed/XXXX-<slug>/critic-findings.md
+   python3 "${CLAUDE_PLUGIN_ROOT}/lib/learnings.py" candidates critic XXXX <today> .tickets/completed/XXXX-<slug>/critic-findings.md
    ```
    Each call already returns its own list severity-first (BLOCKER/MAJOR before
    MINOR/OBS) and capped at 5, but carries no cross-call recency field — so the merge

@@ -31,7 +31,7 @@ If `status` is `changes-requested`, the worktree already exists from a prior `/b
 **Local context pack (ticket 0076).** Right after resolving `problem.md`'s path above, before the spec-existence check below, generate/refresh the ranked context pack and load it:
 
 ```python
-from context_rank import get_or_generate_pack, describe_environment
+from lib.context_rank import get_or_generate_pack, describe_environment
 
 pack = get_or_generate_pack(problem_md_text, project_root, "XXXX-<slug>")
 notice = describe_environment(project_root)
@@ -74,13 +74,13 @@ Both are lead-curated. The model treats them as hard constraints, not suggestion
 
 **Spec-coverage warning (non-blocking).** Before executing specs, check whether any
 requirement is left uncovered. If `spec-coverage.md` exists in the ticket directory,
-invoke `spec_coverage.py --warning-only` as an **argument-list subprocess** (never a shell
+invoke `lib/spec_coverage.py --warning-only` as an **argument-list subprocess** (never a shell
 string — no slug/path interpolation) and print its stdout if non-empty:
 
 ```python
 import subprocess, sys
 result = subprocess.run(
-    [sys.executable, "spec_coverage.py", "--warning-only", ticket_dir_str, project_root_str],
+    [sys.executable, "lib/spec_coverage.py", "--warning-only", ticket_dir_str, project_root_str],
     check=True,
     capture_output=True,
     text=True,
@@ -105,7 +105,7 @@ scanning the filesystem **once** for this invocation:
 
 ```python
 from pathlib import Path
-from ticket_deps import parse_deps, blocking_dependencies
+from lib.ticket_deps import parse_deps, blocking_dependencies
 
 graph = parse_deps(Path(".tickets"))            # scans .tickets/ and .tickets/completed/ once
 blocked = blocking_dependencies(graph, "XXXX")  # deps not yet in `done`
@@ -140,7 +140,7 @@ an edit to any ticket's `depends-on:` cannot introduce a cycle that slips throug
 
 ```python
 from pathlib import Path
-from ticket_deps import parse_deps, assert_acyclic
+from lib.ticket_deps import parse_deps, assert_acyclic
 
 assert_acyclic(parse_deps(Path(".tickets")))    # raises TicketCyclicDependencyError on a cycle
 ```
@@ -156,7 +156,7 @@ git worktree add .worktrees/XXXX-<slug> ticket/XXXX-<slug>   # fallback only —
 Then transition `status: implementing` **on the branch** (branch only — it must **not** touch `main`), committing+pushing inside the worktree by running the helper from within it:
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX implementing --push   # cwd = .worktrees/XXXX-<slug>
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" set-status XXXX implementing --push   # cwd = .worktrees/XXXX-<slug>
 ```
 
 Run with the worktree as the cwd so the helper resolves the worktree's `.tickets/` and commits to the branch; `--push` publishes the branch (setting upstream on first push).
@@ -273,7 +273,7 @@ git -C .worktrees/XXXX-<slug> commit -m "chore(ticket): XXXX → review-ready"
 resolving a `changes-requested` pause — record it:
 
 ```python
-import audit
+from lib import audit
 audit.record("resolve-pause", "XXXX", "resumed /build past changes-requested", root=project_root)
 ```
 

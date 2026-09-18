@@ -8,8 +8,8 @@ import pytest
 
 pytest.importorskip("mcp")
 
-import server  # noqa: E402 - after importorskip guard
-from models import GateError, GateResult, StackName  # noqa: E402
+from lib import server  # noqa: E402 - after importorskip guard
+from lib.models import GateError, GateResult, StackName  # noqa: E402
 
 
 def _standards(tmp_path: Path, body: str) -> None:

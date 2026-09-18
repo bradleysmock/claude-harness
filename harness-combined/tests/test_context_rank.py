@@ -4,8 +4,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-import context_rank
-from context_rank import (
+from lib import context_rank
+from lib.context_rank import (
     Snippet,
     describe_environment,
     gather_context,
@@ -75,7 +75,7 @@ def test_multi_term_query_uses_one_rg_invocation(tmp_path: Path, monkeypatch):
 
 
 def test_reuses_memory_tokenize():
-    import memory
+    from lib import memory
 
     assert context_rank._query_terms("resolve_ticket status") == memory.tokenize(
         "resolve_ticket status"

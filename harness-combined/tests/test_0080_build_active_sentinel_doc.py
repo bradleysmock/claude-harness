@@ -68,7 +68,7 @@ def test_preserves_cycle_check_and_implementing_transition() -> None:
     assert _CYCLE_CHECK_MARKER in step2
     assert "TicketCyclicDependencyError" in step2
     assert 'Then transition `status: implementing`' in step2
-    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" set-status XXXX implementing --push' in step2
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" set-status XXXX implementing --push' in step2
     assert _CWD_ANNOTATION in step2
 
 

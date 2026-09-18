@@ -76,7 +76,7 @@ Deterministic authority lives in Python; judgment lives in the model.
 
 | Layer | Citations |
 |---|---|
-| **Python** — pass/fail authority (gate verdicts, validator outcomes, score thresholds, structural checks) and exactness operations (counting, line limits, parsing, ID/numbering, dependency-cycle detection, path containment) — implemented in Python invoked by commands/hooks. | `${CLAUDE_PLUGIN_ROOT}/ticket.py`, `${CLAUDE_PLUGIN_ROOT}/ticket_deps.py`, `${CLAUDE_PLUGIN_ROOT}/validators/standards_validator.py`, `${CLAUDE_PLUGIN_ROOT}/ticket_templates.py`, `${CLAUDE_PLUGIN_ROOT}/gates/` |
+| **Python** — pass/fail authority (gate verdicts, validator outcomes, score thresholds, structural checks) and exactness operations (counting, line limits, parsing, ID/numbering, dependency-cycle detection, path containment) — implemented in Python invoked by commands/hooks. | `${CLAUDE_PLUGIN_ROOT}/lib/ticket.py`, `${CLAUDE_PLUGIN_ROOT}/lib/ticket_deps.py`, `${CLAUDE_PLUGIN_ROOT}/validators/standards_validator.py`, `${CLAUDE_PLUGIN_ROOT}/lib/ticket_templates.py`, `${CLAUDE_PLUGIN_ROOT}/gates/` |
 | **Model** — judgment only: design, critique, repair strategy, remediation content. The model never re-derives or overrides a Python-computed verdict; it may flag a suspected tool defect to the lead, but the verdict stands until the Python side changes. | — |
 
 **Decision test**: if two runs must agree on the answer, it belongs in Python.

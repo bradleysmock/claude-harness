@@ -10,7 +10,7 @@ output unchanged.
 
 > **Source of truth (harness-tickets model).** In-flight tickets no longer live on `main` — the number claim and coarse lifecycle live on the `harness-tickets` ledger, and the ticket dir lives only on its feature branch. Enumerate in-flight and completed tickets from the ledger (which joins worktree fine status and `main`'s `completed/`):
 > ```bash
-> python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" list-json   # [{number,slug,title,status,owner,effort,depends_on,branch,completed}]
+> python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" list-json   # [{number,slug,title,status,owner,effort,depends_on,branch,completed}]
 > ```
 > The `.tickets/*` scan below still surfaces any local/legacy copies and each ticket's worktree status, but the ledger is authoritative for *which* tickets are in flight (a `.tickets/*` scan on `main` alone would see zero in-flight tickets).
 
@@ -73,7 +73,7 @@ delegating to `ticket_deps.py` — do **not** re-implement graph logic in prose:
 
 ```python
 from pathlib import Path
-from ticket_deps import parse_deps, mermaid_diagram, topo_layers
+from lib.ticket_deps import parse_deps, mermaid_diagram, topo_layers
 
 graph = parse_deps(Path(".tickets"))            # scans .tickets/ and .tickets/completed/
 diagram = mermaid_diagram(graph)                # Mermaid `graph TD`, labels sanitized

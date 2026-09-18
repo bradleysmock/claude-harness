@@ -54,7 +54,7 @@ Resolve the idle threshold, in this strict precedence order (first match wins):
 **Source of truth (harness-tickets model).** In-flight tickets no longer live on `main`: the
 number claim and coarse lifecycle live on the `harness-tickets` ledger, and the ticket dir lives
 only on its feature branch. Enumerate the in-flight set from the ledger, as an **argument-list
-subprocess** (never a shell string) — `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" list-json` — the
+subprocess** (never a shell string) — `python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" list-json` — the
 **primary** source (each in-flight row carries `branch` and, when the worktree is local, the live
 `status`/`updated`).
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-import ticket
+from lib import ticket
 
 
 def init_repo(tmp_path: Path) -> Path:

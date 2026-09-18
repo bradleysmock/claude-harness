@@ -313,7 +313,7 @@ def test_non_merge_commit_named_merge_is_skipped(base_repo: Path) -> None:
 def test_server_tool_returns_gate_json(base_repo: Path) -> None:
     import json
     pytest.importorskip("mcp")
-    import server
+    from lib import server
 
     _git(base_repo, "checkout", "-b", "feature")
     _commit(base_repo, "feat(x): ok")
@@ -326,7 +326,7 @@ def test_server_tool_returns_gate_json(base_repo: Path) -> None:
 def test_server_tool_invalid_branch_json(base_repo: Path) -> None:
     import json
     pytest.importorskip("mcp")
-    import server
+    from lib import server
 
     payload = json.loads(server.commit_lint("--format=x", str(base_repo)))
     assert payload["passed"] is False
@@ -336,7 +336,7 @@ def test_server_tool_invalid_branch_json(base_repo: Path) -> None:
 def test_server_tool_handles_subprocess_error(base_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import json
     pytest.importorskip("mcp")
-    import server
+    from lib import server
 
     def boom(branch: str, project_root: str, config: object) -> object:
         raise subprocess.TimeoutExpired(cmd=["git"], timeout=5)

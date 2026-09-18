@@ -25,7 +25,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-import ticket
+# `bin/autopilot-watch` execs this file as a script, where sys.path[0] is `lib/`
+# rather than the plugin root — without this the `lib.ticket` import below cannot
+# resolve. Harmless when imported as a module: the path is already present.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from lib import ticket  # noqa: E402  (must follow the sys.path insert above)
 
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 

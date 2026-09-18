@@ -32,7 +32,7 @@ import gates._baseline as bl  # noqa: E402
 import gates.go as gomod  # noqa: E402
 import gates.python as pymod  # noqa: E402
 import gates.rust as rustmod  # noqa: E402
-from models import GateError, GateResult  # noqa: E402
+from lib.models import GateError, GateResult  # noqa: E402
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Toolchain-independent unit tests — MUST always pass

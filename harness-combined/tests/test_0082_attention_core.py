@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-import autopilot_watch as watch
+from lib import autopilot_watch as watch
 
 #: The real notifier, captured before the root conftest's autouse fixture
 #: replaces the module attribute with a no-op. The notify tests below are the

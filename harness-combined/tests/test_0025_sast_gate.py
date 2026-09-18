@@ -18,7 +18,7 @@ from gates import sast as sast_gate
 from gates import sast_bandit, sast_semgrep
 from gates.sast_models import Finding, ScanResult, Severity, map_severity
 from gates.sast_util import relativize, resolve_contained, tool_available
-from models import GateResult
+from lib.models import GateResult
 
 
 def _proc(returncode: int, stdout: str = "", stderr: str = "") -> types.SimpleNamespace:

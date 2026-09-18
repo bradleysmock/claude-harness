@@ -225,7 +225,7 @@ commit is **not** a merge commit, the `--merges` filter in Step 4 excludes it fr
 exit above — record the decision:
 
 ```python
-import audit
+from lib import audit
 detail = "reverted merge " + SHA
 audit.record("rollback", "XXXX", detail, root=project_root)
 ```

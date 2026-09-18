@@ -73,7 +73,7 @@ def test_no_existing_type_removed() -> None:
 
 
 def test_panel_detect_tomllib_name_is_usable() -> None:
-    import panel_detect
+    from lib import panel_detect
 
     assert hasattr(panel_detect.tomllib, "loads")
 
@@ -83,7 +83,7 @@ def test_panel_detect_mypy_clean_without_tomli() -> None:
     without `tomli` installed (it's intentionally absent on this
     interpreter — see requirements.txt's python_version marker)."""
     result = subprocess.run(
-        [sys.executable, "-m", "mypy", "panel_detect.py"],
+        [sys.executable, "-m", "mypy", "lib/panel_detect.py"],
         cwd=_ROOT, capture_output=True, text=True,
     )
     assert "tomli" not in result.stdout, result.stdout

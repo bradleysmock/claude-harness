@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import ticket
+from lib import ticket
 
 
 def _record(**overrides) -> dict:

@@ -38,7 +38,7 @@ from gates import go as _go
 from gates import python as _py
 from gates import rust as _rust
 from gates import typescript as _ts
-from models import GateError
+from lib.models import GateError
 
 RED = "red"
 BLOCKING = "blocking"

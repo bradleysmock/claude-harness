@@ -35,7 +35,7 @@ import tempfile
 from pathlib import Path
 from typing import TypedDict
 
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 logger = logging.getLogger(__name__)
 

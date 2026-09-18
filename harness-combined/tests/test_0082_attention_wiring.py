@@ -22,7 +22,7 @@ from _watch_fixtures import (
     seed_ticket_branch_and_worktree,
 )
 
-import autopilot_watch as watch
+from lib import autopilot_watch as watch
 
 # ---------------------------------------------------------------------------
 # helpers

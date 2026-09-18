@@ -17,7 +17,7 @@ Two kinds of coverage, per the ticket's Test Plan:
 import subprocess
 from pathlib import Path
 
-import ticket
+from lib import ticket
 
 ROOT = Path(__file__).parent.parent
 

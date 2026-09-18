@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from gates import _timeout_error
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 #: Cap on SARIF `results` array size across all runs — an oversized array
 #: from a misbehaving or hostile scanner must not balloon `gate-findings.md`.

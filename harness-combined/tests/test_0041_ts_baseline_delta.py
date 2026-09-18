@@ -22,7 +22,7 @@ pytest.importorskip("mcp")
 
 import gates.typescript as ts  # noqa: E402
 from gates import ProcessResult  # noqa: E402
-from models import GateResult  # noqa: E402
+from lib.models import GateResult  # noqa: E402
 
 # ── jest --json fixture builder ────────────────────────────────────────────────
 
@@ -367,8 +367,8 @@ def test_gate_result_to_dict_carries_mode_and_excluded() -> None:
 # ── gate-findings.md rendering (FR-4) ──────────────────────────────────────────
 
 def test_findings_render_mode_and_baseline_excluded() -> None:
-    from models import LanguageResult, StackName
-    from server import _format_polyglot_findings
+    from lib.models import LanguageResult, StackName
+    from lib.server import _format_polyglot_findings
 
     gr = GateResult(
         gate="test", passed=True, errors=[], duration_ms=9,
@@ -384,8 +384,8 @@ def test_findings_render_mode_and_baseline_excluded() -> None:
 
 
 def test_findings_render_omits_mode_for_non_test_gates() -> None:
-    from models import LanguageResult, StackName
-    from server import _format_polyglot_findings
+    from lib.models import LanguageResult, StackName
+    from lib.server import _format_polyglot_findings
 
     gr = GateResult(gate="lint", passed=True, errors=[], duration_ms=3)
     out = _format_polyglot_findings(

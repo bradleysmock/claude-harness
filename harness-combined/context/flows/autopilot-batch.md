@@ -107,7 +107,7 @@ Then deliver from the main repo root (working tree clean, on `main`). Write the 
 ```
 # members.json = [{"slug":"XXXX-<slug>","title":"…","head":"<rev>"}, … in build order,
 #                  last member's head = batch HEAD after repairs]
-python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" deliver-batch batch/<lead-slug> .tickets/.batch-<lead-slug>.json
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" deliver-batch batch/<lead-slug> .tickets/.batch-<lead-slug>.json
 rm -f .tickets/.batch-<lead-slug>.json
 ```
 

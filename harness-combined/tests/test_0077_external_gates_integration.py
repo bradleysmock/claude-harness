@@ -6,9 +6,9 @@ import json
 import sys
 from pathlib import Path
 
-import server
 from gates import run_suite_on_dir
 from gates.external import ExternalGateSpec
+from lib import server
 
 
 def _init_python_project(tmp_path: Path) -> Path:

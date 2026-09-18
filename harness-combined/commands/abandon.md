@@ -14,7 +14,7 @@ If a ticket number is provided, resolve it from the `harness-tickets` ledger's `
 
 4. **Abandon via the helper** — one main-free transaction (ledger `abandoned` event pushed first-wins, docs archived onto `harness-tickets`, worktree + branch removed local and origin):
 
-   `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" abandon XXXX --push`
+   `python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" abandon XXXX --push`
 
    Idempotent by `(event, number)` — a second run appends nothing and only finishes cleanup.
 

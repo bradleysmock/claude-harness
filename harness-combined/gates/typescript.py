@@ -20,7 +20,7 @@ from gates import (
     run_dir_gates_scheduled,
 )
 from gates._scope import GateSpec, has_scope_match
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 # Tools this gate invokes via subprocess (see gates/python.py REQUIRED_TOOLS for
 # the doctor contract). Every name must appear in a subprocess argument list.

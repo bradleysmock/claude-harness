@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from models import GateResult
+from lib.models import GateResult
 
 #: ``skip_reason`` recorded on a GateResult produced for a scoped-out gate. Shared
 #: so the exact string cannot drift between the language modules (requirements FR-4).

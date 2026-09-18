@@ -29,7 +29,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from models import GateResult, Spec
+from lib.models import GateResult, Spec
 
 DRY_RUN_FLAG = "--dry-run"
 DRY_RUN_TMP_SUBDIR = ".harness/dry-run-tmp"

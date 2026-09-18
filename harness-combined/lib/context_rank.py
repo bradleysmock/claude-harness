@@ -18,7 +18,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from memory import tokenize
+from lib.memory import tokenize
 
 #: Total lines across every snippet in one pack — keeps a pack from crowding
 #: out the model's own context budget.

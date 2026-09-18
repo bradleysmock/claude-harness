@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "panel_detect.py"
+SCRIPT = ROOT / "lib" / "panel_detect.py"
 TRIGGERS = ROOT / "context" / "panels" / "triggers.md"
 
 
@@ -24,7 +24,7 @@ def run_cli(root: Path, *args: str) -> dict:
 
 def test_shipped_triggers_load_cleanly() -> None:
     sys.path.insert(0, str(ROOT))
-    import panel_detect
+    from lib import panel_detect
 
     specs = panel_detect.load_triggers(TRIGGERS)
     panels_dir = ROOT / "context" / "panels"
@@ -45,7 +45,7 @@ _ROLE_BASED_EXEMPT_PANELS = {"observability", "distributed"}
 
 def test_near_miss_judgment_entries_carry_provenance_comments() -> None:
     sys.path.insert(0, str(ROOT))
-    import panel_detect
+    from lib import panel_detect
 
     specs = panel_detect.load_triggers(TRIGGERS)
     raw = TRIGGERS.read_text()

@@ -11,7 +11,7 @@ Read `.harness/config.py` if it exists to get `PROJECT_ROOT` (default `.`).
 
 ## Step 1 — Ticket status (SDLC workflow)
 
-**Source of truth (harness-tickets model).** Enumerate active tickets from the `harness-tickets` ledger as an **argument-list subprocess** (never a shell string) — `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" list-json` — the primary source: each in-flight row carries `number`/`title`/`status`/`owner`/`updated` (live, from its worktree, when checked out locally), so a ticket claimed but not yet built locally still appears immediately. Exclude any row with status `done` or `cancelled` — they belong in the Completed section below.
+**Source of truth (harness-tickets model).** Enumerate active tickets from the `harness-tickets` ledger as an **argument-list subprocess** (never a shell string) — `python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" list-json` — the primary source: each in-flight row carries `number`/`title`/`status`/`owner`/`updated` (live, from its worktree, when checked out locally), so a ticket claimed but not yet built locally still appears immediately. Exclude any row with status `done` or `cancelled` — they belong in the Completed section below.
 
 **Fallback (ledger unreachable only).** If `ticket.py list-json` itself errors, fall back to scanning `.tickets/*/status.md` for active tickets (those not in `completed/`) — this only sees tickets with a local root-level stub, the exception rather than the rule under the ledger model.
 
@@ -45,7 +45,7 @@ rules and untrusted-data encoding that follow it are file-local (not shared).
 **Source of truth (harness-tickets model).** In-flight tickets no longer live on `main`: the
 number claim and coarse lifecycle live on the `harness-tickets` ledger, and the ticket dir lives
 only on its feature branch. Enumerate the in-flight set from the ledger, as an **argument-list
-subprocess** (never a shell string) — `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" list-json` — the
+subprocess** (never a shell string) — `python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" list-json` — the
 **primary** source (each in-flight row carries `branch` and, when the worktree is local, the live
 `status`/`updated`).
 

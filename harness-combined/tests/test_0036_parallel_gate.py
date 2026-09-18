@@ -25,7 +25,7 @@ from gates.gate_graph import (
 )
 from gates.log_writer import LogWriter
 from gates.scheduler import GateScheduler
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 # ── Fixtures / helpers ────────────────────────────────────────────────────────
 
@@ -437,7 +437,7 @@ def test_python_runner_default_is_sequential_fail_fast(monkeypatch, tmp_path: Pa
 # ── server wiring ─────────────────────────────────────────────────────────────
 
 def test_server_forwards_parallel_limit_when_set(monkeypatch, tmp_path: Path):
-    import server
+    from lib import server
 
     tickets = tmp_path / ".tickets"
     tickets.mkdir()
@@ -455,7 +455,7 @@ def test_server_forwards_parallel_limit_when_set(monkeypatch, tmp_path: Path):
 
 
 def test_server_omits_parallel_limit_when_absent(monkeypatch, tmp_path: Path):
-    import server
+    from lib import server
 
     (tmp_path / ".tickets").mkdir()
     # No _standards.md -> no parallel_gate_limit -> max_workers must NOT be passed

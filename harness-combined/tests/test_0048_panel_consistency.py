@@ -26,7 +26,7 @@ PANELS_DIR = ROOT / "context" / "panels"
 TRIGGERS = PANELS_DIR / "triggers.md"
 
 sys.path.insert(0, str(ROOT))
-import panel_detect  # noqa: E402
+from lib import panel_detect  # noqa: E402
 
 # Core is always active with no triggers.md entry; Secondary is loaded on
 # demand and deliberately excluded (see triggers.md preamble); triggers.md

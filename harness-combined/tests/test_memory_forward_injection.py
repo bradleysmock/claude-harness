@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from memory import SQLiteFailureMemory, _tokenise  # noqa: E402  (path set above)
+from lib.memory import SQLiteFailureMemory, _tokenise  # noqa: E402  (path set above)
 
 ERRORS = "app.py:12: error: Missing return type annotation [no-untyped-def]"
 
@@ -189,7 +189,7 @@ def test_record_target_file_does_not_break_retrieve_similar(tmp_path):
 # ── MCP server tool wiring ─────────────────────────────────────────────────────
 
 def test_mcp_memory_tool_gotchas_branch(tmp_path):
-    import server
+    from lib import server
 
     fn = getattr(server.memory, "fn", server.memory)
     # Fresh corpus => empty gotchas block.

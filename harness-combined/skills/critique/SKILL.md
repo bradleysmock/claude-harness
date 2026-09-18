@@ -16,7 +16,7 @@ Conduct a structured expert critique. Read every file in scope before writing a 
 Panel activation is deterministic, not a model judgment call. Run:
 
 ```
-python3 "${CLAUDE_PLUGIN_ROOT}/panel_detect.py" --root <project_root> <files in scope...>
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/panel_detect.py" --root <project_root> <files in scope...>
 ```
 
 against the canonical trigger data in `${CLAUDE_PLUGIN_ROOT}/context/panels/triggers.md`, and parse its JSON output before reading any code or panel files:

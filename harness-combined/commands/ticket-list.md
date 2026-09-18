@@ -242,7 +242,7 @@ def ledger_rows():
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if not plugin_root:
         return []
-    ticket_py = Path(plugin_root) / "ticket.py"
+    ticket_py = Path(plugin_root) / "lib" / "ticket.py"
     if not ticket_py.is_file():
         return []
     try:

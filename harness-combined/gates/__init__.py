@@ -11,7 +11,7 @@ from gates._scope import SKIP_REASON, GateSpec, has_scope_match
 
 if TYPE_CHECKING:
     from gates.external import ExternalGateSpec
-from models import GateError, GateResult
+from lib.models import GateError, GateResult
 
 # tomllib is stdlib on Python >= 3.11; tomli is the 3.10 backport. A
 # `sys.version_info` guard (not `try/except ModuleNotFoundError`) is

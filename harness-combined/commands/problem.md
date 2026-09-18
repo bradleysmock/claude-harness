@@ -39,7 +39,7 @@ Ticket number assignment must be atomic across developers. The claim is an appen
 
 1. Claim the number with the `ticket.py claim` helper. It ensures the orphan `harness-tickets` branch exists, computes the next number from the ledger, appends a `claim` event and **pushes it first-wins** (on a rejected push it re-fetches, re-numbers against the newer ledger, and retries up to 5 times — §1a push invariant). **Only after the winning ledger push** does it create the branch `ticket/XXXX-<slug>` and worktree `.worktrees/XXXX-<slug>` and write the `status: claimed` stub (`title`, `branch`, `owner:` from `git config user.email`) **on the branch** — so a renumber-on-reject leaves no orphaned branch or worktree (create-after-push), and **no `main` commit is made**. `claim()` also acquires `.tickets/.ticket.lock` atomically itself (`O_CREAT|O_EXCL`) before computing the next number and releases it on every exit path, so no separate manual lock step is needed here:
 
-   `python3 "${CLAUDE_PLUGIN_ROOT}/ticket.py" claim <slug> "<title>" --push`
+   `python3 "${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" claim <slug> "<title>" --push`
 
    The command prints the claimed `XXXX-<slug>`. Record XXXX. If it exits non-zero after retries, stop and report the conflict to the lead.
 
@@ -150,7 +150,7 @@ source — this could not run any earlier), generate/refresh the ranked context 
 and load it for Phases 3-4:
 
 ```python
-from context_rank import get_or_generate_pack, describe_environment
+from lib.context_rank import get_or_generate_pack, describe_environment
 
 pack = get_or_generate_pack(problem_md_text, project_root, "XXXX-<slug>")
 notice = describe_environment(project_root)
@@ -281,7 +281,7 @@ this so the about-to-be-written edge is included in the cycle / unknown-ref chec
 
 ```python
 from pathlib import Path
-from ticket_deps import TicketInfo, assert_acyclic_with_proposed
+from lib.ticket_deps import TicketInfo, assert_acyclic_with_proposed
 
 proposed = TicketInfo(
     number="XXXX",              # this ticket's number
@@ -316,7 +316,7 @@ Phase 5 — not the critic — resolves panel activation, so the fan-out decisio
 1. **Infer the file scope** from `solution.md`'s intended changes — the languages, frameworks, and integration points it proposes touching.
 2. **Run the detector yourself**, in-session, before spawning anything:
    ```
-   python3 "${CLAUDE_PLUGIN_ROOT}/panel_detect.py" --root <project root> --design <inferred files...>
+   python3 "${CLAUDE_PLUGIN_ROOT}/lib/panel_detect.py" --root <project root> --design <inferred files...>
    ```
    It prints one JSON object: `active`, `candidates`, `skipped`.
 3. **Disposition every `candidates` entry yourself** — activate or defer, with a one-line reason each. An activated candidate joins the active set.

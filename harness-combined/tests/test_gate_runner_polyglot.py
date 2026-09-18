@@ -10,8 +10,8 @@ from pathlib import Path
 
 from gates import append_tool_error_if_silent, find_config_root
 from gates.typescript import _changed_test_files
-from models import GateError
-from server import _detect_stacks
+from lib.models import GateError
+from lib.server import _detect_stacks
 
 
 def _finding() -> GateError:

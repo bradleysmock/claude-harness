@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import ticket
+from lib import ticket
 
 _REPO_ROOT = Path(__file__).parent.parent
 _GUARD_SPEC = importlib.util.spec_from_file_location(
@@ -483,7 +483,7 @@ def test_problem_phase_1_has_no_manual_lock_bash() -> None:
 
 def test_problem_phase_1_runs_single_claim_call() -> None:
     phase_1 = _problem_phase_1()
-    assert '${CLAUDE_PLUGIN_ROOT}/ticket.py" claim <slug> "<title>" --push' in phase_1
+    assert '${CLAUDE_PLUGIN_ROOT}/lib/ticket.py" claim <slug> "<title>" --push' in phase_1
     assert "acquires" in phase_1 and "itself" in phase_1  # built-in-lock note
 
 

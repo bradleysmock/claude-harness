@@ -1,7 +1,7 @@
 """Ticket 0017 — StackName / LanguageResult domain types."""
 from __future__ import annotations
 
-from models import GateError, GateResult, LanguageResult, StackName
+from lib.models import GateError, GateResult, LanguageResult, StackName
 
 
 def _gr(gate: str = "lint", passed: bool = True) -> GateResult:

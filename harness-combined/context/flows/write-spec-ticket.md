@@ -82,20 +82,20 @@ As the **final step** after the spec (and task) files are written, regenerate
 Requirement and Acceptance Criterion in `requirements.md` to the spec(s) that cover it,
 and lists any requirement no spec covers.
 
-Invoke `spec_coverage.py` as an **argument-list subprocess** (never a shell string — the ticket
+Invoke `lib/spec_coverage.py` as an **argument-list subprocess** (never a shell string — the ticket
 slug and paths must not be interpolated into a shell command):
 
 ```python
 import subprocess, sys
 subprocess.run(
-    [sys.executable, "spec_coverage.py", ticket_dir_str, specs_dir_str, project_root_str],
+    [sys.executable, "lib/spec_coverage.py", ticket_dir_str, specs_dir_str, project_root_str],
     check=True,
 )
 ```
 
 - `ticket_dir_str` → `.tickets/XXXX-<slug>` (or its `.worktrees/...` copy when resolving via a worktree).
 - `specs_dir_str` → `.harness/specs`.
-- `project_root_str` → the plugin/project root that contains `spec_coverage.py`.
+- `project_root_str` → the plugin/project root that contains `lib/spec_coverage.py`.
 
 This **overwrites** `spec-coverage.md` on every `/write-spec` run, so the map always
 reflects the specs that currently exist. Read the counts from `spec_coverage.py`'s stdout
