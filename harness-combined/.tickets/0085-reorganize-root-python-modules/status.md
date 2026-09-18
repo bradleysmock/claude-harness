@@ -1,4 +1,4 @@
-status: solution
+status: implementing
 ticket: 0085
 title: Reorganize harness-combined's flat root Python modules into a subpackage
 type: refactor
